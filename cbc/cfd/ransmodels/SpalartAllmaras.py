@@ -23,51 +23,43 @@ class SpalartAllmaras(TurbSolver):
     def define(self):
         """Set up linear algebra schemes and their boundary conditions."""
         DQ, DQ_NoBC = DerivedQuantity, DerivedQuantity_NoBC
-        V, NS = self.V['dq'], self.Turb_problem.NS_solver
-        ns = {'u_':NS.u_}
-        NS.schemes['derived quantities'] = [DQ_NoBC(NS, 'Omega_', NS.S,
-                            "sqrt(2.*inner(omega(u_), omega(u_)))", ns)]
+        V, NS = self.V['dq'], self.problem.NS_solver
+        NS.pdesubsystems['derived quantities'] = [
+          DQ_NoBC(vars(NS), 'Omega', NS.S, "sqrt(2.*inner(omega(u_), omega(u_)))")]
         self.Omega_ = NS.Omega_
         # Constant
         self.Cw1 = self.Cb1/self.kappa**2 + (1. + self.Cb2)/self.sigma
         ns = vars(self)
-        self.schemes['derived quantities'] = [
-              DQ(self, 'chi_', V, "nu_tilde_/nu", ns),
-              DQ(self, 'fv1_', V, "chi_**3/(chi_**3 + Cv1**3)", ns),
-              DQ(self, 'nut_', V, "nu_tilde_*fv1_", ns)]
-        self.schemes['derived quantities'] += {
+        self.pdesubsystems['derived quantities'] = [
+              DQ(ns, 'chi', V, "nu_tilde_/nu"),
+              DQ(ns, 'fv1', V, "chi_**3/(chi_**3 + Cv1**3)"),
+              DQ(ns, 'nut', V, "nu_tilde_*fv1_")]
+        self.pdesubsystems['derived quantities'] += {
             True: lambda: [
-                DQ(self, 'fv2_', V, "1. - chi_/(1. + chi_*fv1_)", ns, 
-                   bounded=False),
-                DQ_NoBC(self, 'St_', V, "Omega_ + nu_tilde_/(kappa*y)**2*fv2_", 
-                        ns)],
+                DQ(ns, 'fv2', V, "1. - chi_/(1. + chi_*fv1_)", bounded=False),
+                DQ_NoBC(ns, 'St', V, "Omega_ + nu_tilde_/(kappa*y)**2*fv2_")],
             False: lambda: [
-                DQ(self, 'fv2_', V, "1./(1. + chi_/Cv2)**3", ns,
-                   wall_value=1.), 
-                DQ(self, 'fv3', V, "(1. + chi_*fv1_)*(1 - fv2_)/chi_", ns, 
-                   wall_value=1.),
-                DQ_NoBC(self, 'St_', V, 
-                        "fv3*Omega_ + nu_tilde_/(kappa*y)**2*fv2_", ns)]
+                DQ(ns, 'fv2', V, "1./(1. + chi_/Cv2)**3", wall_value=1.), 
+                DQ(ns, 'fv3', V, "(1. + chi_*fv1_)*(1 - fv2_)/chi_", wall_value=1.),
+                DQ_NoBC(ns, 'St', V, "fv3_*Omega_ + nu_tilde_/(kappa*y)**2*fv2_")]
             }[self.classical]()
                 
-        self.schemes['derived quantities'] += [
-            DQ(self, 'r_', V, 
-               "nu_tilde_/(Omega_*kappa**2*y**2 + nu_tilde_*fv2_)", ns, 
+        self.pdesubsystems['derived quantities'] += [
+            DQ(ns, 'r', V, "nu_tilde_/(Omega_*kappa**2*y**2 + nu_tilde_*fv2_)",
                wall_value=1.),
-            DQ(self, 'g_', V, "r_ + Cw2*(r_**6 - r_)", ns, 
-               wall_value=1-self.Cw2(0)),
-            DQ(self, 'fw_', V, "g_*((1. + Cw3**6)/(g_**6 + Cw3**6))**(1./6.)", 
-               ns, wall_value=1.)]
+            DQ(ns, 'g', V, "r_ + Cw2*(r_**6 - r_)", wall_value=1-self.Cw2(0)),
+            DQ(ns, 'fw', V, "g_*((1. + Cw3**6)/(g_**6 + Cw3**6))**(1./6.)", 
+               wall_value=1.)]
         
         classname = self.prm['time_integration'] + '_nu_tilde_' + \
-                    str(self.prm['scheme']['nu_tilde'])
-        self.schemes['nu_tilde'] = eval(classname)(self, 
-                                                   self.system_composition[0])
+                    str(self.prm['pdesubsystem']['nu_tilde'])
+        self.pdesubsystems['nu_tilde'] = eval(classname)(vars(self), ['nu_tilde'],
+                                                      bcs=self.bc['nu_tilde'])
         
         TurbSolver.define(self)
         
     def model_parameters(self):
-        for dq in ['nut_', 'r_', 'g_', 'fw_']:
+        for dq in ['nut', 'r', 'g', 'fw']:
             self.prm['apply'][dq] = self.prm['apply'].get(dq, 'project')
             
         self.model_prm = dict(
@@ -85,8 +77,8 @@ class SpalartAllmaras(TurbSolver):
         
     def create_BCs(self, bcs):
         # Compute distance to nearest wall
-        self.distance = Eikonal(self.V['dq'], self.boundaries)
-        self.y = self.distance.y
+        self.distance = Eikonal(self.mesh, self.boundaries)
+        self.y = self.distance.y_
         return TurbSolver.create_BCs(self, bcs)
         
 # Model

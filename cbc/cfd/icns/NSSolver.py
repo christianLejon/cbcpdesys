@@ -91,10 +91,8 @@ class NSSolver(PDESystem):
         self.n = FacetNormal(self.mesh)
         self.nut_ = None
         # Set coefficients for initial velocity and pressure
-        try:
-            self.problem.initialize(self)
-        except TypeError:
-            print 'Initializing not performed'
+        if not self.problem.initialize(self):
+            info_red('Initialization not performed for ' + self.prm['familyname'])
             
         # Get the body forces from the problem class
         try:

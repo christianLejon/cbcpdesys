@@ -22,8 +22,9 @@ class LowReynolds_Coupled(LowReynolds):
         """ Set up linear algebra schemes and their boundary conditions """
         LowReynolds.define(self)
         classname = '{}_ke_{}'.format(self.prm['time_integration'], 
-                                      self.prm['scheme']['ke'])
-        self.schemes['ke'] = eval(classname)(self, self.system_composition[0])
+                                      self.prm['pdesubsystem']['ke'])
+        self.pdesubsystems['ke'] = eval(classname)(vars(self), ['k', 'e'],
+                                                   bcs=self.bc['ke'])
 
 class Steady_ke_1(TurbModel):
     

@@ -13,7 +13,9 @@ from cbc.cfd.tools.Wall import V2FWall
 
 class V2F_FullyCoupled(V2F):
     
-    def __init__(self, problem, parameters):        
+    def __init__(self, problem, parameters, model='OriginalV2F'):        
+        parameters['model'] = model
+        parameters['space']['Rij'] = TensorFunctionSpace
         V2F.__init__(self,
                      system_composition=[['k', 'e', 'v2', 'f']],
                      problem=problem,
@@ -21,9 +23,9 @@ class V2F_FullyCoupled(V2F):
                 
     def define(self):
         V2F.define(self)
-        self.schemes['kev2f'] = eval(self.prm['time_integration'] + \
-            '_kev2f_' + str(self.prm['scheme']['kev2f']))(self,
-                            self.system_composition[0])
+        self.pdesubsystems['kev2f'] = eval(self.prm['time_integration'] + \
+            '_kev2f_' + str(self.prm['pdesubsystem']['kev2f']))(vars(self),
+                            self.system_composition[0], bcs=self.bc['kev2f'])
         
     def create_BCs(self, bcs):
         # Set regular boundary conditions
@@ -40,7 +42,7 @@ class V2FBase(TurbModel):
     
     def update(self):
         """ Only v2 that is bounded by zero """
-        dim = self.solver.V['f'].dim()
+        dim = self.solver_namespace['V']['f'].dim()
         x = self.x.array()
         x[:-dim] = minimum(maximum(1e-12, x[:-dim]), 1e6)
         self.x.set_local(x)

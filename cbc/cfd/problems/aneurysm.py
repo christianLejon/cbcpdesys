@@ -59,17 +59,14 @@ class aneurysm(NSProblem):
         self.bc_markers = self.mark_boundary()
         self.n = FacetNormal(self.mesh)        
         self.boundaries = self.create_boundaries()
-                
+        #self.q0 = Initdict(u = ('0', '0', '0'), p = ('0')) # Zero is default anyway
+        
     def mark_boundary(self):
         bc_markers = MeshFunction("uint", self.mesh, 2)
         file_in = File("../data/100_1314k_boundary.xml.gz")
         #file_in = File("../data/m12_dns_2m_bcs.xml")        
         file_in >> bc_markers
         return bc_markers
-        
-    def initialize(self, pdesystem):
-        NSProblem.initialize(self, pdesystem, Initdict(u = ('0', '0', '0'),
-                                                       p = ('0')))
         
     def create_boundaries(self):
         # Define the spline for enough heart beats

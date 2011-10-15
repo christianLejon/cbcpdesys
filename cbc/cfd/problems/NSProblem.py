@@ -15,7 +15,7 @@ problem_parameters = recursive_update(problem_parameters, {
     'save_solution': False,
     'plot_velocity': False,
     'plot_pressure': False,    
-    'Model': 'Laminar'
+    'turbulence_model': 'Laminar',
 })
 
 class NSProblem(Problem):

@@ -17,21 +17,20 @@ class StandardKE(TurbSolver):
         
     def define(self):
         DQ, DQ_NoBC = DerivedQuantity, DerivedQuantity_NoBC 
-        NS, V = self.Turb_problem.NS_solver, self.V['dq']
-        NS.schemes['derived quantities'] = [
-            DQ_NoBC(NS, 'Sij_', NS.S, "epsilon(u_)", dict(u_=NS.u_), 
-                    bounded=False)]
+        NS, V = self.problem.NS_solver, self.V['dq']
+        NS.pdesubsystems['derived quantities'] = [
+            DQ_NoBC(vars(NS), 'Sij', NS.S, "epsilon(u_)", bounded=False)]
         self.Sij_ = NS.Sij_
         ns = vars(self)
-        self.schemes['derived quantities'] = [
-            DQ(self, 'nut_', V, 'Cmu*k_*k_*(1./e_)', ns, apply='project'),
-            DQ_NoBC(self, 'T_', V, 'max_(k_*(1./e_), 6.*sqrt(nu*(1./e_)))', ns),
-            DQ(self, 'P_', V, '2.*inner(grad(u_), Sij_)*nut_', ns, bounded=False)]
+        self.pdesubsystems['derived quantities'] = [
+            DQ(ns, 'nut', V, 'Cmu*k_*k_*(1./e_)'),
+            DQ_NoBC(ns, 'T', V, 'max_(k_*(1./e_), 6.*sqrt(nu*(1./e_)))'),
+            DQ(ns, 'P', V, '2.*inner(grad(u_), Sij_)*nut_', bounded=False)]
         TurbSolver.define(self)
         
     def model_parameters(self):
         info('Setting parameters for standard K-Epsilon model')
-        for dq in ['nut_', 'T_']:
+        for dq in ['nut', 'T']:
             # Specify projection as default
             # (remaining DQs are use_formula by default)
             self.prm['apply'][dq] = self.prm['apply'].get(dq, 'project')    
@@ -47,6 +46,6 @@ class StandardKE(TurbSolver):
     
     def create_BCs(self, bcs):
         # Compute distance to nearest wall
-        self.distance = Eikonal(self.V['dq'], self.boundaries)
-        self.y = self.distance.y
+        self.distance = Eikonal(self.mesh, self.boundaries)
+        self.y = self.distance.y_
         return TurbSolver.create_BCs(self, bcs)

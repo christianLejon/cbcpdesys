@@ -34,14 +34,15 @@ class ER(TurbSolver):
                      
     def define(self):
         """define derived quantities for ER model."""
-        V,  NS = self.V['dq'], self.Turb_problem.NS_solver # Short forms        
+        V,  NS = self.V['dq'], self.problem.NS_solver # Short forms        
         DQ, DQ_NoBC = DerivedQuantity, DerivedQuantity_NoBC
-        NS.V['SS'] = TensorFunctionSpace(self.Turb_problem.NS_problem.mesh, 
-                                         self.prm['family']['Rij'], self.prm['degree']['Rij'])
+        NS.V['SS'] = TensorFunctionSpace(self.problem.mesh, 
+                          self.prm['family']['Rij'], self.prm['degree']['Rij'])
                                            
-        NS.schemes['derived quantities'] = [
-            DQ_NoBC(NS, 'Sij_', NS.S, "epsilon(u_)", dict(u_=NS.u_), bounded=False, apply='project'),
-            DQ_NoBC(NS, 'Wij_', NS.V['SS'], "0.5*(grad(u_) - grad(u_).T)", dict(u_=NS.u_),
+        NS.pdesubsystems['derived quantities'] = [
+            DQ_NoBC(vars(NS), 'Sij', NS.S, "epsilon(u_)", bounded=False, 
+                    apply='project'),
+            DQ_NoBC(vars(NS), 'Wij', NS.V['SS'], "0.5*(grad(u_) - grad(u_).T)",
                     bounded=False)]
         self.Sij_ = NS.Sij_
         self.Wij_ = NS.Wij_
@@ -50,24 +51,26 @@ class ER(TurbSolver):
         self.Aij = self.Rij*(0.5/self.k_) - 1./3.*self.dij
         ns = vars(self)
         # A33 = - (A11 + A33) = - tr(Aij),  AijAji = inner(Aij, Aij) + A33**2 = inner(Aij, Aij) + trace(Aij)**2
-        self.schemes['derived quantities'] = [
-            DQ_NoBC(self, 'T_' , V, "max_(k_*(1./e_), 6.*sqrt(nu*(1./e_)))", ns),
-            DQ_NoBC(self, 'L_' , V, "CL*max_(Ceta*(nu**3/e_)**(0.25), k_**(1.5)*(1./e_))", ns),
-            DQ_NoBC(self, 'Aij_', NS.S, "Rij_*(0.5/k_) - 1./3.*dij", ns, bounded=False),
-            DQ_NoBC(self, 'Pij_', self.V['Rij'], "- dot(Rij_, grad(u_).T) - dot(grad(u_), Rij_.T)", ns,
-                    bounded=False),                        
+        self.pdesubsystems['derived quantities'] = [
+            DQ_NoBC(ns, 'T' , V, "max_(k_*(1./e_), 6.*sqrt(nu*(1./e_)))"),
+            DQ_NoBC(ns, 'L' , V, "CL*max_(Ceta*(nu**3/e_)**(0.25), k_**(1.5)*(1./e_))"),
+            DQ_NoBC(ns, 'Aij', NS.S, "Rij_*(0.5/k_) - 1./3.*dij", bounded=False),
+            DQ_NoBC(ns, 'Pij', self.V['Rij'], 
+                    "- dot(Rij_, grad(u_).T) - dot(grad(u_), Rij_.T)", bounded=False),                        
             #DQ_NoBC(self, 'Ce1_', V, "1.3 + 0.25/(1. + (0.15*y/L_)**2)**4", ns, bounded=True),
-            DQ_NoBC(self, 'Ce1_', V, "1.4*(1. + Ced*sqrt(k_/max_(1.e-10, inner(Rij_, outer(ni, ni)))))", ns, bounded=True),
-            DQ (self, 'nut_', V, 'Cmu*(inner(Rij_, outer(ni, ni)))*T_', ns)            
+            DQ_NoBC(ns, 'Ce1', V, 
+             "1.4*(1. + Ced*sqrt(k_/max_(1.e-10, inner(Rij_, outer(ni, ni)))))", 
+             bounded=True),
+            DQ (ns, 'nut', V, 'Cmu*(inner(Rij_, outer(ni, ni)))*T_')            
         ]
-        if self.Turb_problem.prm['Model'] == 'LRR-IP':
-            self.schemes['derived quantities'] += [   
-                DQ_NoBC(self, 'PHIij_', self.V['Rij'], "-CR*(1./T_)*2.*Aij*k_ \
+        if self.problem.prm['turbulence_model'] == 'LRR-IP':
+            self.pdesubsystems['derived quantities'] += [   
+                DQ_NoBC(self, 'PHIij', self.V['Rij'], "-CR*(1./T_)*2.*Aij*k_ \
                                     - C2*(Pij_ - 1./3.*tr(Pij_)*dij)", ns, bounded=False)]
         
-        elif self.Turb_problem.prm['Model'] == 'SSG':
-            self.schemes['derived quantities'] += [   
-                DQ_NoBC(self, 'PHIij_', self.V['Rij'], "-( Cp1*e_ + Cp1s*0.5*tr(Pij_) )*Aij \
+        elif self.problem.prm['turbulence_model'] == 'SSG':
+            self.pdesubsystems['derived quantities'] += [   
+                DQ_NoBC(self, 'PHIij', self.V['Rij'], "-( Cp1*e_ + Cp1s*0.5*tr(Pij_) )*Aij \
                                     + Cp2*e_*(dot(Aij_, Aij_) - 1./3*(inner(Aij, Aij_)+ tr(Aij_)**2)*dij ) \
                                     + ( Cp3 - Cp3s*sqrt(inner(Aij_, Aij_) + tr(Aij_)**2) )*k_*Sij_ \
                                     + Cp4*k_*(dot(Aij_, Sij_) + dot(Sij_,Aij_) - 2./3*inner(Aij_, Sij_)*dij) \
@@ -81,9 +84,9 @@ class ER(TurbSolver):
             
     def model_parameters(self):  
         """Parameters for the ER model."""
-        model = self.Turb_problem.prm['Model']
+        model = self.problem.prm['turbulence_model']
         info('Setting parameters for %s ER model ' %(model))
-        for dq in ['T_', 'L_', 'nut_']:
+        for dq in ['T', 'L', 'nut']:
             # Specify projection as default
             # (remaining DQs are use_formula by default)
             self.prm['apply'][dq] = self.prm['apply'].get(dq, 'project')
@@ -116,17 +119,16 @@ class ER(TurbSolver):
         # Compute distance to nearest wall
         self.distance = Eikonal(self.V['dq'], self.boundaries)
         self.y = self.distance.y
-        DerivedQuantity_NoBC(self, 'ni', VectorFunctionSpace(self.Turb_problem.NS_problem.mesh, 
+        DerivedQuantity_NoBC(vars(self), 'ni', VectorFunctionSpace(self.problem.mesh, 
                              self.prm['family']['dq'], self.prm['degree']['dq']), 
                              "grad(y)/sqrt(inner(grad(y), grad(y)))", 
-                             dict(y=self.y), bounded=False, apply='project')
-        self.ti = Function(VectorFunctionSpace(self.Turb_problem.NS_problem.mesh, 
-                             self.prm['family']['dq'], self.prm['degree']['dq']))
+                             bounded=False, apply='project')
+        self.ti = Function(VectorFunctionSpace(self.problem.mesh, 
+                           self.prm['family']['dq'], self.prm['degree']['dq']))
         N = self.ti.vector().size()/2
         self.ti.vector()[:N] = self.ni.vector()[N:]
         self.ti.vector()[N:] = -self.ni.vector()[:N]
         
-        self.attach_boundary_functions(bcs)
         bcu = {}
         for name in self.system_names:
             bcu[name] = []

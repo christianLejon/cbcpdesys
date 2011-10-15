@@ -214,23 +214,13 @@ class PDESystem:
                 exec('self.x_%s[sys_name][:] = self.x_%s[sys_name][:]'      
                      %(str(t), str(t - 1).replace('0', '')))
 
-    def attach_boundary_functions(self, bcs):
-        """Some boundaries ('VelocityInlet', 'Wall', 'ConstantPressure') specify 
-        inlet profiles or constants. This method attaches functions, a dictionary 
-        of functions or constants to the relevant boundary in the list of boundaries 
-        bcs. See create_BCs for how func is used in creating, e.g., a DirichletBC.
-        Called at the beginning of create_BCs."""
-        pass
-
     def create_BCs(self, bcs):
         """Create boundary conditions for self.system_names based on boundaries
         in list bcs. Boundary conditions can be placed in bc.func as a function
-        or dictionary using the pdesubsystem names as keys. Attach the functions in
-        method attach_boundary_functions. If func is not provided for Wall, then
-        the default value of 1e-12 is used for all components.
+        or dictionary using the pdesubsystem names as keys. 
+        If func is not provided for Wall, then the default value of 1e-12 is 
+        used for all components.
         """
-        self.attach_boundary_functions(bcs)
-        
         bcu = {}
         for name in self.system_names:
             bcu[name] = []
@@ -253,7 +243,7 @@ class PDESystem:
                                 if not all([V.sub(0).dim() == V.sub(i).dim() 
                                        for i in range(1, V.num_sub_spaces())]):
                                     error("You need to subclass create_BCs for MixedFunctionSpaces consisting of not equal FunctionSpaces")
-                                func = Constant((1e-12, )*V.cell().d)
+                                func = Constant((1e-12, )*V.num_sub_spaces())
                             elif isinstance(V, TensorFunctionSpace):                                
                                 func = Expression((('1.e-12', )*V.cell().d, )*
                                                   V.cell().d)

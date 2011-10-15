@@ -18,6 +18,7 @@ class Problem:
         self.prm = parameters
         self.mesh = mesh     
         self.boundaries = []                            # List of subdomains
+        self.q0 = {}                                    # Dictionary for initializing pdesystems
         self.t = 0                                      # Simulation time
         self.tstep = 0                                  # Time step
         self.total_number_iters = 0                     #
@@ -149,16 +150,20 @@ class Problem:
             
             self.update(pdesystems)
 
-    def initialize(self, pdesystem, q0={}):
+    def initialize(self, pdesystem):
         """Initialize the solution in a PDESystem.
-        This default implementation uses the provided q0 dictionary
-        that contains tuples of strings that can be used to create Expressions.
-        e.g., q0 = {'u': ('x[1](1-x[1])', '0'),
-                    'p': ('0')}              
+        This default implementation uses the dictionary attribute q0 
+        that may contain tuples of strings, Constants or Expressions,
+        e.g., self.q0 = {'u': ('x[1](1-x[1])', '0'),
+                         'p': '0'}
+        or
+              self.q0 = {'u': Expression(('x[1](1-x[1])', '0')),
+                         'p': Constant(0)}
         """
-        if q0 == {}: return
+        if self.q0 == {}: return False
         
-        if not isinstance(q0, dict): raise TypeError
+        q0 = self.q0
+        if not isinstance(q0, dict): raise TypeError('Initialize by specifying the dictionary Problem.q0')
                         
         for sub_system in pdesystem.system_composition:
             name = ''.join(sub_system) # e.g., 'u' and 'p' for segregated solver or 'up' for coupled
@@ -186,21 +191,25 @@ class Problem:
                             if q1.value_size() == 1:
                                 qi.append(str(q1(0)))
                             else:                                
-                                raise TypeError('Cannot extract value of multidimensional Constant. Consider using strings or Expressions.')
+                                info_red('Cannot extract value of multidimensional Constant. Consider using strings or Expressions.')
                         else:
                             qi += list(q0[ss])
                     qi = interpolate(Expression(qi), pdesystem.V[name])
                 else:
-                    raise KeyError('Initial values not provided for all components of sub_system', sub_system)
+                    info_red('Initial values not provided for all components of sub_system ')
+                    return False
             except:
-                raise TypeError('Error in initialize! Provide tuples of strings or Expressions.')
+                info_red('Error in initialize! Provide tuples of strings or Expressions.')
+                return False
             
             # Initialize solution:
             pdesystem.q_[name].vector()[:] = qi.vector()[:] 
             if self.prm['time_integration']=='Transient':
                 pdesystem.q_1[name].vector()[:] = qi.vector()[:] 
                 pdesystem.q_2[name].vector()[:] = qi.vector()[:]
-
+                
+        return True
+        
     def prepare(self, *args):
         """Called at the beginning of a timestep for transient simulations."""
         pass

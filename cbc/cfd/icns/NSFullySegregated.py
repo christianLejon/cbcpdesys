@@ -111,11 +111,12 @@ class NSFullySegregated(NSSolver):
  
 class VelocityBase(PDESubSystem):
     """Variational form for velocity."""    
-    def get_linear_solver(self):
+    def get_solver(self):
+        self.index = eval(self.name[-1])     # Velocity component
         if self.index > 0:
             return self.solver_namespace['pdesubsystems']['u0'].linear_solver
         else:
-            return PDESubSystem.get_linear_solver(self)
+            return PDESubSystem.get_solver(self)
     
     def assemble(self, M):
         # For u1, u2 use the assembled matrix of u0
@@ -125,23 +126,23 @@ class VelocityBase(PDESubSystem):
             PDESubSystem.assemble(self, M)
                     
     def define(self):
-        self.index = eval(self.name[-1])     # Velocity component
         form_args = self.solver_namespace.copy()
         self.get_form(form_args)
         if self.F:
             self.a, self.L = lhs(self.F), rhs(self.F)
                    
 class VelocityUpdateBase(PDESubSystem):
-    """ Variational form for velocity update using constant mass matrix """
+    """Variational form for velocity update using constant mass matrix."""
     def __init__(self, solver_namespace, unknown, bcs=[], **kwargs):
         PDESubSystem.__init__(self, solver_namespace, unknown, 
                                     bcs=bcs, **kwargs)
             
-    def get_linear_solver(self):
+    def get_solver(self):
+        self.index = eval(self.name[-1])     # Velocity component
         if self.index > 0:
             return self.solver_namespace['pdesubsystems']['u0_update'].linear_solver
         else:
-            return PDESubSystem.get_linear_solver(self)
+            return PDESubSystem.get_solver(self)
 
     def assemble(self, M):
         # Use the assembled matrix of u0
@@ -151,7 +152,6 @@ class VelocityUpdateBase(PDESubSystem):
             PDESubSystem.assemble(self, M)
             
     def define(self):
-        self.index = eval(self.name[-1]) # Velocity component
         self.get_form(self.solver_namespace)                
         if self.F:
             self.a, self.L = lhs(self.F), rhs(self.F)        

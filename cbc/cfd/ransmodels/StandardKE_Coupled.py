@@ -15,7 +15,7 @@ class StandardKE_Coupled(StandardKE):
     def __init__(self, problem, parameters, model='StandardKE'):
         parameters['model'] = model
         StandardKE.__init__(self, 
-                            system_composition=[['k','e']],
+                            system_composition=[['k', 'e']],
                             problem=problem, 
                             parameters=parameters)
         
@@ -32,8 +32,9 @@ class StandardKE_Coupled(StandardKE):
         """Set up linear algebra schemes."""
         StandardKE.define(self)
         classname = self.prm['time_integration'] + '_ke_' + \
-                    str(self.prm['scheme']['ke'])
-        self.schemes['ke'] = eval(classname)(self, self.system_composition[0])
+                    str(self.prm['pdesubsystem']['ke'])
+        self.pdesubsystems['ke'] = eval(classname)(vars(self), ['k', 'e'], 
+                                                   bcs=self.bc['ke'])
                         
 class Steady_ke_1(TurbModel):
     

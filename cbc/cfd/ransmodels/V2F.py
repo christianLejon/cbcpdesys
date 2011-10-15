@@ -20,18 +20,18 @@ class V2F(TurbSolver):
         V,  NS = self.V['dq'], self.problem.NS_solver # Short forms        
         DQ, DQ_NoBC = DerivedQuantity, DerivedQuantity_NoBC
         NS.pdesubsystems['derived quantities'] = [
-            DQ_NoBC(vars(NS), 'Sij_', NS.S, "epsilon(u_)", bounded=False),
-            DQ_NoBC(vars(NS), 'S2_', V, 'inner(Sij_, Sij_)')]
+            DQ_NoBC(vars(NS), 'Sij', NS.S, "epsilon(u_)", bounded=False),
+            DQ_NoBC(vars(NS), 'S2', V, 'inner(Sij_, Sij_)')]
         self.Sij_ = NS.Sij_
         self.S2_ = NS.S2_
         ns = vars(self)
         self.pdesubsystems['derived quantities'] = [
-            DQ (ns, 'v2ok_', V, "v2_/k_"),
-            DQ_NoBC(ns, 'T_' , V, "max_(min_(0.6/(Cmu*v2ok_*sqrt(6.*S2_)), k_*(1./e_)), 6.*sqrt(nu*(1./e_)))"),
-            DQ_NoBC(ns, 'L_' , V, "CL*max_(Ceta*(nu**3/e_)**(0.25), k_**(1.5)*min_(1./e_, 1./(Cmu*v2_*sqrt(6.*S2_))))"),
-            Ce1(ns, 'Ce1_', V, "1.4*(1. + Ced*sqrt(k_/v2_))"),
-            DQ (ns, 'nut_', V, "Cmu*v2_*T_"),
-            DQ (ns, 'P_', V, "2.*inner(Sij_, grad(u_))*nut_", bounded=False)
+            DQ (ns, 'v2ok', V, "v2_/k_"),
+            DQ_NoBC(ns, 'T' , V, "max_(min_(0.6/(Cmu*v2ok_*sqrt(6.*S2_)), k_*(1./e_)), 6.*sqrt(nu*(1./e_)))"),
+            DQ_NoBC(ns, 'L' , V, "CL*max_(Ceta*(nu**3/e_)**(0.25), k_**(1.5)*min_(1./e_, 1./(Cmu*v2_*sqrt(6.*S2_))))"),
+            Ce1(ns, 'Ce1', V, "1.4*(1. + Ced*sqrt(k_/v2_))"),
+            DQ (ns, 'nut', V, "Cmu*v2_*T_"),
+            DQ (ns, 'P', V, "2.*inner(Sij_, grad(u_))*nut_", bounded=False)
         ]
         if self.prm.get('NLV2F'): self.define_NLV2F()
         
@@ -41,8 +41,8 @@ class V2F(TurbSolver):
         """Parameters for the V2F model."""
         model = self.prm['model']
         info('Setting parameters for %s V2F model ' %(model))
-        self.problem.NS_solver.prm['apply']['S2_'] = 'project'
-        for dq in ['T_', 'L_', 'Ce1_']:
+        self.problem.NS_solver.prm['apply']['S2'] = 'project'
+        for dq in ['T', 'L', 'Ce1']:
             # Specify projection as default
             # (remaining DQs are use_formula by default)
             self.prm['apply'][dq] = self.prm['apply'].get(dq, 'project')
@@ -84,33 +84,33 @@ class V2F(TurbSolver):
         DQ, DQ_NoBC = DerivedQuantity, DerivedQuantity_NoBC
         V, NS = self.V['dq'], self.problem.NS_solver
         self.RS = TensorFunctionSpace(NS.V['u'].mesh(), 'CG', self.prm['degree']['u'])
-        NS.prm['apply']['Wij_'] = NS.prm['apply'].get('Wij_', 'project')
+        NS.prm['apply']['Wij'] = NS.prm['apply'].get('Wij', 'project')
         # Neccessary to project eta12_ for ufl to accept it in beta1_:
-        self.prm['apply']['eta12_'] = 'project' 
-        self.prm['apply']['rij_'] = self.prm['apply'].get('rij_', 'project')
-        self.prm['apply']['Rij_'] = self.prm['apply'].get('Rij_', 'project')
+        self.prm['apply']['eta12'] = 'project' 
+        self.prm['apply']['rij'] = self.prm['apply'].get('rij', 'project')
+        self.prm['apply']['Rij'] = self.prm['apply'].get('Rij', 'project')
         NS.pdesubsystems['derived quantities'] += [
-            DQ_NoBC(vars(NS), 'Wij_', self.RS, "0.5*(grad(u_) - grad(u_).T)", bounded=False)]
+            DQ_NoBC(vars(NS), 'Wij', self.RS, "0.5*(grad(u_) - grad(u_).T)", bounded=False)]
         self.Wij_ = NS.Wij_
         self.dij_ = Identity(NS.u_.cell().d)
         ns = vars(self)
         self.pdesubsystems['derived quantities'] += [
-            DQ     (ns, 'snu_', V, '2./3. - v2ok_'),
-            DQ_NoBC(ns, 'eta1_', V, 'T_**2*S2_'),
-            DQ_NoBC(ns, 'eta2_', V, 'T_**2*inner(Wij_, Wij_)'),
-            DQ_NoBC(ns, 'eta12_', V, 'dot(eta1_, eta2_)'),
-            DQ_NoBC(ns, 'beta1_', V, '1./(0.1 + sqrt(eta12_))'),
-            DQ_NoBC(ns, 'gamma1_', V, '1./(0.1 + eta1_)'),
-            DQ_NoBC(ns, 'Cmu2_', V, '6./5.*sqrt(1. - 2.*(Cmu*v2ok_)**2*eta1_)/(beta1_ + sqrt(eta12_))'),
-            DQ_NoBC(ns, 'Cmu3_', V, '6./5./(gamma1_ + eta1_)'),
-            DQ     (ns, 'rij_', NS.S, '-snu_*k_*T_**2*(Cmu2_*(Sij_*Wij_ - Wij_*Sij_) - Cmu3_*(Sij_*Sij_ - 1./3.*S2_*dij_) )', bounded=False),
-            Rij    (ns, 'Rij_', NS.S, "2./3.*k_*dij_ - 2.*nut_*Sij_  + rij_", bounded=False)]
+            DQ     (ns, 'snu', V, '2./3. - v2ok_'),
+            DQ_NoBC(ns, 'eta1', V, 'T_**2*S2_'),
+            DQ_NoBC(ns, 'eta2', V, 'T_**2*inner(Wij_, Wij_)'),
+            DQ_NoBC(ns, 'eta12', V, 'dot(eta1_, eta2_)'),
+            DQ_NoBC(ns, 'beta1', V, '1./(0.1 + sqrt(eta12_))'),
+            DQ_NoBC(ns, 'gamma1', V, '1./(0.1 + eta1_)'),
+            DQ_NoBC(ns, 'Cmu2', V, '6./5.*sqrt(1. - 2.*(Cmu*v2ok_)**2*eta1_)/(beta1_ + sqrt(eta12_))'),
+            DQ_NoBC(ns, 'Cmu3', V, '6./5./(gamma1_ + eta1_)'),
+            DQ     (ns, 'rij', NS.S, '-snu_*k_*T_**2*(Cmu2_*(Sij_*Wij_ - Wij_*Sij_) - Cmu3_*(Sij_*Sij_ - 1./3.*S2_*dij_) )', bounded=False),
+            Rij    (ns, 'Rij', NS.S, "2./3.*k_*dij_ - 2.*nut_*Sij_  + rij_", bounded=False)]
         
         NS.f = self.problem.body_force() - div(self.rij_)
         
-        # Note that Rij_ in 2D only is a (2, 2) matrix, not containing the nonzero Rij_[2, 2].
-        # rij_[2, 2] is also nonzero, but the term is not used by Navier-Stokes in 2D and can be neglected
-        # However, to get the correct trace of Rij_ one needs to add neglected terms. This means that 
+        # Note that Rij in 2D only is a (2, 2) matrix, not containing the nonzero Rij[2, 2].
+        # rij[2, 2] is also nonzero, but the term is not used by Navier-Stokes in 2D and can be neglected
+        # However, to get the correct trace of Rij one needs to add neglected terms. This means that 
         # k_ = 0.5*(tr(Rij_) + 2./3.*k_ - 1./3.*snu_*k_*T_**2*Cmu3_*S2_)
 
 ############ Derived quantities that require some overloading

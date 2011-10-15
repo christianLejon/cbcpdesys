@@ -18,7 +18,9 @@ parameters["optimize_form"] = True
 parameters["optimize"] = True
 #parameters["linear_algebra_backend"] = "Epetra"
 parameters["linear_algebra_backend"] = "PETSc"
-
+#parameters['form_compiler']['representation'] = 'quadrature'
+#parameters["form_compiler"]["optimize"]     = True
+#parameters["form_compiler"]["cpp_optimize"] = True
 # Cache for work arrays
 _work = {}
 
@@ -258,7 +260,8 @@ class PDESubSystemBase:
     def conv(self, v, u, w, convection_form = 'Standard'):
         """Alternatives for convection discretization."""
         if convection_form == 'Standard':
-            return inner(v, dot(grad(u), w))
+            return inner(v, dot(w, nabla_grad(u)))
+            #return inner(v, dot(grad(u), w))            
             
         elif convection_form == 'Divergence':
             return inner(v, div(outer(u, w)))
@@ -408,15 +411,15 @@ class DerivedQuantity(PDESubSystemBase):
         
     def use_formula(self):
         """Return formula, but check first if it already exists in solver."""
-        if self.solver_namespace[self.name] is self._form:
+        if self.solver_namespace[self.name+'_'] is self._form:
             pass
         else:
-            self.solver_namespace[self.name] = self._form
+            self.solver_namespace[self.name+'_'] = self._form
 
     def make_function(self):
         self.dq = Function(self.V)
         setattr(self, self.name, self.dq)  # attr w/real name
-        self.solver_namespace[self.name] = self.dq
+        self.solver_namespace[self.name+'_'] = self.dq
         self.x = self.dq.vector()
         info_red('make_function does not work in parallell!')
         self.b = Vector(self.x.size(0))
@@ -475,7 +478,7 @@ class DerivedQuantity(PDESubSystemBase):
         
     def initialize(self):
         if self.prm['apply'] == 'use_formula':
-            self.solver_namespace[self.name] = self._form
+            self.solver_namespace[self.name+'_'] = self._form
         elif self.prm['apply'] in ['project', 'compute_dofs']: 
             # Initial value should be computed without underrelaxation
             dummy = self.prm['omega']

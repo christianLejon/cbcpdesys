@@ -10,6 +10,8 @@ from scipy.interpolate import InterpolatedUnivariateSpline as ius
 from scipy.special import erf
 
 problem_parameters['pressure_bc'] = True
+problem_parameters['Nx'] = 60
+problem_parameters['Ny'] = 60
                 
 class U(Expression):
     """ Velocity """
@@ -77,6 +79,10 @@ class diffusor(NSProblem):
         self.mesh, self.boundaries = self.create_mesh_and_boundaries()
 
         self.prm['dt'] = self.timestep()
+        
+        # Choose dictionary for initializing
+        transient = self.prm['time_integration']=='Transient'
+        self.q0 = self.zero_velocity if transient else self.inlet_velocity
 
     def create_mesh_and_boundaries(self):
         self.L = 16.
@@ -123,11 +129,6 @@ class diffusor(NSProblem):
     def dy(self, x, N=6.):
         return (erf(x - self.L/2.) + N)/(N - 1.)
         
-    def initialize(self, pdesystem):
-        transient = self.prm['time_integration']=='Transient'
-        Problem.initialize(self, pdesystem, 
-          self.zero_velocity if transient else self.inlet_velocity)
-
     def __info__(self):
         return 'Axial diffusior'
 
@@ -137,10 +138,8 @@ if __name__ == '__main__':
     from time import time
     set_log_active(True)
     problem_parameters['time_integration']='Steady'
-    problem_parameters['Nx'] = 60
-    problem_parameters['Ny'] = 60
     problem_parameters['T'] = 1.
-    problem_parameters['max_iter'] = 1
+    problem_parameters['max_iter'] = 10
     problem_parameters['plot_velocity'] = False
     problem_parameters['pressure_bc'] = False
     solver_parameters = recursive_update(solver_parameters, 

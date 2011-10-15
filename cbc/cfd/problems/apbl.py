@@ -69,7 +69,10 @@ class apbl(NSProblem):
         self.mesh, self.boundaries = self.create_mesh_and_boundaries()
         
         self.prm['dt'] = self.timestep()
-                
+        
+        transient = self.prm['time_integration']=='Transient'
+        self.q0 = self.zero_velocity if transient else self.inlet_velocity
+
     def create_mesh_and_boundaries(self):
         m = Rectangle(0., -1., self.L, 1., self.prm['Nx'], self.prm['Ny'])
         
@@ -116,12 +119,7 @@ class apbl(NSProblem):
         # squeezing the mesh
         x[:, 1] = x[:, 1]*(2. - self.bump(x[:, 0]))/2. + self.bump(x[:, 0])
         return m, [walls, inlet, outlet]
-            
-    def initialize(self, pdesystem):
-        transient = self.prm['time_integration']=='Transient'
-        Problem.initialize(self, pdesystem, 
-                      self.zero_velocity if transient else self.inlet_velocity)
-            
+                        
     def __info__(self):
         return 'Adverse pressure gradient channel flow with a bump on the lower wall'
 

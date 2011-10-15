@@ -27,8 +27,8 @@ class Wallfunction:
             bc.mf = mf
             bc.bid = 1
         
-        self.v2c, self.c2v = v2c, c2v = self.map_cells_and_vertices(V)                    
-
+        self.v2c, self.c2v = v2c, c2v = self.map_cells_and_vertices(V)
+        
         self.vertices_on_boundary = vob = self.get_vertices_on_boundary(V, bc)
         
         self.vertices_inside_boundary  = vib = \
@@ -41,35 +41,36 @@ class Wallfunction:
                                         vob, vib, v2c, self.corner_inner_node) 
             
         self.vertices_nearest = self.get_vertices_nearest(self.bnd_to_in)
-            
+        
     def map_boundary_node_to_inner_node(self, V, vertices_on_boundary, 
                              vertices_inside_boundary, v2c, corner_inner_node):
         # Get a map from boundary nodes to closest internal node
         dofmap = V.dofmap()
         n = V.element().space_dimension()
-        x = zeros((n, 2))
-        a = zeros(n, dtype="I")
+        a = zeros(n, dtype='I')
         mesh = self.mesh
         bnd_to_in = {}
         for i in vertices_on_boundary:
             dxmin = 1e8
-            for ci in v2c[i]:
-                c = Cell(mesh,ci)
-                dofmap.tabulate_dofs(a, c)
-                dofmap.tabulate_coordinates(x, c)
-                aa = list(a)
-                ii = aa.index(i) # The local index of the boundary node
-                yy = x[ii]       # Coordinates of boundary node
-                for kk, jj in enumerate(aa):
-                    if jj in vertices_inside_boundary:
-                        if not kk == ii:
-                            dxmin_ = nsqrt((yy[0] - x[kk,0])**2 + (yy[1] -
-                                                                   x[kk,1])**2)
-                            if dxmin_ < dxmin: 
-                                dxmin = dxmin_
-                                bnd_to_in[i] = int(aa[kk])
+            if i in v2c:
+                for ci in v2c[i]:
+                    c = Cell(mesh,ci)
+                    dofmap.tabulate_dofs(a, c)
+                    x = dofmap.tabulate_coordinates(c)
+                    aa = list(a)
+                    ii = aa.index(i) # The local index of the boundary node
+                    yy = x[ii]       # Coordinates of boundary node
+                    for kk, jj in enumerate(aa):
+                        if jj in vertices_inside_boundary:
+                            if not kk == ii:
+                                dxmin_ = nsqrt((yy[0] - x[kk,0])**2 + (yy[1] -
+                                                                    x[kk,1])**2)
+                                if dxmin_ < dxmin: 
+                                    dxmin = dxmin_
+                                    bnd_to_in[i] = int(aa[kk])
             if not i in bnd_to_in:
-                bnd_to_in[i] = corner_inner_node[i]
+                if i in corner_inner_node: 
+                    bnd_to_in[i] = corner_inner_node[i]
                 
         return bnd_to_in
         
@@ -89,12 +90,13 @@ class Wallfunction:
         n = V.element().space_dimension()
         a = zeros(n, dtype="I")
         for i in vertices_on_boundary:
-            if len(v2c[i]) == 1:
-                ci = v2c[i][0]
-                c = Cell(mesh,ci)
-                dofmap.tabulate_dofs(a, c)
-                if not any([jj in vertices_inside_boundary for jj in a]):
-                    corners.append(i)
+            if i in v2c:
+                if len(v2c[i]) == 1:
+                    ci = v2c[i][0]
+                    c = Cell(mesh,ci)
+                    dofmap.tabulate_dofs(a, c)
+                    if not any([jj in vertices_inside_boundary for jj in a]):
+                        corners.append(i)
 
         # Find an internal node that we can use for corners
         corner_inner_node={}
@@ -145,9 +147,11 @@ class Wallfunction:
     def get_vertices_inside_boundary(self, vob, v2c, c2v):
         vib = []
         for v in vob: 
-            for c in v2c[v]: 
-                for v2 in c2v[c]:
-                    vib.append(v2)
+            if v in v2c:
+                for c in v2c[v]:
+                    if c in c2v:
+                        for v2 in c2v[c]:
+                            vib.append(v2)
 
         return Set(vib) - vob
 
