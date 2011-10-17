@@ -33,6 +33,7 @@ zero_velocity = Initdict(u=(("0",  "0")),
 problem_parameters['periodic'] = False
 problem_parameters['Nx'] = 10
 problem_parameters['Ny'] = 100
+problem_parameters['L'] = 1.
 
 class channel(NSProblem):
     def __init__(self, parameters):
@@ -45,7 +46,7 @@ class channel(NSProblem):
         self.q0 = zero_velocity if transient else laminar_velocity
         
     def gen_mesh(self):
-        self.L = 1.
+        self.L = problem_parameters['L']
         m = Rectangle(0., -1., self.L, 1., self.prm['Nx'], self.prm['Ny'])
         # Create stretched mesh in y-direction
         x = m.coordinates()        

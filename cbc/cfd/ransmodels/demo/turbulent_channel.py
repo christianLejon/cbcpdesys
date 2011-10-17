@@ -88,9 +88,9 @@ if __name__=='__main__':
     NS_solver = icns.NSCoupled(problem, solver_parameters)
 
     ## Set up turbulence model ##
-    problem_parameters['turbulence_model'] = 'SpalartAllmaras'
+    problem_parameters['turbulence_model'] = 'StandardKE'
     rans_parameters['omega'].default_factory = lambda : 0.7
-    Turb_solver = ransmodels.SpalartAllmaras(problem, rans_parameters,
+    Turb_solver = ransmodels.StandardKE_Coupled(problem, rans_parameters,
                             model=problem_parameters['turbulence_model'])
 
     ## solve the problem ##    

@@ -259,22 +259,21 @@ class PDESubSystemBase:
 
     def conv(self, v, u, w, convection_form = 'Standard'):
         """Alternatives for convection discretization."""
+        info(convection_form + ' convection')
         if convection_form == 'Standard':
             return inner(v, dot(w, nabla_grad(u)))
             #return inner(v, dot(grad(u), w))            
             
         elif convection_form == 'Divergence':
-            return inner(v, div(outer(u, w)))
+            return inner(v, nabla_div(outer(w, u)))
             
         elif convection_form == 'Divergence by parts':
             # Use with care. ds term could be important
-            return -inner(grad(v), outer(u, w))
+            return -inner(grad(v), outer(w, u))
             
         elif convection_form == 'Skew':
-            return 0.5*(inner(v, dot(grad(u), w)) + inner(v, div(outer(u, w))))
-            
-        info(convection_form + ' convection')
-                    
+            return 0.5*(inner(v, dot(u, nabla_grad(u))) + inner(v, nabla_div(outer(w, u))))
+
     def get_work_vector(self):
         """Return a work vector. Check first in cached _work."""
         name = self.V.ufl_element()
@@ -520,18 +519,25 @@ class DerivedQuantity(PDESubSystemBase):
     def _info(self):
         return "Derived Quantity: %s" %(self.name)
 
+#class DerivedQuantity_NoBC(DerivedQuantity):
+    #"""
+    #Derived quantity where default is no assigned boundary conditions.
+    #"""
+    #def create_BCs(self, bcs):
+        #bcu = []
+        #for bc in bcs:
+            #if bc.type() == 'Periodic':
+                #bcu.append(PeriodicBC(self.V, bc))
+                #bcu[-1].type = bc.type
+        #return bcu
+
 class DerivedQuantity_NoBC(DerivedQuantity):
     """
     Derived quantity where default is no assigned boundary conditions.
     """
     def create_BCs(self, bcs):
-        bcu = []
-        for bc in bcs:
-            if bc.type() == 'Periodic':
-                bcu.append(PeriodicBC(self.V, bc))
-                bcu[-1].type = bc.type
-        return bcu
-
+        return []
+        
 class DerivedQuantity_grad(DerivedQuantity):
     """Derived quantity using the gradient of the test function."""
     def projection_form(self, dq, v, formula):
