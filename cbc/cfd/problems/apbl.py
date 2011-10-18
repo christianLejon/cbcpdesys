@@ -84,36 +84,36 @@ class apbl(NSProblem):
         self.mf = FacetFunction("uint", m)
         self.mf.set_all(0)
         
-        walls = FlowSubDomain(lambda x, on_boundary: ((abs(x[1]) < 5.*DOLFIN_EPS or
-                                                      abs(x[1]-2.) < 5.*DOLFIN_EPS)
-                                                      and on_boundary),
-                             bc_type = 'Wall',
-                             mf = self.mf)
+        walls = FlowSubDomain(lambda x, on_bnd: ((abs(x[1]) < 5.*DOLFIN_EPS or
+                                                  abs(x[1]-2.) < 5.*DOLFIN_EPS)
+                                                  and on_bnd),
+                              bc_type = 'Wall',
+                              mf = self.mf)
                              
         if self.prm['pressure_bc']:
-            inlet = FlowSubDomain(lambda x, on_boundary: (near(x[0], 0.) and on_boundary),
-                                bc_type = 'ConstantPressure',
-                                func = {'p': 2./self.prm['Re']*self.L*1.25},
-                                mf = self.mf)
+            inlet = FlowSubDomain(lambda x, on_bnd: (near(x[0], 0.) and on_bnd),
+                                  bc_type = 'ConstantPressure',
+                                  func = {'p': 2./self.prm['Re']*self.L*1.25},
+                                  mf = self.mf)
                                 
             # near(x[0], self.L) does not work (roundoff?)
-            outlet = FlowSubDomain(lambda x, on_boundary: (abs(x[0]-self.L) < 10.*DOLFIN_EPS 
-                                                        and on_boundary),
-                                bc_type = 'ConstantPressure',
-                                func = {'p': Constant(0.0)},
-                                mf = self.mf)
+            outlet = FlowSubDomain(lambda x, on_bnd: (abs(x[0]-self.L) < 10.*DOLFIN_EPS 
+                                                      and on_bnd),
+                                   bc_type = 'ConstantPressure',
+                                   func = {'p': Constant(0.0)},
+                                   mf = self.mf)
         else:
-            inlet = FlowSubDomain(lambda x, on_boundary: (near(x[0], 0.) and on_boundary),
-                                bc_type = 'VelocityInlet',
-                                func = self.inlet_velocity,
-                                mf = self.mf)
+            inlet = FlowSubDomain(lambda x, on_bnd: (near(x[0], 0.) and on_bnd),
+                                  bc_type = 'VelocityInlet',
+                                  func = self.inlet_velocity,
+                                  mf = self.mf)
                                 
             # near(x[0], self.L) does not work (roundoff?)
-            outlet = FlowSubDomain(lambda x, on_boundary: (abs(x[0]-self.L) < 10.*DOLFIN_EPS 
-                                                        and on_boundary),
-                                bc_type = 'Outlet',
-                                func = {'p': Constant(0.0)},
-                                mf = self.mf)
+            outlet = FlowSubDomain(lambda x, on_bnd: (abs(x[0]-self.L) < 10.*DOLFIN_EPS 
+                                                      and on_bnd),
+                                   bc_type = 'Outlet',
+                                   func = {'p': Constant(0.0)},
+                                   mf = self.mf)
                     
         # Now that the boundaries are marked we can create the bump by 
         # squeezing the mesh
@@ -138,11 +138,13 @@ if __name__ == '__main__':
     dict(degree=dict(u=1),
          pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
          linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
-         precond=dict(u='jacobi', p='amg', velocity_update='ilu'),
-         iteration_type='Picard')
+         precond=dict(u='ilu', p='amg', velocity_update='ilu'),
+         iteration_type='Picard', max_iter=5)
          )
     NS_problem = apbl(problem_parameters)
     NS_solver = icns.NSFullySegregated(NS_problem, solver_parameters)        
     #NS_solver = icns.NSCoupled(NS_problem, solver_parameters) 
+    
+    NS_solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
     NS_problem.solve()
     

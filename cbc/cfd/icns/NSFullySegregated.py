@@ -349,8 +349,8 @@ class Transient_Velocity_101(VelocityBase):
         self.exterior = False
         return False
             
-    def assemble(self, dummy):
-        if self.index == 0:
+    def assemble(self, *args):
+        if self.index == 0: # Assemble only for first velocity component
             # Set up coefficient matrix                
             self.A = assemble(self.a, tensor=self.A, reset_sparsity=self.prm['reset_sparsity']) 
             self.A._scale(-1.) # Negative convection on the rhs 
@@ -367,7 +367,7 @@ class Transient_Velocity_101(VelocityBase):
             self.A.axpy(2./self.dt, self.M, True)
             self.prm['reset_sparsity'] = False 
             ## FixMe. For some reason reset_sparsity must be True for periodic bcs ?? Perhaps the modified sparsity pattern in (1 -1) rows??
-            if any([bc.type() in ['Periodic'] for bc in self.bcs]):
+            if any([bc.type() == 'Periodic' for bc in self.bcs]):
                 self.prm['reset_sparsity'] = True 
         else:
             self.A = self.pdes['u0'].A
@@ -375,7 +375,7 @@ class Transient_Velocity_101(VelocityBase):
     def solve_Picard_system(self, assemble_A, assemble_b):
         self.prepare()
         # Assemble A and parts of b
-        if assemble_A: self.assemble(None)
+        if assemble_A: self.assemble()
         
         # In case of inner iterations over u-p system, it is only 
         # the pressure part of b that needs reassembling. Remember the
@@ -383,14 +383,12 @@ class Transient_Velocity_101(VelocityBase):
         self.bold[:] = self.b[:] 
         self.b.axpy(-1., self.P*self.solver_namespace['x_']['p'])
         [bc.apply(self.A, self.b) for bc in self.bcs]
-        x_star = self.work       # more informative name
-        x_star[:] = self.x[:]    # start vector for iterative solvers
-        rv = residual(self.A, x_star, self.b)
+        self.work[:] = self.x[:]    # start vector for iterative solvers
+        rv = residual(self.A, self.x, self.b)
         self.setup_solver(assemble_A, assemble_b)
-        self.linear_solver.solve(self.A, x_star, self.b)
-        self.x[:] = x_star[:]
+        self.linear_solver.solve(self.A, self.x, self.b)
         self.b[:] = self.bold[:]
         self.update()
-        return rv, x_star
+        return rv, self.x - self.work
         
         
