@@ -28,11 +28,11 @@ laminar_velocity = Initdict(u=(("(1.-x[1]*x[1])",  "0")),
 
 zero_velocity = Initdict(u=(("0",  "0")), 
                          p=("0"))
-
+#2./8.*(1.-x[0])
 # Default parameters for channel
 problem_parameters['periodic'] = False
-problem_parameters['Nx'] = 10
-problem_parameters['Ny'] = 100
+problem_parameters['Nx'] = 16
+problem_parameters['Ny'] = 16
 problem_parameters['L'] = 1.
 
 class channel(NSProblem):
@@ -42,6 +42,10 @@ class channel(NSProblem):
         self.prm['viscosity'] = 1./self.prm['Re']
         self.prm['dt'] = self.timestep()
         self.boundaries = self.create_boundaries()
+        
+        # The GRPC solver, which uses pressure correction, requires the correct pressure to be set initially
+        #zero_velocity['p'] = Expression('2./Re*L*(1.-x[0])', Re=self.prm['Re'], L=self.L)
+        
         transient = self.prm['time_integration']=='Transient'
         self.q0 = zero_velocity if transient else laminar_velocity
         
@@ -51,6 +55,7 @@ class channel(NSProblem):
         # Create stretched mesh in y-direction
         x = m.coordinates()        
         x[:, 1] = arctan(pi*(x[:, 1]))/arctan(pi) 
+        #x[:, 1] = 0.5*x[:, 1]
         return m        
         
     def create_boundaries(self):
@@ -144,14 +149,16 @@ if __name__ == '__main__':
     set_log_active(True)
     problem_parameters['time_integration'] = 'Transient'
     problem_parameters['T'] = 0.5
-    problem_parameters['max_iter'] = 1          # iterations per timestep
+    problem_parameters['Re'] = 8.
+    problem_parameters['max_iter'] = 100          # iterations per timestep
+    problem_parameters['max_err'] = 1e-10
     problem_parameters['plot_velocity'] = False # plot velocity at end of timestep
     problem_parameters['periodic'] = False      # Use or not periodic boundary conditions
     
     solver_parameters = recursive_update(solver_parameters, 
-    dict(degree=dict(u=1),
-         pdesubsystem=dict(u=1, p=1, velocity_update=1, up=1),
-         linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
+    dict(degree=dict(u=2),
+         pdesubsystem=dict(u=30, p=30, velocity_update=0, up=1),
+         linear_solver=dict(u='lu', p='lu', velocity_update='bicgstab'), 
          precond=dict(u='jacobi', p='amg', velocity_update='jacobi'))
     )
     
@@ -160,8 +167,8 @@ if __name__ == '__main__':
     
     # Choose Navier-Stokes solver
     #NS_solver = icns.NSFullySegregated(NS_problem, solver_parameters)
-    #NS_solver = icns.NSSegregated(NS_problem, solver_parameters)
-    NS_solver = icns.NSCoupled(NS_problem, solver_parameters)
+    NS_solver = icns.NSSegregated(NS_problem, solver_parameters)
+    #NS_solver = icns.NSCoupled(NS_problem, solver_parameters)
     
     # Solve the problem
     NS_problem.solve()

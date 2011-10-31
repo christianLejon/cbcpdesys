@@ -4,34 +4,35 @@ __copyright__ = "Copyright (C) 2010 " + __author__
 __license__  = "GNU GPL version 3 or any later version"
 
 from NSProblem import *
-from numpy import arctan,array
+from numpy import arctan, array, ceil
 from cbc.cfd.tools.Streamfunctions import StreamFunction
-
+    
 def lid(x, on_boundary):
-    return (on_boundary and x[1] > 1.0 - DOLFIN_EPS and x[0] < 1.0 - DOLFIN_EPS and x[0] > DOLFIN_EPS)
+    return (on_boundary and near(x[1], 1.0))
     
 def stationary_walls(x, on_boundary):
-    return on_boundary and not (x[1] > 1.0 - DOLFIN_EPS and x[0] < 1.0 - DOLFIN_EPS and x[0] > DOLFIN_EPS)
+    return on_boundary and (near(x[0], 0.) or near(x[0], 1.) or near(x[1], 0.))
 
-# Initdict is a dictionary that uses 'u'[0] for 'u0', 'u'[1] for 'u1'
-lid_velocity = Initdict(u = ('1', '0'), p = ('0'))
+lid_velocity = Initdict(u=('1', '0'), p='0')
 
 class drivencavity(NSProblem):
     """2D lid-driven cavity."""
     def __init__(self, parameters):
         NSProblem.__init__(self, parameters=parameters)
-        self.mesh = self.gen_mesh()
-        # Set viscosity
-        self.nu = self.prm['viscosity'] = 1./self.prm['Re']
-        # Set timestep
-        self.prm['dt'] = self.timestep()
-        # Boundaries
-        top   = FlowSubDomain(lid, func=lid_velocity, bc_type='Wall')
-        walls = FlowSubDomain(stationary_walls, bc_type='Wall')
-        self.boundaries = [top, walls]
         
+        self.mesh = UnitSquare(self.prm['Nx'], self.prm['Ny'])
+        #self.mesh = self.gen_mesh()
+        # Set viscosity
+        self.prm['viscosity'] = 1./self.prm['Re']
+        # Set timestep as NSbench
+        self.prm['dt'] = self.prm['T']/ceil(self.prm['T']/0.25/self.mesh.hmin())
+        # Boundaries
+        walls = FlowSubDomain(stationary_walls, bc_type='Wall')
+        top   = FlowSubDomain(lid, func=lid_velocity, bc_type='Wall')
+        self.boundaries = [top, walls]
+                
     def gen_mesh(self):
-        m = Rectangle(-1., -1., 1., 1., self.prm['Nx'], self.prm['Ny'], 'left')
+        m = Rectangle(-1., -1., 1., 1., self.prm['Nx'], self.prm['Ny'])
         # Create stretched mesh in x- and y-direction
         x = m.coordinates()
         x[:, 1] = arctan(pi/2*(x[:, 1]))/arctan(pi/2) 
@@ -41,18 +42,25 @@ class drivencavity(NSProblem):
         return m
 
     def initialize(self, pdesystem):
-        """Initialize solution by applying lid_velocity to the top boundary"""
-        for name in pdesystem.q_:
-            d = DirichletBC(pdesystem.V[name], lid_velocity[name], lid)
-            d.apply(pdesystem.x_[name])
-            d.apply(pdesystem.x_1[name])
+        """Initialize solution simply by applying lid_velocity to the top boundary"""
+        #return False   # This will simply use u = (0, 0) and p = 0
+        if pdesystem.prm['familyname'] == 'Navier-Stokes':
+            for name in pdesystem.system_names:
+                if not name == 'up': # Coupled solver does not need this, makes no difference
+                    d = DirichletBC(pdesystem.V[name], lid_velocity[name], lid)
+                    d.apply(pdesystem.x_[name])
+                    d.apply(pdesystem.x_1[name])
+            return True
+        else:
+            return NSProblem.initialize(self, pdesystem)
 
     def functional(self, u):
         """Compute stream function and report minimum node value."""
         psi = StreamFunction(u, [], use_strong_bc=True)
         vals  = psi.vector().array()
         vmin = vals.min()
-        print "Stream function has minimal value" , vmin
+        #info_green("Stream function has minimal value {}".format(vmin))
+        #info_green("Velocity at (0.75, 0.75) = {}".format(u[0]((0.75, 0.75))))
         return vmin
 
     def reference(self, t):
@@ -65,34 +73,60 @@ class drivencavity(NSProblem):
 if __name__ == '__main__':
     import cbc.cfd.icns as icns
     from cbc.cfd.icns import solver_parameters
-    from time import time
+    import time
+    import sys
     set_log_active(True)
     problem_parameters['time_integration']='Transient'
-    problem_parameters['Nx'] = 150
-    problem_parameters['Ny'] = 150
+    mesh_sizes = [2, 11, 16, 23, 32, 45, 64, 91, 128, 181, 256, 362]
+    try:
+        N = eval(sys.argv[-1])
+    except:
+        N = 2
+    problem_parameters['Nx'] = mesh_sizes[N]
+    problem_parameters['Ny'] = mesh_sizes[N]
     problem_parameters['Re'] = 1000.
-    problem_parameters['T'] = 0.5
-    problem_parameters['max_iter'] = 1
-    problem_parameters['plot_velocity'] = False
+    problem_parameters['T'] = 2.5
+    problem_parameters['max_iter'] = 1  # Number of pressure/velocity iterations on given timestep
     solver_parameters = recursive_update(solver_parameters, 
-    dict(degree=dict(u=1, u0=1, u1=1),
-         pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
-         linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
-         precond=dict(u='jacobi', p='amg', velocity_update='ilu'),
-         iteration_type='Picard')
-         )
-    NS_problem = drivencavity(problem_parameters)
-    NS_solver = icns.NSFullySegregated(NS_problem, solver_parameters)        
-    #NS_solver = icns.NSSegregated(NS_problem, solver_parameters)  
-    #NS_solver = icns.NSCoupled(NS_problem, solver_parameters) 
-    #NS_solver.pdesubsystems['u'].prm['monitor_convergence'] = True
-    #NS_solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
-    #NS_solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
-    NS_solver.pdesubsystems['p'].prm['monitor_convergence'] = True
-    t0 = time()
-    NS_problem.solve()
-    print 'Time = ', time() - t0
-    print summary()
+    dict(degree=dict(u=2, u0=2, u1=2),
+        pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
+        linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
+        precond=dict(u='jacobi', p='hypre_amg', velocity_update='jacobi'),
+        plot_velocity=False
+        ))
+    problem = drivencavity(problem_parameters)
+    solver = icns.NSFullySegregated(problem, solver_parameters)        
+    #solver = icns.NSSegregated(problem, solver_parameters)  
+    #solver = icns.NSCoupled(problem, solver_parameters) 
+    #solver.pdesubsystems['u'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['p'].prm['monitor_convergence'] = True
+    solver.pdesubsystems['u0_update'].prm['monitor_convergence'] = True
+    t0 = time.time()
+    problem.solve()
+    t1 = time.time()-t0
+    info_red('Total computing time = {}'.format(t1))
+    print problem.functional(solver.u_)
     
+    # plot result. For fully segregated solver one should project the velocity vector on the correct space, if not the plot will look poor
+    if solver.__class__ is icns.NSFullySegregated:
+        plot(project(solver.u_, VectorFunctionSpace(solver.mesh, 'CG', solver_parameters['degree']['u0'])))
+    else:
+        plot(solver.u_)
+        
+    num_dofs = 0
+    for name in solver.system_names:
+        num_dofs += solver.V[name].dim()
+        
+    psi = problem.functional(solver.u_)    
+    filename = "results/results.log"
+    file = open(filename, "a")
+    file.write("%s, %s, %s, %d, %.15g, %.15g, %.15g, %s, %s\n" %
+            (time.asctime(), 'Driven cavity', 'CBC.CFD', num_dofs, t1, t1, psi, '0' , str(abs(psi-problem.reference(0)))))
+    file.close()
+    
+    print list_timings()
+    interactive()
     
     

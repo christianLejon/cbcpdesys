@@ -24,10 +24,9 @@ class SubDomains(SubDomain):
     
     def __init__(self, bid, mf, func=None):
         SubDomain.__init__(self)
-        self.bid = bid
-        self.mf = mf
-        if func:
-            self.func = func
+        self.bid = bid            # Boundary indicator
+        self.mf = mf              # MeshFunction
+        if func: self.func = func
             
     def apply(self, *args):
         """BCs that are applied weakly need to pass on regular apply.
@@ -35,27 +34,22 @@ class SubDomains(SubDomain):
         pass
 
 class Walls(SubDomains):
-
     def type(self):
         return 'Wall'
         
 class Inlet(SubDomains):
-
     def type(self):
         return 'VelocityInlet'
                 
 class PressureOutlet(SubDomains):
-    
     def type(self):
         return 'ConstantPressure'
         
 class aneurysm(NSProblem):
-    """
-    """    
+    
     def __init__(self, parameters):
         NSProblem.__init__(self, parameters=parameters)
         self.mesh = Mesh("../data/100_1314k.xml.gz")
-        #self.mesh = Mesh("../data/m12_dns_2m.xml")
         self.bc_markers = self.mark_boundary()
         self.n = FacetNormal(self.mesh)        
         self.boundaries = self.create_boundaries()
@@ -64,7 +58,6 @@ class aneurysm(NSProblem):
     def mark_boundary(self):
         bc_markers = MeshFunction("uint", self.mesh, 2)
         file_in = File("../data/100_1314k_boundary.xml.gz")
-        #file_in = File("../data/m12_dns_2m_bcs.xml")        
         file_in >> bc_markers
         return bc_markers
         
@@ -88,7 +81,8 @@ class aneurysm(NSProblem):
         
         self.A0 = assemble(Constant(1.)*ds(2), mesh=self.mesh, exterior_facet_domains=self.bc_markers)
         
-        # For now I need to explicitly set u1, u2 and u3. Should be able to fix using just u.
+        # Dictionary for inlet conditions
+        # For now we need to explicitly set u0, u1 and u2. Should be able to fix using just u.
         self.inflow = {'u': Expression(('u0*u_mean', 'u1*u_mean', 'u2*u_mean'), 
                                   u0=self.u0, u1=self.u1, u2=self.u2, u_mean=0),
                        'u0': Expression(('u0*u_mean'), u0=self.u0, u_mean=0),
@@ -97,18 +91,18 @@ class aneurysm(NSProblem):
         self.p_out1 = Expression('p', p=0)
         self.p_out2 = Expression('p', p=0)
         self.p_out3 = Expression('p', p=0)
+        # Specify the boundary subdomains and hook up dictionaries for DirichletBCs
         walls = Walls(1, self.bc_markers)
         inlet = Inlet(2, self.bc_markers, self.inflow)
         pressure1 = PressureOutlet(3, self.bc_markers, {'p': self.p_out1})
         pressure2 = PressureOutlet(4, self.bc_markers, {'p': self.p_out2})
         pressure3 = PressureOutlet(5, self.bc_markers, {'p': self.p_out3})
         
-        #return [walls, inlet, pressure1, pressure2]
         return [walls, inlet, pressure1, pressure2, pressure3]
         
     def prepare(self, pdesystems):
         """Called at start of a new timestep. Set the outlet pressure at new time."""
-        NS_solver = pdesystems[0]
+        NS_solver = self.pdesystems['Navier-Stokes']
         u_mean = self.inflow_t_spline(self.t)[0]*695./750./self.A0
         for val in self.inflow.itervalues():
             val.u_mean = u_mean

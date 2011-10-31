@@ -223,11 +223,14 @@ class VelocityUpdate_101(VelocityUpdateBase):
         
     def assemble(self, M):
         # Use the assembled matrix of u0
-        if any([bc.type() in ['Periodic'] for bc in self.bcs]):
-            self.A = self.solver_namespace['pdesubsystems']['u0'].M.copy()
+        if self.index == 0:
+            if any([bc.type() in ['Periodic'] for bc in self.bcs]):
+                self.A = self.solver_namespace['pdesubsystems']['u0'].M.copy()
+            else:
+                self.A = self.solver_namespace['pdesubsystems']['u0'].M.copy()
+            self.A.initialized = True
         else:
-            self.A = self.solver_namespace['pdesubsystems']['u0'].M
-        self.A.initialized = True
+            self.A = self.solver_namespace['pdesubsystems']['u0_update'].A
         # This matrix should be compressed for additional speed-up
             
     def solve_Picard_system(self, assemble_A, assemble_b):
@@ -235,7 +238,8 @@ class VelocityUpdate_101(VelocityUpdateBase):
         if assemble_A: # Assemble on first timestep
             self.assemble(self.A)
             [bc.apply(self.A) for bc in self.bcs]
-        
+            #cpp.GenericTools.compress(self.A, 
+                #Form(self.solver_namespace['pdesubsystems']['u0'].aM))
         # Compute rhs using matrix-vector products
         self.b[:] = self.A*self.x
         self.b.axpy(-self.dt, self.P*(self.dpx))
@@ -324,11 +328,10 @@ class Transient_Velocity_101(VelocityBase):
     def form(self, u_, u, v, p, q, p_, u_1, u_2, nu, f, dt, convection_form, dim, **kwargs): 
              
         U_ = 1.5*u_1 - 0.5*u_2       # AB-projection
-        aM = inner(v, u)*dx          # Segregated Mass matrix
+        aM = self.aM = inner(v, u)*dx          # Segregated Mass matrix
         aP = inner(v, p.dx(self.index))*dx    #
         self.a = 0.5*self.conv(v, u, U_, convection_form)*dx
         self.aK = nu*inner(grad(v), grad(u))*dx
-        self.K = assemble(self.aK)
         self.dt = dt(0)
         self.dim = dim
         self.x_1 = self.solver_namespace['x_1']
@@ -336,9 +339,8 @@ class Transient_Velocity_101(VelocityBase):
         if self.index == 0:
             # Assemble matrices that don't change
             self.M = assemble(aM)
-        else:
-            self.M = self.pdes['u0'].M
-        self.P = assemble(aP)
+            self.K = assemble(self.aK)
+        self.P = assemble(aP) # Different for each index
         # Set the initial rhs-vector equal to the constant body force.
         self.b = Vector(self.x)
         self.bold = Vector(self.x)
@@ -390,5 +392,63 @@ class Transient_Velocity_101(VelocityBase):
         self.b[:] = self.bold[:]
         self.update()
         return rv, self.x - self.work
+
+class Transient_Velocity_102(Transient_Velocity_101):
+    """ 
+    Optimized version of Transient_Velocity_2
+    """     
+    def form(self, u_, u, v, p, q, p_, u_1, u_2, nu, f, dt, convection_form, dim, **kwargs): 
+             
+        aM = inner(v, u)*dx          # Segregated Mass matrix
+        aP = inner(v, p.dx(self.index))*dx    #
+        self.aK = 0.5*nu*inner(grad(v), grad(u))*dx
+        self.dt = dt(0)
+        self.dim = dim
+        self.ac1 = self.conv(v, u, u_1, convection_form)*dx
+        self.ac2 = self.conv(v, u, u_2, convection_form)*dx        
+        self.Ac1 = Matrix()
+        self.Ac2 = Matrix()
+        self.x_1 = self.solver_namespace['x_1']
+        self.x_2 = self.solver_namespace['x_2']
+        self.pdes = self.solver_namespace['pdesubsystems']
+        if self.index == 0:
+            # Assemble matrices that don't change
+            self.A = assemble(self.aK)
+            self.A.initialized = True
+            self.M = assemble(aM)
+            self.A.axpy(1./self.dt, self.M, True)    # Add mass
+        self.P = assemble(aP)
+        # Set the initial rhs-vector equal to the constant body force.
+        self.b = Vector(self.x)
+        self.bold = Vector(self.x)
+        self.b0 = assemble(inner(f[self.index], v)*dx)
         
-        
+        # Do not reassemble lhs when iterating over pressure-velocity system on given timestep
+        self.prm['reassemble_lhs_inner'] = False
+        self.exterior = False
+        return False
+            
+    def assemble(self, *args):
+        if self.index == 0: # Assemble only for first velocity component
+            # Set up coefficient matrix                
+            self.A._scale(-1.) # Negative diffusion on the rhs 
+            self.A.axpy(2./self.dt, self.M, True)  # -1/dt*M + 2/dt*M = 1/dt*M
+            
+            # Compute rhs for all velocity components
+            self.Ac1 = assemble(self.ac1, tensor=self.Ac1, reset_sparsity=self.prm['reset_sparsity'])
+            self.Ac2 = assemble(self.ac2, tensor=self.Ac2, reset_sparsity=self.prm['reset_sparsity'])
+            for ui in self.solver_namespace['u_components']:
+                self.pdes[ui].b[:] = self.pdes[ui].b0[:]
+                self.pdes[ui].b.axpy(1., self.A*self.x_1[ui])
+                self.pdes[ui].b.axpy(-1.5, self.Ac1*self.x_1[ui])
+                self.pdes[ui].b.axpy( 0.5, self.Ac2*self.x_2[ui])
+            
+            # Reset matrix for lhs
+            self.A._scale(-1.)
+            self.A.axpy(2./self.dt, self.M, True)
+            self.prm['reset_sparsity'] = False 
+            ## FixMe. For some reason reset_sparsity must be True for periodic bcs ?? Perhaps the modified sparsity pattern in (1 -1) rows??
+            if any([bc.type() == 'Periodic' for bc in self.bcs]):
+                self.prm['reset_sparsity'] = True 
+        else:
+            self.A = self.pdes['u0'].A

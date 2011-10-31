@@ -33,7 +33,12 @@ class Lshape(NSProblem):
         self.nu = self.prm['viscosity'] = 1./self.prm['Re']
         
         self.prm['dt'] = self.timestep()
-                
+
+        transient = self.prm['time_integration']=='Transient'
+        transient_q0 = Initdict({'p': '0', 'u': ('0', '0')})
+        steady_q0 = Initdict({'p': 'x[1]', 'u': ('0', '0')})
+        self.q0 = transient_q0 if transient else steady_q0
+
     def create_boundaries(self):
         
         # Create pressure function for inlet
@@ -61,12 +66,6 @@ class Lshape(NSProblem):
                              
         return [inlet, walls, outlet]
                                                                 
-    def initialize(self, pdesystem):
-        transient = self.prm['time_integration']=='Transient'
-        transient_q0 = Initdict({'p': '0', 'u': ('0', '0')})
-        steady_q0 = Initdict({'p': 'x[1]', 'u': ('0', '0')})
-        Problem.initialize(self, pdesystem, transient_q0 if transient else steady_q0)
-        
     def prepare(self, pdesystems):
         """Called at start of a new timestep. Set the pressure at new time."""
         self.p_in.t = self.t

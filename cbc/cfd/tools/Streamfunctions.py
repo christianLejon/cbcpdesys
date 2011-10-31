@@ -50,7 +50,7 @@ def StreamFunction(u, bcs, use_strong_bc = False):
     if not use_strong_bc: 
         normalize(b)  # Because we only have Neumann conditions
     [bc.apply(A, b) for bc in bcu]
-    solve(A, psi.vector(), b)
+    solve(A, psi.vector(), b, 'gmres', 'amg')
     if not use_strong_bc: 
         normalize(psi.vector())
 

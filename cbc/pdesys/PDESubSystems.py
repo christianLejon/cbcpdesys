@@ -16,8 +16,8 @@ import os
 parameters["optimize_use_tensor_cache"] = True
 parameters["optimize_form"] = True
 parameters["optimize"] = True
-#parameters["linear_algebra_backend"] = "Epetra"
-parameters["linear_algebra_backend"] = "PETSc"
+parameters["linear_algebra_backend"] = "Epetra"
+#parameters["linear_algebra_backend"] = "PETSc"
 #parameters['form_compiler']['representation'] = 'quadrature'
 #parameters["form_compiler"]["optimize"]     = True
 #parameters["form_compiler"]["cpp_optimize"] = True
@@ -173,6 +173,9 @@ class PDESubSystemBase:
         self.assemble(self.A)
         self.assemble(self.b)
         #if self.normalize: self.normalize(b)
+        if not hasattr(self, 'first'):
+            [bc.apply(self.x) for bc in self.bcs]
+            self.first = True
         [bc.apply(self.A, self.b, self.x) for bc in self.bcs]
         dx = self.work   # more informative name
         dx.zero()        # start vector for iterative solvers
@@ -181,7 +184,8 @@ class PDESubSystemBase:
         omega = self.prm['omega']
         self.x.axpy(omega, dx)  # relax
         self.update()
-        return norm(self.b), dx
+        #return norm(self.b), dx
+        return 1., dx
 
     def assemble(self, M):
         """Assemble tensor."""
@@ -259,7 +263,7 @@ class PDESubSystemBase:
 
     def conv(self, v, u, w, convection_form = 'Standard'):
         """Alternatives for convection discretization."""
-        info(convection_form + ' convection')
+        #info_green(convection_form + ' convection')
         if convection_form == 'Standard':
             return inner(v, dot(w, nabla_grad(u)))
             #return inner(v, dot(grad(u), w))            

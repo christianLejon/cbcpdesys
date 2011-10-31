@@ -23,7 +23,8 @@ class NSSegregated(NSSolver):
         self.pdesubsystems['p'] = eval(classname)(vars(self), ['p'], bcs=self.bc['p'],
                                                   normalize=self.normalize['p'])
         
-        if self.prm['time_integration'] == 'Transient':
+        if (self.prm['time_integration'] == 'Transient' and not
+            self.prm['pdesubsystem']['velocity_update'] == 0):
             classname = 'VelocityUpdate_' + \
                 str(self.prm['pdesubsystem']['velocity_update'])
             self.pdesubsystems['velocity_update'] = eval(classname)(vars(self), ['u'], 
@@ -31,7 +32,7 @@ class NSSegregated(NSSolver):
                             precond=self.prm['precond']['velocity_update'],
                             linear_solver=self.prm['linear_solver']['velocity_update'])
                     
-        #self.pdesubsystems['p'].solve()
+        self.pdesubsystems['p'].solve()
   
     def create_BCs(self, bcs):
         """
@@ -75,7 +76,8 @@ class NSSegregated(NSSolver):
 
     def Transient_update(self):
         # Update to new time-level
-        dummy = self.pdesubsystems['velocity_update'].solve()
+        if 'velocity_update' in self.pdesubsystems: 
+            dummy = self.pdesubsystems['velocity_update'].solve()
         NSSolver.Transient_update(self)
         
 ######### Factory functions or classes for numerical pdesubsystems ###################
@@ -348,6 +350,131 @@ class Transient_Velocity_5(VelocityBase):
                0.5*self.conv(v, u_1, u_1, convection_form)*dx + \
                nu*inner(grad(U) + grad(U).T, grad(v))*dx - \
                inner(div(v), p_)*dx - inner(v, f)*dx
+
+class Transient_Velocity_10(VelocityBase):
+    """Incremental pressure correction.
+    Crank-Nicholson (CN) diffusion. Convection is computed using 
+    AB-projection for convecting and CN for convected velocity.
+    """
+    def form(self, u_, u, v, p_, u_1, u_2, nu, nut_, f, dt, convection_form, 
+             **kwargs):    
+        if self.exterior:
+            info_red('Warning!! Does not work with given boundaries because of non-symmetric Laplacian.')
+            
+        U_ = 1.5*u_1 - 0.5*u_2
+        U  = 0.5*(u + u_1)
+        self.Laplace_U = U
+        return (1./dt)*inner(u - u_1, v)*dx + \
+               self.conv(v, U, U_, convection_form)*dx + \
+               nu*inner(grad(U), grad(v))*dx + \
+               inner(v, grad(p_))*dx - inner(v, f)*dx
+
+class Transient_Velocity_20(VelocityBase):
+    """Incremental pressure correction.
+    Crank-Nicholson (CN) diffusion. Convection is computed with explicit 
+    Adams-Bashforth projection and the coefficient matrix can be preassembled.
+    Scheme is linear and Newton returns the same as Picard.
+    """
+    def form(self, u_, u, v, p_, u_1, u_2, nu, nut_, f, dt, convection_form, 
+             **kwargs):    
+        if self.exterior:
+            info_red('Warning!! Does not work with given boundaries because of non-symmetric Laplacian.')
+        if type(nu) is Constant and self.prm['iteration_type'] == 'Picard':
+            self.prm['reassemble_lhs'] = False
+        U  = 0.5*(u + u_1)
+        self.Laplace_U = U
+        return (1./dt)*inner(u - u_1, v)*dx + \
+               self.conv(v, u_1, u_1, convection_form)*dx - \
+               nu*inner(grad(U), grad(v))*dx + \
+               inner(v, grad(p_))*dx - inner(v,f)*dx
+
+class Transient_Velocity_30(VelocityBase):
+    """GRPC
+    """       
+    def form(self, u_, u, v, p_, u_1, u_2, nu, nut_, f, dt, convection_form,
+             **kwargs): 
+        U_  = 0.5*(u_ + u_1)
+        self.Laplace_U = 0.5*dt(0)*u - dt(0)*U_
+        self.prm['reassemble_lhs'] = False
+        Ru = inner(u_ - u_1, v)*dx + \
+             dt*self.conv(v, U_, U_, convection_form)*dx + \
+             dt*inner(epsilon(v), sigma(U_, p_, nu))*dx - \
+             dt*inner(v, f)*dx
+             
+        ax = inner(v, u)*dx + 0.5*dt*2*nu*inner(epsilon(v), epsilon(u))*dx
+             
+        return ax - Ru
+        
+    def solve_Picard_system(self, assemble_A, assemble_b):
+        """One assemble and solve of system.
+        The GRPC is a nonlinear type solver that updates the solution vector with a residual dx.
+        """
+        if assemble_A: self.assemble(self.A)
+        if assemble_b: self.assemble(self.b)
+        if assemble_A:
+            [bc.apply(self.A) for bc in self.bcs]
+        if assemble_b:
+            [bc.apply(self.b, self.x) for bc in self.bcs]
+        dx = self.work   # more informative name
+        dx.zero()        # start vector for iterative solvers
+        self.linear_solver.solve(self.A, dx, self.b)
+        self.x.axpy(-1.0, dx)  # relax
+        return norm(self.b), dx
+        
+    def add_exterior(self, u, v, u_, u_1, p_, n, nu, dt, **kwargs):
+        """
+        Set the weak boundary condition.
+        This boundary condition should be added to the Navier-Stokes form.
+        """
+        u = self.Laplace_U
+        L = []
+        for bc in self.bcs:
+            if bc.type() == 'ConstantPressure':
+                info('Assigning weak boundary condition for ' + bc.type())
+                L.append(-nu*inner(v, grad(u).T*n)*ds(bc.bid))
+                L.append(-dt*inner(bc.func['p']*n, v)*ds(bc.bid))
+                self.exterior_facet_domains = bc.mf 
+                
+            elif bc.type() == 'Symmetry':
+                info('Assigning weak boundary condition for ' + bc.type())
+                L.append(-nu*inner(v, grad(u).T*n)*ds(bc.bid) 
+                         + inner(v[0], inner(u, n))*ds(bc.bid))
+                L.append(dt*inner(p_*n, v)*ds(bc.bid))
+                self.exterior_facet_domains = bc.mf         
+                
+            elif bc.type() == 'Outlet':
+                info('Assigning weak boundary condition for ' + bc.type())
+                L.append(-nu*inner(v, grad(u).T*n)*ds(bc.bid))
+                L.append(dt*inner(p_*n, v)*ds(bc.bid))
+                self.exterior_facet_domains = bc.mf
+
+        return reduce(operator.add, L)
+        
+class Transient_Pressure_30(PressureBase):
+    
+    def form(self, p_, p, q, u_, u_1,nu, dt, **kwargs):   
+        self.prm['reassemble_lhs'] = False
+        F = dt**2*(inner(grad(q), grad(p)) + (1.0/(nu*dt))*q*(p))*dx \
+            - dt*q*div(0.5*(u_+u_1))*dx
+        return F        
+        
+    def solve_Picard_system(self, assemble_A, assemble_b):
+        """One assemble and solve of system.
+        The GRPC is a nonlinear type solver that updates the solution vector with a residual dx.
+        """
+        if assemble_A: self.assemble(self.A)
+        if assemble_b: self.assemble(self.b)
+        if assemble_A:
+            [bc.apply(self.A, self.x) for bc in self.bcs]            
+        if assemble_b:
+            [bc.apply(self.b, self.x) for bc in self.bcs]
+        dx = self.work   # more informative name
+        dx.zero()        # start vector for iterative solvers
+        self.linear_solver.solve(self.A, dx, self.b)
+        if self.normalize: self.normalize(dx)
+        self.x.axpy(-2.0, dx)  # relax
+        #self.x[:] = dx[:]
+        return norm(self.b), dx
 
 ##  Note! Steady (not pseudo-transient) segregated solvers need 
 ##  underrelaxation!
