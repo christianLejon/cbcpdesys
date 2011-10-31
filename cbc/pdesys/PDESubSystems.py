@@ -16,8 +16,8 @@ import os
 parameters["optimize_use_tensor_cache"] = True
 parameters["optimize_form"] = True
 parameters["optimize"] = True
-parameters["linear_algebra_backend"] = "Epetra"
-#parameters["linear_algebra_backend"] = "PETSc"
+#parameters["linear_algebra_backend"] = "Epetra"
+parameters["linear_algebra_backend"] = "PETSc"
 #parameters['form_compiler']['representation'] = 'quadrature'
 #parameters["form_compiler"]["optimize"]     = True
 #parameters["form_compiler"]["cpp_optimize"] = True
@@ -284,7 +284,7 @@ class PDESubSystemBase:
         if name in _work:
             return _work[name]
         else:
-            info_green('Creating new work vector for {}'.format(self.name))
+            info_green('Creating new work vector for {0:s}'.format(self.name))
             _work[name] = Vector(self.x)
             return _work[name]
 
@@ -836,12 +836,12 @@ class Subdict(dict):
     def __missing__(self, key):
         try:
             self[key] = self.solver_namespace['prm'][key][self.sub_name]
-            info_green("Adding ['{}']['{}'] = {} to pdesubsystem {}".format(key, 
-                       self.sub_name, self[key], ''.join(self.sub_name)))
+            info_green("Adding ['{0:s}']['{1:s}'] = {2:s} to pdesubsystem {3:s}".format(key, 
+                       self.sub_name, str(self[key]), ''.join(self.sub_name)))
         except:
             self[key] = self.solver_namespace['prm'][key]
-            info_green("Adding ['{}'] = {} to pdesubsystem {}".format(key, 
-                       self[key], ''.join(self.sub_name)))
+            info_green("Adding ['{0:s}'] = {1:s} to pdesubsystem {2:s}".format(key, 
+                       str(self[key]), ''.join(self.sub_name)))
         return self[key]
         
 class Initdict(dict):
@@ -859,6 +859,12 @@ class Initdict(dict):
 RED   = "\033[1;37;31m%s\033[0m"
 BLUE  = "\033[1;37;34m%s\033[0m"
 GREEN = "\033[1;37;32m%s\033[0m"
+
+def nabla_grad(u):
+    if u.rank() > 0:
+        return grad(u).T
+    else:
+        return grad(u)
 
 def info_blue(s):
     if MPI.process_number()==0:

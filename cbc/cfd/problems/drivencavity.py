@@ -102,11 +102,11 @@ if __name__ == '__main__':
     #solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['p'].prm['monitor_convergence'] = True
-    solver.pdesubsystems['u0_update'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['u0_update'].prm['monitor_convergence'] = True
     t0 = time.time()
     problem.solve()
     t1 = time.time()-t0
-    info_red('Total computing time = {}'.format(t1))
+    info_red('Total computing time = {0:f}'.format(t1))
     print problem.functional(solver.u_)
     
     # plot result. For fully segregated solver one should project the velocity vector on the correct space, if not the plot will look poor
