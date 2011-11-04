@@ -108,7 +108,7 @@ if __name__ == '__main__':
     problem_parameters['Re'] = 1.
     problem_parameters['T'] = 0.5
     solver_parameters = recursive_update(solver_parameters, 
-    dict(degree=dict(u=2, u0=1, u1=1, u2=1),
+    dict(degree=dict(u=2, u0=2, u1=2, u2=2),
          pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
          linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
          precond=dict(u='jacobi', p='hypre_amg', velocity_update='ilu'))
@@ -119,10 +119,10 @@ if __name__ == '__main__':
     #solver = icns.NSSegregated(problem, solver_parameters)
     #solver = icns.NSCoupled(problem, solver_parameters)
     
-    #solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
-    #solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
-    #solver.pdesubsystems['u2'].prm['monitor_convergence'] = True
-    #solver.pdesubsystems['p'].prm['monitor_convergence'] = True
+    solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
+    solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
+    solver.pdesubsystems['u2'].prm['monitor_convergence'] = True
+    solver.pdesubsystems['p'].prm['monitor_convergence'] = True
     
     t0 = time.time()
     problem.solve()
