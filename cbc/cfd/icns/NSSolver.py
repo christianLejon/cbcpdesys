@@ -46,21 +46,21 @@ def __missing__(self, key):
                 self[key] = self.solver_namespace['prm'][key][self.sub_name]
             else:
                 self[key] = self.solver_namespace['prm'][key]['u']
-            info_green("Adding ['{}']['{}'] = {} to pdesubsystem {}".format(key, 
-                       self.sub_name, self[key], ''.join(self.sub_name)))
+            info_green("Adding ['{0:s}']['{1:s}'] = {2:s} to pdesubsystem {3:s}".format(key, 
+                       self.sub_name, str(self[key]), ''.join(self.sub_name)))
         except TypeError:
             self[key] = self.solver_namespace['prm'][key]
-            info_green("Adding ['{}'] = {} to pdesubsystem {}".format(key, 
-                        self[key], ''.join(self.sub_name)))
+            info_green("Adding ['{0:s}'] = {1:s} to pdesubsystem {2:s}".format(key, 
+                        str(self[key]), ''.join(self.sub_name)))
     else:
         try:
             self[key] = self.solver_namespace['prm'][key][self.sub_name]
-            info_green("Adding ['{}']['{}'] = {} to pdesubsystem {}".format(key, 
-                       self.sub_name, self[key], ''.join(self.sub_name)))
+            info_green("Adding ['{0:s}']['{1:s}'] = {2:s} to pdesubsystem {3:s}".format(key, 
+                       self.sub_name, str(self[key]), ''.join(self.sub_name)))
         except:
             self[key] = self.solver_namespace['prm'][key]
-            info_green("Adding ['{}'] = {} to pdesubsystem {}".format(key, 
-                       self[key], ''.join(self.sub_name)))
+            info_green("Adding ['{0:s}'] = {1:s} to pdesubsystem {2:s}".format(key, 
+                       str(self[key]), ''.join(self.sub_name)))
     return self[key]
 
 Subdict.__missing__ = __missing__
