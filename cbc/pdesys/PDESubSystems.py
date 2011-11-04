@@ -819,6 +819,8 @@ def add_BC(bc_list, V, bc, func):
                 bc_list.append(DirichletBC(V, func, bc.mf, bc.bid))
             bc_list[-1].mf = bc.mf
             bc_list[-1].bid = bc.bid
+        elif hasattr(bc, 'boundary_info_in_mesh'):
+            bc_list.append(DirichletBC(V, func, bc.bid))
         else:
             bc_list.append(DirichletBC(V, func, bc))
     elif bc.type() == 'Periodic':

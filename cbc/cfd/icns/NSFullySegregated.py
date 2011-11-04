@@ -238,8 +238,7 @@ class VelocityUpdate_101(VelocityUpdateBase):
         if assemble_A: # Assemble on first timestep
             self.assemble(self.A)
             [bc.apply(self.A) for bc in self.bcs]
-            #cpp.GenericTools.compress(self.A, 
-                #Form(self.solver_namespace['pdesubsystems']['u0'].aM))
+            #self.A.compress()
         # Compute rhs using matrix-vector products
         self.b[:] = self.A*self.x
         self.b.axpy(-self.dt, self.P*(self.dpx))
@@ -276,7 +275,8 @@ class Transient_Pressure_101(PressureBase):
         self.prepare()
         if assemble_A:
             self.assemble(self.A)
-            [bc.apply(self.A) for bc in self.bcs]        
+            [bc.apply(self.A) for bc in self.bcs]
+            self.A.compress()
         self.b[:] = self.A*self.x
         for i in range(self.dim):        
             self.b.axpy(-1., self.R[i]*self.solver_namespace['u_'][i].vector()) # Divergence of u_

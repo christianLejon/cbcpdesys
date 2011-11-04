@@ -22,10 +22,11 @@ y1 = array([ 390.        ,  398.76132931,  512.65861027,  642.32628399,
 
 class SubDomains(SubDomain):
     
-    def __init__(self, bid, mf, func=None):
+    def __init__(self, bid, func=None):
         SubDomain.__init__(self)
         self.bid = bid            # Boundary indicator
-        self.mf = mf              # MeshFunction
+        #self.mf = mf              # MeshFunction
+        self.boundary_info_in_mesh = True
         if func: self.func = func
             
     def apply(self, *args):
@@ -49,23 +50,16 @@ class aneurysm(NSProblem):
     
     def __init__(self, parameters):
         NSProblem.__init__(self, parameters=parameters)
-        self.mesh = Mesh("../data/100_1314k.xml.gz")
-        self.bc_markers = self.mark_boundary()
+        #self.mesh = Mesh("../data/100_1314k.xml.gz")
+        self.mesh = Mesh("../data/aneurysm.xml.gz")
         self.n = FacetNormal(self.mesh)        
         self.boundaries = self.create_boundaries()
         #self.q0 = Initdict(u = ('0', '0', '0'), p = ('0')) # Zero is default anyway
         
-    def mark_boundary(self):
-        bc_markers = MeshFunction("uint", self.mesh, 2)
-        file_in = File("../data/100_1314k_boundary.xml.gz")
-        file_in >> bc_markers
-        return bc_markers
-        
     def create_boundaries(self):
         # Define the spline for enough heart beats
         k = int((self.prm['T'] + 1.)/max(MCAtime))
-        n = len(y1)
-        
+        n = len(y1)        
         y = zeros((n - 1)*k)
         time = zeros((n - 1)*k)
         
@@ -75,30 +69,28 @@ class aneurysm(NSProblem):
 
         self.inflow_t_spline = ius(time, y)
         n = self.n
-        self.u0 = assemble(-n[0]*ds(2), mesh=self.mesh, exterior_facet_domains=self.bc_markers)
-        self.u1 = assemble(-n[1]*ds(2), mesh=self.mesh, exterior_facet_domains=self.bc_markers)
-        self.u2 = assemble(-n[2]*ds(2), mesh=self.mesh, exterior_facet_domains=self.bc_markers)
+        self.n0 = assemble(-n[0]*ds(3), mesh=self.mesh)
+        self.n1 = assemble(-n[1]*ds(3), mesh=self.mesh)
+        self.n2 = assemble(-n[2]*ds(3), mesh=self.mesh)
         
-        self.A0 = assemble(Constant(1.)*ds(2), mesh=self.mesh, exterior_facet_domains=self.bc_markers)
+        self.A0 = assemble(Constant(1.)*ds(3), mesh=self.mesh)
         
         # Dictionary for inlet conditions
         # For now we need to explicitly set u0, u1 and u2. Should be able to fix using just u.
-        self.inflow = {'u': Expression(('u0*u_mean', 'u1*u_mean', 'u2*u_mean'), 
-                                  u0=self.u0, u1=self.u1, u2=self.u2, u_mean=0),
-                       'u0': Expression(('u0*u_mean'), u0=self.u0, u_mean=0),
-                       'u1': Expression(('u1*u_mean'), u1=self.u1, u_mean=0),
-                       'u2': Expression(('u2*u_mean'), u2=self.u2, u_mean=0)}
+        self.inflow = {'u': Expression(('n0*u_mean', 'n1*u_mean', 'n2*u_mean'), 
+                                  n0=self.n0, n1=self.n1, n2=self.n2, u_mean=0),
+                       'u0': Expression(('n0*u_mean'), n0=self.n0, u_mean=0),
+                       'u1': Expression(('n1*u_mean'), n1=self.n1, u_mean=0),
+                       'u2': Expression(('n2*u_mean'), n2=self.n2, u_mean=0)}
         self.p_out1 = Expression('p', p=0)
         self.p_out2 = Expression('p', p=0)
-        self.p_out3 = Expression('p', p=0)
         # Specify the boundary subdomains and hook up dictionaries for DirichletBCs
-        walls = Walls(1, self.bc_markers)
-        inlet = Inlet(2, self.bc_markers, self.inflow)
-        pressure1 = PressureOutlet(3, self.bc_markers, {'p': self.p_out1})
-        pressure2 = PressureOutlet(4, self.bc_markers, {'p': self.p_out2})
-        pressure3 = PressureOutlet(5, self.bc_markers, {'p': self.p_out3})
+        walls = Walls(0)
+        inlet = Inlet(3, self.inflow)
+        pressure1 = PressureOutlet(1, {'p': self.p_out1})
+        pressure2 = PressureOutlet(2, {'p': self.p_out2})
         
-        return [walls, inlet, pressure1, pressure2, pressure3]
+        return [walls, inlet, pressure1, pressure2]
         
     def prepare(self, pdesystems):
         """Called at start of a new timestep. Set the outlet pressure at new time."""
@@ -107,19 +99,17 @@ class aneurysm(NSProblem):
         for val in self.inflow.itervalues():
             val.u_mean = u_mean
         info_green('UMEAN = {} at time {}'.format(u_mean, self.t))
-        self.p_out1.p = assemble(dot(NS_solver.u_, self.n)*ds(3), exterior_facet_domains=self.bc_markers)
-        info_green('Pressure outlet 3 = {}'.format(self.p_out1.p))
-        self.p_out2.p = assemble(dot(NS_solver.u_, self.n)*ds(4), exterior_facet_domains=self.bc_markers)
-        info_green('Pressure outlet 4 = {}'.format(self.p_out2.p))
-        self.p_out3.p = assemble(dot(NS_solver.u_, self.n)*ds(5), exterior_facet_domains=self.bc_markers)
-        info_green('Pressure outlet 5 = {}'.format(self.p_out3.p))
+        self.p_out1.p = assemble(dot(NS_solver.u_, self.n)*ds(1))
+        info_green('Pressure outlet 2 = {}'.format(self.p_out1.p))
+        self.p_out2.p = assemble(dot(NS_solver.u_, self.n)*ds(2))
+        info_green('Pressure outlet 3 = {}'.format(self.p_out2.p))
 
 if __name__ == '__main__':
     from cbc.cfd.icns import NSFullySegregated, NSSegregated, solver_parameters
     set_log_active(True)
     problem_parameters['viscosity'] = 0.00345
     problem_parameters['T'] = 0.5
-    problem_parameters['dt'] = 0.001
+    problem_parameters['dt'] = 0.01
     solver_parameters = recursive_update(solver_parameters, 
     dict(degree=dict(u=1),
          pdesubsystem=dict(u=101, p=101, velocity_update=101), 
