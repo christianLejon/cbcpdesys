@@ -16,8 +16,8 @@ import os
 parameters["optimize_use_tensor_cache"] = True
 parameters["optimize_form"] = True
 parameters["optimize"] = True
-#parameters["linear_algebra_backend"] = "Epetra"
-parameters["linear_algebra_backend"] = "PETSc"
+parameters["linear_algebra_backend"] = "Epetra"
+#parameters["linear_algebra_backend"] = "PETSc"
 #parameters['form_compiler']['representation'] = 'quadrature'
 #parameters["form_compiler"]["optimize"]     = True
 #parameters["form_compiler"]["cpp_optimize"] = True

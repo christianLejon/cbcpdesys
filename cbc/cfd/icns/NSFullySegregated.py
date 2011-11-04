@@ -276,7 +276,7 @@ class Transient_Pressure_101(PressureBase):
         if assemble_A:
             self.assemble(self.A)
             [bc.apply(self.A) for bc in self.bcs]
-            self.A.compress()
+            #self.A.compress()
         self.b[:] = self.A*self.x
         for i in range(self.dim):        
             self.b.axpy(-1., self.R[i]*self.solver_namespace['u_'][i].vector()) # Divergence of u_

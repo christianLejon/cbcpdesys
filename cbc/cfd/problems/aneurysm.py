@@ -94,18 +94,19 @@ class aneurysm(NSProblem):
         
     def prepare(self, pdesystems):
         """Called at start of a new timestep. Set the outlet pressure at new time."""
-        NS_solver = self.pdesystems['Navier-Stokes']
+        solver = self.pdesystems['Navier-Stokes']
         u_mean = self.inflow_t_spline(self.t)[0]*695./750./self.A0
         for val in self.inflow.itervalues():
             val.u_mean = u_mean
-        info_green('UMEAN = {} at time {}'.format(u_mean, self.t))
-        self.p_out1.p = assemble(dot(NS_solver.u_, self.n)*ds(1))
-        info_green('Pressure outlet 2 = {}'.format(self.p_out1.p))
-        self.p_out2.p = assemble(dot(NS_solver.u_, self.n)*ds(2))
-        info_green('Pressure outlet 3 = {}'.format(self.p_out2.p))
+        info_green('UMEAN = {0:2.5f} at time {1:2.5f}'.format(u_mean, self.t))
+        self.p_out1.p = assemble(dot(solver.u_, self.n)*ds(1))
+        info_green('Pressure outlet 2 = {0:2.5f}'.format(self.p_out1.p))
+        self.p_out2.p = assemble(dot(solver.u_, self.n)*ds(2))
+        info_green('Pressure outlet 3 = {0:2.5f}'.format(self.p_out2.p))
 
 if __name__ == '__main__':
     from cbc.cfd.icns import NSFullySegregated, NSSegregated, solver_parameters
+    import time
     set_log_active(True)
     problem_parameters['viscosity'] = 0.00345
     problem_parameters['T'] = 0.5
@@ -117,17 +118,31 @@ if __name__ == '__main__':
          precond=dict(u='jacobi', p='amg', velocity_update='ilu'))
          )
     
-    NS_problem = aneurysm(problem_parameters)
-    NS_solver = NSFullySegregated(NS_problem, solver_parameters)
-    #NS_solver.pdesubsystems['u'].prm['monitor_convergence'] = True
-    #NS_solver.pdesubsystems['velocity_update'].prm['monitor_convergence'] = True
-    NS_solver.pdesubsystems['p'].prm['monitor_convergence'] = True
-    NS_solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
-    NS_solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
-    NS_solver.pdesubsystems['u2'].prm['monitor_convergence'] = True
-    #NS_solver.pdesubsystems['u0_update'].prm['monitor_convergence'] = True
-    #NS_solver.pdesubsystems['u1_update'].prm['monitor_convergence'] = True
-    #NS_solver.pdesubsystems['u2_update'].prm['monitor_convergence'] = True
-    NS_problem.solve()
+    problem = aneurysm(problem_parameters)
+    solver = NSFullySegregated(problem, solver_parameters)
+    #solver.pdesubsystems['u'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['velocity_update'].prm['monitor_convergence'] = True
+    solver.pdesubsystems['p'].prm['monitor_convergence'] = True
+    solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
+    solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
+    solver.pdesubsystems['u2'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['u0_update'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['u1_update'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['u2_update'].prm['monitor_convergence'] = True
+    t0 = time.time()
+    problem.solve()
+    t1 = time.time() - t0
 
-    print summary()
+    print list_timings()
+
+    num_dofs = 0
+    for name in solver.system_names:
+        num_dofs += solver.V[name].dim()
+
+    if MPI.process_number() == 0:    
+        filename = "results/results.log"
+        file = open(filename, "a")
+        file.write("%s, %s, %s, %d, %.15g, %s\n" %
+                (time.asctime(), 'aneurysm', 'CBC.CFD', num_dofs, t1 , str(MPI.num_processes())))
+        file.close()
+

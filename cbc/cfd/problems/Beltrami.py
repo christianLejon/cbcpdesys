@@ -83,7 +83,7 @@ class Beltrami(NSProblem):
         else:
             f = errornorm(self.NS_solver.u_, exact_velocity['u'])
         error = f/norm(exact_velocity['u'], mesh=self.mesh)
-        info_red('Energy = {}'.format(error))
+        info_red('Energy = {0:2.5e}'.format(error))
         return error
                    
     def info(self):
@@ -119,10 +119,10 @@ if __name__ == '__main__':
     #solver = icns.NSSegregated(problem, solver_parameters)
     #solver = icns.NSCoupled(problem, solver_parameters)
     
-    solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
-    solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
-    solver.pdesubsystems['u2'].prm['monitor_convergence'] = True
-    solver.pdesubsystems['p'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['u2'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['p'].prm['monitor_convergence'] = True
     
     t0 = time.time()
     problem.solve()
@@ -135,13 +135,13 @@ if __name__ == '__main__':
     for name in solver.system_names:
         num_dofs += solver.V[name].dim()
 
+    if MPI.process_number() == 0:    
+        filename = "results/results.log"
+        file = open(filename, "a")
+        file.write("%s, %s, %s, %d, %.15g, %.15g, %.15g, %s, %s, %s\n" %
+                (time.asctime(), 'Beltrami', 'CBC.CFD', num_dofs, t1, t1, error, '0' , str(error), str(MPI.num_processes())))
+        file.close()
     
-    filename = "results/results.log"
-    file = open(filename, "a")
-    file.write("%s, %s, %s, %d, %.15g, %.15g, %.15g, %s, %s\n" %
-            (time.asctime(), 'Beltrami', 'CBC.CFD', num_dofs, t1, t1, error, '0' , str(error)))
-    file.close()
-    
-    plot(solver.u_)
+    #plot(solver.u_)
     #interactive()
     
