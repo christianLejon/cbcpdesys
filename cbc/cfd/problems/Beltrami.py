@@ -96,7 +96,7 @@ if __name__ == '__main__':
     import sys
     set_log_active(True)
     
-    mesh_sizes = [5, 8, 11, 16, 23, 32]
+    mesh_sizes = [5, 8, 11, 16, 23, 32, 64]
     try:
         N = eval(sys.argv[-1])
     except:
@@ -108,10 +108,10 @@ if __name__ == '__main__':
     problem_parameters['Re'] = 1.
     problem_parameters['T'] = 0.5
     solver_parameters = recursive_update(solver_parameters, 
-    dict(degree=dict(u=2, u0=2, u1=2, u2=2),
+    dict(degree=dict(u=2, u0=1, u1=1, u2=1),
          pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
          linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
-         precond=dict(u='jacobi', p='hypre_amg', velocity_update='jacobi'))
+         precond=dict(u='jacobi', p='hypre_amg', velocity_update='ilu'))
          )
     
     problem = Beltrami(problem_parameters)

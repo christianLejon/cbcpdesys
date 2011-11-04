@@ -54,7 +54,8 @@ class aneurysm(NSProblem):
         self.mesh = Mesh("../data/aneurysm.xml.gz")
         self.n = FacetNormal(self.mesh)        
         self.boundaries = self.create_boundaries()
-        #self.q0 = Initdict(u = ('0', '0', '0'), p = ('0')) # Zero is default anyway
+        # To initialize solution set the dictionary q0: 
+        #self.q0 = Initdict(u = ('0', '0', '0'), p = ('0')) # Or not, zero is default anyway
         
     def create_boundaries(self):
         # Define the spline for enough heart beats
@@ -75,15 +76,18 @@ class aneurysm(NSProblem):
         
         self.A0 = assemble(Constant(1.)*ds(3), mesh=self.mesh)
         
-        # Dictionary for inlet conditions
+        # Set dictionary used for Dirichlet inlet conditions
         # For now we need to explicitly set u0, u1 and u2. Should be able to fix using just u.
         self.inflow = {'u': Expression(('n0*u_mean', 'n1*u_mean', 'n2*u_mean'), 
                                   n0=self.n0, n1=self.n1, n2=self.n2, u_mean=0),
                        'u0': Expression(('n0*u_mean'), n0=self.n0, u_mean=0),
                        'u1': Expression(('n1*u_mean'), n1=self.n1, u_mean=0),
                        'u2': Expression(('n2*u_mean'), n2=self.n2, u_mean=0)}
+
+        # Pressures on outlets are specified by DirichletBCs, values are computed in prepare
         self.p_out1 = Expression('p', p=0)
         self.p_out2 = Expression('p', p=0)
+
         # Specify the boundary subdomains and hook up dictionaries for DirichletBCs
         walls = Walls(0)
         inlet = Inlet(3, self.inflow)
