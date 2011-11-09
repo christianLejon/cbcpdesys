@@ -3,7 +3,7 @@ __date__ = "2010-10-14"
 __copyright__ = "Copyright (C) 2010 " + __author__
 __license__  = "GNU GPL version 3 or any later version"
 """
-Base class for transport equation for passive scalars
+Base class for transport of passive scalars
 """
 from cbc.pdesys.PDESystem import *
 

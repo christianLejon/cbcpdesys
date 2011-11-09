@@ -78,33 +78,24 @@ if __name__ == '__main__':
     from cbc.cfd.icns import solver_parameters
     import time
     set_log_active(False)
-    problem_parameters['time_integration']='Transient'
     problem_parameters['Nx'] = 40
     problem_parameters['Ny'] = 40
     problem_parameters['T'] = 10.
+    problem_parameters['time_integration']='Transient'
     problem_parameters['max_iter'] = 1
-    problem_parameters['plot_velocity'] = False
+    problem_parameters['plot_velocity'] = True
     solver_parameters = recursive_update(solver_parameters, 
     dict(degree=dict(u=2, u0=2, u1=2),
          pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
-         linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
+         linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab', up='lu'), 
          precond=dict(u='jacobi', p='amg', velocity_update='ilu'),
          iteration_type='Picard')
          )
     problem = Lshape(problem_parameters)
-    solver = icns.NSFullySegregated(problem, solver_parameters)
-    #solver = icns.NSCoupled(problem, solver_parameters)    
+    #solver = icns.NSFullySegregated(problem, solver_parameters)
+    solver = icns.NSCoupled(problem, solver_parameters)    
     t0 = time.time()
     problem.solve()
     t1 = time.time() - t0
     
-    num_dofs = 0
-    for name in solver.system_names:
-        num_dofs += solver.V[name].dim()
-
-    if MPI.process_number() == 0:    
-        filename = "results/results.log"
-        file = open(filename, "a")
-        file.write("%s, %s, %s, %d, %.15g,  %s\n" %
-                (time.asctime(), 'Lshape', 'CBC.CFD', num_dofs, t1, str(MPI.num_processes())))
-        file.close()
+    #dump_result(problem, solver, t1, 0)

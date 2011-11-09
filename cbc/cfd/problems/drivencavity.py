@@ -114,21 +114,12 @@ if __name__ == '__main__':
     #    plot(project(solver.u_, VectorFunctionSpace(solver.mesh, 'CG', solver_parameters['degree']['u0'])))
     #else:
     #    plot(solver.u_)
-        
-    num_dofs = 0
-    for name in solver.system_names:
-        num_dofs += solver.V[name].dim()
-        
-        
+                
     psi = problem.functional(solver.u_)    
     
     psi_error = abs(psi-problem.reference(0))
     
-    filename = "results/results.log"
-    file = open(filename, "a")
-    file.write("%s, %s, %s, %d, %.15g, %.15g, %s, %s\n" %
-            (time.asctime(), 'Driven cavity', 'CBC.CFD', num_dofs, t1, psi , str(MPI.min(psi_error)), MPI.num_processes()))
-    file.close()
+    dump_result(problem, solver, t1, psi_error)
     
     print list_timings()
     interactive()

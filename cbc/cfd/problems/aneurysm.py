@@ -25,7 +25,6 @@ class SubDomains(SubDomain):
     def __init__(self, bid, func=None):
         SubDomain.__init__(self)
         self.bid = bid            # Boundary indicator
-        #self.mf = mf              # MeshFunction
         self.boundary_info_in_mesh = True
         if func: self.func = func
             
@@ -72,7 +71,6 @@ class aneurysm(NSProblem):
         self.n0 = assemble(-n[0]*ds(3), mesh=self.mesh)
         self.n1 = assemble(-n[1]*ds(3), mesh=self.mesh)
         self.n2 = assemble(-n[2]*ds(3), mesh=self.mesh)
-        
         self.A0 = assemble(Constant(1.)*ds(3), mesh=self.mesh)
         
         # Dictionary for inlet conditions

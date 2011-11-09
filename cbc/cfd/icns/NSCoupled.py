@@ -64,10 +64,6 @@ class CoupledBase(PDESubSystem):
                 if self.exterior: 
                     self.F = self.F + self.add_exterior(**form_args)
                 # Add stabilization if function spaces are equal
-                #if (self.V.sub(0).ufl_element().degree() ==
-                    #self.V.sub(1).ufl_element().degree() and not
-                    #any([bc.type() in ['ConstantPressure'] for bc in self.bcs])): 
-                    #self.F = self.F + self.stabilization(**form_args)
                 if (self.V.sub(0).ufl_element().degree() ==
                     self.V.sub(1).ufl_element().degree()): 
                     self.F = self.F + self.stabilization(**form_args)                    
@@ -76,16 +72,13 @@ class CoupledBase(PDESubSystem):
         else:
             form_args['u_'] = self.solver_namespace['u']
             form_args['p_'] = self.solver_namespace['p']
+            #self.Laplace_U = self.solver_namespace['u_'] # Velocity used in add_exterior. 
             self.get_form(form_args)
             if self.F:
                 # Add contribution from boundaries
                 if self.exterior: 
                     self.F = self.F + self.add_exterior(**form_args)
                 # Add stabilization if functionspaces are equal
-                #if (self.V.sub(0).ufl_element().degree() ==
-                    #self.V.sub(1).ufl_element().degree() and not
-                    #any([bc.type() in ['ConstantPressure'] for bc in self.bcs])):
-                    #self.F = self.F + self.stabilization(**form_args) 
                 if (self.V.sub(0).ufl_element().degree() ==
                     self.V.sub(1).ufl_element().degree()):
                     self.F = self.F + self.stabilization(**form_args) 
