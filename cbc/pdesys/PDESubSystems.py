@@ -584,6 +584,10 @@ class TurbModel(PDESubSystem):
 
     def update(self):
         bound(self.x, 1e8)
+
+def dolfin_normalize(v):
+    """Use l2 normalization because average is not working in parallel"""
+    return normalize(v, 'l2')
         
 def dolfin_normalize(v):
     return normalize(v, 'l2')

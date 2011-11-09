@@ -50,10 +50,11 @@ class aneurysm(NSProblem):
     def __init__(self, parameters):
         NSProblem.__init__(self, parameters=parameters)
         #self.mesh = Mesh("../data/100_1314k.xml.gz")
-        self.mesh = Mesh("../data/aneurysm.xml.gz")
+        self.mesh = Mesh("../data/Aneurysm.xml.gz")
         self.n = FacetNormal(self.mesh)        
         self.boundaries = self.create_boundaries()
-        #self.q0 = Initdict(u = ('0', '0', '0'), p = ('0')) # Zero is default anyway
+        # To initialize solution set the dictionary q0: 
+        #self.q0 = Initdict(u = ('0', '0', '0'), p = ('0')) # Or not, zero is default anyway
         
     def create_boundaries(self):
         # Define the spline for enough heart beats
@@ -68,25 +69,31 @@ class aneurysm(NSProblem):
 
         self.inflow_t_spline = ius(time, y)
         n = self.n
-        self.n0 = assemble(-n[0]*ds(3), mesh=self.mesh)
-        self.n1 = assemble(-n[1]*ds(3), mesh=self.mesh)
-        self.n2 = assemble(-n[2]*ds(3), mesh=self.mesh)
-        self.A0 = assemble(Constant(1.)*ds(3), mesh=self.mesh)
         
         # Dictionary for inlet conditions
+        self.n0 = assemble(-n[0]*ds(2), mesh=self.mesh)
+        self.n1 = assemble(-n[1]*ds(2), mesh=self.mesh)
+        self.n2 = assemble(-n[2]*ds(2), mesh=self.mesh)
+        
+        self.A0 = assemble(Constant(1.)*ds(2), mesh=self.mesh)
+        
+        # Set dictionary used for Dirichlet inlet conditions
         # For now we need to explicitly set u0, u1 and u2. Should be able to fix using just u.
         self.inflow = {'u': Expression(('n0*u_mean', 'n1*u_mean', 'n2*u_mean'), 
                                   n0=self.n0, n1=self.n1, n2=self.n2, u_mean=0),
                        'u0': Expression(('n0*u_mean'), n0=self.n0, u_mean=0),
                        'u1': Expression(('n1*u_mean'), n1=self.n1, u_mean=0),
                        'u2': Expression(('n2*u_mean'), n2=self.n2, u_mean=0)}
+
+        # Pressures on outlets are specified by DirichletBCs, values are computed in prepare
         self.p_out1 = Expression('p', p=0)
         self.p_out2 = Expression('p', p=0)
+
         # Specify the boundary subdomains and hook up dictionaries for DirichletBCs
         walls = Walls(0)
-        inlet = Inlet(3, self.inflow)
+        inlet = Inlet(2, self.inflow)
         pressure1 = PressureOutlet(1, {'p': self.p_out1})
-        pressure2 = PressureOutlet(2, {'p': self.p_out2})
+        pressure2 = PressureOutlet(3, {'p': self.p_out2})
         
         return [walls, inlet, pressure1, pressure2]
         
@@ -99,7 +106,7 @@ class aneurysm(NSProblem):
         info_green('UMEAN = {0:2.5f} at time {1:2.5f}'.format(u_mean, self.t))
         self.p_out1.p = assemble(dot(solver.u_, self.n)*ds(1))
         info_green('Pressure outlet 2 = {0:2.5f}'.format(self.p_out1.p))
-        self.p_out2.p = assemble(dot(solver.u_, self.n)*ds(2))
+        self.p_out2.p = assemble(dot(solver.u_, self.n)*ds(3))
         info_green('Pressure outlet 3 = {0:2.5f}'.format(self.p_out2.p))
 
 if __name__ == '__main__':
@@ -107,10 +114,10 @@ if __name__ == '__main__':
     import time
     set_log_active(True)
     problem_parameters['viscosity'] = 0.00345
-    problem_parameters['T'] = 0.5
+    problem_parameters['T'] = 0.01
     problem_parameters['dt'] = 0.01
     solver_parameters = recursive_update(solver_parameters, 
-    dict(degree=dict(u=1),
+    dict(degree=dict(u=1,u0=1,u1=1,u2=1),
          pdesubsystem=dict(u=101, p=101, velocity_update=101), 
          linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
          precond=dict(u='jacobi', p='amg', velocity_update='ilu'))
@@ -120,10 +127,10 @@ if __name__ == '__main__':
     solver = NSFullySegregated(problem, solver_parameters)
     #solver.pdesubsystems['u'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['velocity_update'].prm['monitor_convergence'] = True
-    solver.pdesubsystems['p'].prm['monitor_convergence'] = True
-    solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
-    solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
-    solver.pdesubsystems['u2'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['p'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['u2'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['u0_update'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['u1_update'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['u2_update'].prm['monitor_convergence'] = True
@@ -133,14 +140,5 @@ if __name__ == '__main__':
 
     print list_timings()
 
-    num_dofs = 0
-    for name in solver.system_names:
-        num_dofs += solver.V[name].dim()
-
-    if MPI.process_number() == 0:    
-        filename = "results/results.log"
-        file = open(filename, "a")
-        file.write("%s, %s, %s, %d, %.15g, %s\n" %
-                (time.asctime(), 'aneurysm', 'CBC.CFD', num_dofs, t1 , str(MPI.num_processes())))
-        file.close()
-
+    dump_result(problem, solver, t1, 0)
+    

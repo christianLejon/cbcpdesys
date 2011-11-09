@@ -96,7 +96,7 @@ if __name__ == '__main__':
     import sys
     set_log_active(True)
     
-    mesh_sizes = [5, 8, 11, 16, 23, 32]
+    mesh_sizes = [5, 8, 11, 16, 23, 32, 64]
     try:
         N = eval(sys.argv[-1])
     except:
@@ -111,7 +111,7 @@ if __name__ == '__main__':
     dict(degree=dict(u=2, u0=2, u1=2, u2=2),
          pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
          linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
-         precond=dict(u='jacobi', p='hypre_amg', velocity_update='jacobi'))
+         precond=dict(u='jacobi', p='hypre_amg', velocity_update='ilu'))
          )
     
     problem = Beltrami(problem_parameters)
@@ -119,10 +119,10 @@ if __name__ == '__main__':
     #solver = icns.NSSegregated(problem, solver_parameters)
     #solver = icns.NSCoupled(problem, solver_parameters)
     
-    #solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
-    #solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
-    #solver.pdesubsystems['u2'].prm['monitor_convergence'] = True
-    #solver.pdesubsystems['p'].prm['monitor_convergence'] = True
+    solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
+    solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
+    solver.pdesubsystems['u2'].prm['monitor_convergence'] = True
+    solver.pdesubsystems['p'].prm['monitor_convergence'] = True
     
     t0 = time.time()
     problem.solve()
