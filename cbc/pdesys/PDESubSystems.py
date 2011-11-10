@@ -284,7 +284,7 @@ class PDESubSystemBase:
         if name in _work:
             return _work[name]
         else:
-            info_green('Creating new work vector for {}'.format(self.name))
+            info_green('Creating new work vector for {0:s}'.format(self.name))
             _work[name] = Vector(self.x)
             return _work[name]
 

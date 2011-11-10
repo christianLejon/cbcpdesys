@@ -119,15 +119,15 @@ if __name__ == '__main__':
     solver_parameters = recursive_update(solver_parameters, 
     dict(degree=dict(u=1,u0=1,u1=1,u2=1),
          pdesubsystem=dict(u=101, p=101, velocity_update=101), 
-         linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
-         precond=dict(u='jacobi', p='amg', velocity_update='ilu'))
+         linear_solver=dict(u='gmres', p='gmres', velocity_update='bicgstab'), 
+         precond=dict(u='jacobi', p='hypre_amg', velocity_update='jacobi'))
          )
     
     problem = aneurysm(problem_parameters)
     solver = NSFullySegregated(problem, solver_parameters)
     #solver.pdesubsystems['u'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['velocity_update'].prm['monitor_convergence'] = True
-    #solver.pdesubsystems['p'].prm['monitor_convergence'] = True
+    solver.pdesubsystems['p'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['u2'].prm['monitor_convergence'] = True

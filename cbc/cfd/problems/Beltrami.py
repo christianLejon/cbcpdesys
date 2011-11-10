@@ -109,19 +109,19 @@ if __name__ == '__main__':
     problem_parameters['T'] = 0.5
     solver_parameters = recursive_update(solver_parameters, 
     dict(degree=dict(u=2, u0=2, u1=2, u2=2),
-         pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
+         pdesubsystem=dict(u=1, p=1, velocity_update=1, up=1), 
          linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
-         precond=dict(u='jacobi', p='hypre_amg', velocity_update='ilu'))
+         precond=dict(u='jacobi', p='hypre_amg', velocity_update='jacobi'))
          )
     
     problem = Beltrami(problem_parameters)
-    solver = icns.NSFullySegregated(problem, solver_parameters)
-    #solver = icns.NSSegregated(problem, solver_parameters)
+    #solver = icns.NSFullySegregated(problem, solver_parameters)
+    solver = icns.NSSegregated(problem, solver_parameters)
     #solver = icns.NSCoupled(problem, solver_parameters)
     
-    solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
-    solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
-    solver.pdesubsystems['u2'].prm['monitor_convergence'] = True
+    solver.pdesubsystems['u'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['u2'].prm['monitor_convergence'] = True
     solver.pdesubsystems['p'].prm['monitor_convergence'] = True
     
     t0 = time.time()
@@ -131,16 +131,7 @@ if __name__ == '__main__':
     error = problem.functional()
     print list_timings()
     
-    num_dofs = 0
-    for name in solver.system_names:
-        num_dofs += solver.V[name].dim()
-
-    if MPI.process_number() == 0:    
-        filename = "results/results.log"
-        file = open(filename, "a")
-        file.write("%s, %s, %s, %d, %.15g, %.15g, %.15g, %s, %s, %s\n" %
-                (time.asctime(), 'Beltrami', 'CBC.CFD', num_dofs, t1, t1, error, '0' , str(error), str(MPI.num_processes())))
-        file.close()
+    dump_result(problem, solver, t1, error)
     
     #plot(solver.u_)
     #interactive()
