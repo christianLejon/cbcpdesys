@@ -145,7 +145,7 @@ if __name__ == '__main__':
     solver = NSFullySegregated(problem, solver_parameters)
     #solver.pdesubsystems['u'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['velocity_update'].prm['monitor_convergence'] = True
-    #solver.pdesubsystems['p'].prm['monitor_convergence'] = True
+    solver.pdesubsystems['p'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['u2'].prm['monitor_convergence'] = True

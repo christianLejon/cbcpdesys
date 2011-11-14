@@ -112,17 +112,17 @@ if __name__ == '__main__':
     dict(degree=dict(u=2, u0=1, u1=1, u2=1),
          pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
          linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
-         precond=dict(u='jacobi', p='hypre_amg', velocity_update='ilu'))
+         precond=dict(u='jacobi', p='hypre_amg', velocity_update='jacobi'))
          )
     
     problem = Beltrami(problem_parameters)
-    solver = icns.NSFullySegregated(problem, solver_parameters)
-    #solver = icns.NSSegregated(problem, solver_parameters)
+    #solver = icns.NSFullySegregated(problem, solver_parameters)
+    solver = icns.NSSegregated(problem, solver_parameters)
     #solver = icns.NSCoupled(problem, solver_parameters)
     
-    solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
-    solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
-    solver.pdesubsystems['u2'].prm['monitor_convergence'] = True
+    solver.pdesubsystems['u'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['u2'].prm['monitor_convergence'] = True
     solver.pdesubsystems['p'].prm['monitor_convergence'] = True
     
     t0 = time.time()
@@ -132,6 +132,7 @@ if __name__ == '__main__':
     error = problem.functional()
     print list_timings()
     
+    dump_result(problem, solver, t1, error)
     
     #plot(solver.u_)
     #interactive()
