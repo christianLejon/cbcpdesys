@@ -95,6 +95,7 @@ if __name__ == '__main__':
     import time
     import sys
     set_log_active(True)
+    set_log_level(5)
     
     mesh_sizes = [5, 8, 11, 16, 23, 32, 64]
     try:
@@ -108,7 +109,7 @@ if __name__ == '__main__':
     problem_parameters['Re'] = 1.
     problem_parameters['T'] = 0.5
     solver_parameters = recursive_update(solver_parameters, 
-    dict(degree=dict(u=2, u0=2, u1=2, u2=2),
+    dict(degree=dict(u=2, u0=1, u1=1, u2=1),
          pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
          linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
          precond=dict(u='jacobi', p='hypre_amg', velocity_update='ilu'))
@@ -131,16 +132,6 @@ if __name__ == '__main__':
     error = problem.functional()
     print list_timings()
     
-    num_dofs = 0
-    for name in solver.system_names:
-        num_dofs += solver.V[name].dim()
-
-    if MPI.process_number() == 0:    
-        filename = "results/results.log"
-        file = open(filename, "a")
-        file.write("%s, %s, %s, %d, %.15g, %.15g, %.15g, %s, %s, %s\n" %
-                (time.asctime(), 'Beltrami', 'CBC.CFD', num_dofs, t1, t1, error, '0' , str(error), str(MPI.num_processes())))
-        file.close()
     
     #plot(solver.u_)
     #interactive()

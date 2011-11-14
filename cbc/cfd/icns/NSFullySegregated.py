@@ -54,7 +54,7 @@ class NSFullySegregated(NSSolver):
                                                     normalize=self.normalize['p'])
         
         # Initialize pressure through this presolve (should improve accuracy of first step)
-        self.pdesubsystems['p'].solve()
+        #self.pdesubsystems['p'].solve()
         if self.prm['time_integration'] == 'Transient':
             uu_subsystem = 'VelocityUpdate_' + \
                            str(self.prm['pdesubsystem']['velocity_update'])

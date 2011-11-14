@@ -55,6 +55,7 @@ class aneurysm(NSProblem):
         self.boundaries = self.create_boundaries()
         # To initialize solution set the dictionary q0: 
         #self.q0 = Initdict(u = ('0', '0', '0'), p = ('0')) # Or not, zero is default anyway
+        self.A1 = None
         
     def create_boundaries(self):
         # Define the spline for enough heart beats
@@ -104,9 +105,26 @@ class aneurysm(NSProblem):
         for val in self.inflow.itervalues():
             val.u_mean = u_mean
         info_green('UMEAN = {0:2.5f} at time {1:2.5f}'.format(u_mean, self.t))
-        self.p_out1.p = assemble(dot(solver.u_, self.n)*ds(1))
+        # First time around we assemble some vectors that can be used to compute 
+        # the outlet pressures with merely inner products and no further assembling.
+        if not self.A1: 
+            self.A1 = []
+            self.A3 = []
+            v = solver.vt['u0']
+            for i in range(3):
+                self.A1.append(assemble(v*problem.n[i]*ds(1)))
+                self.A3.append(assemble(v*problem.n[i]*ds(3)))
+        
+        # Compute outlet pressures
+        self.p_out1.p = 0
+        self.p_out2.p = 0
+        for i in range(3):
+            self.p_out1.p += self.A1[i].inner(solver.u_[i].vector())
+            self.p_out2.p += self.A3[i].inner(solver.u_[i].vector())
+            
+        #self.p_out1.p = assemble(dot(solver.u_, self.n)*ds(1))
         info_green('Pressure outlet 2 = {0:2.5f}'.format(self.p_out1.p))
-        self.p_out2.p = assemble(dot(solver.u_, self.n)*ds(3))
+        #self.p_out2.p = assemble(dot(solver.u_, self.n)*ds(3))
         info_green('Pressure outlet 3 = {0:2.5f}'.format(self.p_out2.p))
 
 if __name__ == '__main__':
@@ -114,13 +132,13 @@ if __name__ == '__main__':
     import time
     set_log_active(True)
     problem_parameters['viscosity'] = 0.00345
-    problem_parameters['T'] = 0.01
+    problem_parameters['T'] = 0.04
     problem_parameters['dt'] = 0.01
     solver_parameters = recursive_update(solver_parameters, 
     dict(degree=dict(u=1,u0=1,u1=1,u2=1),
          pdesubsystem=dict(u=101, p=101, velocity_update=101), 
          linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
-         precond=dict(u='jacobi', p='amg', velocity_update='ilu'))
+         precond=dict(u='jacobi', p='hypre_amg', velocity_update='ilu'))
          )
     
     problem = aneurysm(problem_parameters)
