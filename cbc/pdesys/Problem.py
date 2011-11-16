@@ -66,7 +66,7 @@ class Problem:
                 
                 pdesystem.solve_derived_quantities()
                 
-            self.update(pdesystems)
+            self.update()
                 
             self.total_number_iters += 1
                 
@@ -114,7 +114,7 @@ class Problem:
             self.t = self.t + self.prm['dt']
             self.tstep = self.tstep + 1
             
-            self.prepare(pdesystems)
+            self.prepare()
             err = 1e10
             j = 0
             while err > self.prm['max_err'] and j < self.prm['max_iter']:
@@ -148,7 +148,7 @@ class Problem:
             
             info_green('Time = %s, End time = %s' %(self.t, self.prm['T']))
             
-            self.update(pdesystems)
+            self.update()
 
     def initialize(self, pdesystem):
         """Initialize the solution in a PDESystem.

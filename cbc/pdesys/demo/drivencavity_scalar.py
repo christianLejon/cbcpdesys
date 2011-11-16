@@ -32,9 +32,9 @@ problem = Problem(mesh, problem_parameters)
 solver_parameters = recursive_update(solver_parameters, {
     'degree': {'u':2, 'c': 2},
     'space': {'u': VectorFunctionSpace},
+    'familyname': 'Navier-Stokes'
 })
 NS = PDESystem([['u', 'p']], problem, solver_parameters)
-NS.setup() # Generates functionspaces and functions
 NS.nu = Constant(problem.prm['viscosity'])
 NS.dt = Constant(problem.prm['dt'])
 NS.f = Constant((0, 0))
@@ -44,24 +44,24 @@ bcs = [DirichletBC(NS.V['u'], (0., 0.), "on_boundary"),
 NS.pdesubsystems['up'] = NavierStokes(vars(NS), ['u', 'p'], 
                                       bcs=bcs, normalize=nup)
 # Add method to plot intermediate results
-def update(self, solvers):
-    plot(solvers[0].u_, rescale=True)
-    if len(solvers)>1:
-        plot(solvers[1].c_, rescale=True)
-        plot(solvers[2].c_, rescale=True)
-        info_red('        Total amount of c1 = {}'.format(assemble(solvers[1].c_*dx)))
-        info_red('        Total amount of c2 = {}'.format(assemble(solvers[2].c_*dx)))
+def update(self):
+    NS = self.pdesystems['Navier-Stokes']
+    plot(NS.u_, rescale=True)
+    if len(self.pdesystemlist) > 1:
+        for i, name in enumerate(self.pdesystemlist[1:]):
+            sol = self.pdesystems[name]
+            plot(sol.c_, rescale=True)
+        info_red('        {}: Total amount of c = {}'.format(name, assemble(sol.c_*dx)))
         
 Problem.update = update
 
-pdesystems = [NS]
-problem.solve(pdesystems)
+problem.solve()
 
 # Set up two scalar fields
+solver_parameters['familyname'] = 'Scalar1'
 Scalar1 = PDESystem([['c']], problem, solver_parameters)
-Scalar1.setup()
+solver_parameters['familyname'] = 'Scalar2'
 Scalar2 = PDESystem([['c']], problem, solver_parameters)
-Scalar2.setup()
 bcs1 = [DirichletBC(Scalar1.V['c'], (1.), "on_boundary && x[1] > 1. - DOLFIN_EPS")]
 bcs2 = [DirichletBC(Scalar2.V['c'], (1.), "on_boundary && x[1] < DOLFIN_EPS")]
 Scalar1.nu = Scalar2.nu = Constant(problem.prm['viscosity'])
@@ -73,6 +73,5 @@ Scalar1.u_1 = Scalar2.u_1 = NS.u_1
 Scalar1.pdesubsystems['c'] = Scalar(vars(Scalar1), ['c'], bcs=bcs1)
 Scalar2.pdesubsystems['c'] = Scalar(vars(Scalar2), ['c'], bcs=bcs2)
 
-pdesystems += [Scalar1, Scalar2]
 problem.prm['T'] = 2.
-problem.solve(pdesystems)
+problem.solve()

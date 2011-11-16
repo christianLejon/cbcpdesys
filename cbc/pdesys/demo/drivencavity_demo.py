@@ -102,37 +102,3 @@ if __name__=='__main__':
     solver.solve(max_iter=1, redefine=False)
     interactive()
     #
-    # Alternatively, without using the derived class implementation,
-    # we could also imagine using the PDESystem like this:
-    ######################################################
-    #solver = PDESystem([['u', 'p'], ['c']], mesh, parameters)
-    #solver.setup() # Generates functionspaces and functions
-    #up0 = interpolate(Constant((0, 0, 0)), solver.V['up'])
-    #c0 = Expression("n*n/(2.*pi)*exp(-0.5*n*n*(pow(x[0]-x0, 2) \
-                                             #+ pow(x[1]-y0, 2)))",
-                    #n=20, x0=0.5, y0=0.5)
-    #c0 = interpolate(c0, solver.V['c'])
-    #solver.initialize(dict(up=up0, c=c0))
-    #solver.nu = Constant(solver.prm['viscosity'])
-    #solver.dt = Constant(solver.prm['dt'])
-    #solver.f = Constant((0, 0))
-    #solver.normalize['up'] = extended_normalize(solver.V['up'], 
-                                                #solver.u_.value_size())
-    #solver.bc['up'] = [DirichletBC(solver.V['u'], (0., 0.), "on_boundary"),
-                       #DirichletBC(solver.V['u'], (1., 0.), "on_boundary && \
-                                               #x[1] > 1. - DOLFIN_EPS")]
-    #ti = solver.prm['time_integration']
-    #up_pdesubsystem_name = 'NS_{}_{}'.format(ti, solver.prm['pdesubsystem']['up'])
-    #c_pdesubsystem_name  = 'Scalar_{}_{}'.format(ti, solver.prm['pdesubsystem']['c'])
-    #solver.pdesubsystems['up'] = eval(up_pdesubsystem_name)(vars(solver), ['u', 'p'], 
-                                                 #bcs=solver.bc['up'],
-                                                 #normalize=solver.normalize['up']])
-    #solver.pdesubsystems['c'] = eval(c_pdesubsystem_name)(vars(solver), ['c'])
-    ## Add method to plot intermediate results
-    #def update(self):
-        #plot(self.u_, rescale=True)
-        #plot(self.c_, rescale=True)
-        #info_red('        Total amount of c = {}'.format(assemble(self.c_*dx)))
-    #PDESystem.update = update
-    #solver.solve(max_iter=1, redefine=False)
-    #######################################################

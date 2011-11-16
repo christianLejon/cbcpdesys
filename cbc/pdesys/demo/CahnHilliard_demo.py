@@ -73,5 +73,6 @@ if __name__ == '__main__':
     solver_parameters['iteration_type'] = 'Newton'
     problem = CH_Problem(problem_parameters)
     solver  = CH_Solver(problem, solver_parameters)
-    problem.initialize(solver, {'cmu': InitialConditions()})
+    problem.q0 = {'cmu': InitialConditions()}
+    problem.initialize(solver)
     problem.solve(max_iter=6)
