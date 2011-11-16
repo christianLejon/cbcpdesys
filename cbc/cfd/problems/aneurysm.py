@@ -98,7 +98,7 @@ class aneurysm(NSProblem):
         
         return [walls, inlet, pressure1, pressure2]
         
-    def prepare(self, pdesystems):
+    def prepare(self):
         """Called at start of a new timestep. Set the outlet pressure at new time."""
         solver = self.pdesystems['Navier-Stokes']
         u_mean = self.inflow_t_spline(self.t)[0]*695./750./self.A0

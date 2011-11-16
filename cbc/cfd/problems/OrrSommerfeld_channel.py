@@ -117,8 +117,9 @@ class channel(NSchannel):
         self.e1 = 0.5*errornorm(up, self.ue)**2
         return NSchannel.initialize(self, pdesystem)
 
-    def update(self, pdesystems):
-        info_green('Relative kinetic energy = ' + str(0.5*errornorm(pdesystems[0].u_, self.ue)**2/self.e1))
+    def update(self):
+        info_green('Relative kinetic energy = ' + 
+          str(0.5*errornorm(self.pdesystems['Navier-Stokes'].u_, self.ue)**2/self.e1))
 
 # Solve the Orr-Sommerfeld eigenvalue problem
 OS = OrrSommerfeld(Re=problem_parameters['Re'], N=60)

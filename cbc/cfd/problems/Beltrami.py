@@ -66,11 +66,11 @@ class Beltrami(NSProblem):
                                 
         return [domain]
         
-    def prepare(self, pdesystems):
+    def prepare(self):
         for val in exact_velocity.itervalues():
             val.t = self.t        
         
-    def update(self, pdesystems):
+    def update(self):
         pass
         #self.functional()
         

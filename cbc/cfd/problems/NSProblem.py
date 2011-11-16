@@ -37,7 +37,7 @@ class NSProblem(Problem):
         n  = int(self.prm['T'] / dt + 1.0)
         return self.prm['T']/n
         
-    def update(self, pdesystems):
+    def update(self):
         """Called at end of timestep for transient simulations or at the end of an
         iteration for steady simulations."""
         if self.prm['save_solution']:

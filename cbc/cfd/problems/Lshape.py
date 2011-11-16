@@ -66,7 +66,7 @@ class Lshape(NSProblem):
                              
         return [inlet, walls, outlet]
                                                                 
-    def prepare(self, pdesystems):
+    def prepare(self):
         """Called at start of a new timestep. Set the pressure at new time."""
         self.p_in.t = self.t
         

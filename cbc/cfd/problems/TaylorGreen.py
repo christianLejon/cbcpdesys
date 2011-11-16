@@ -76,7 +76,7 @@ class TaylorGreen(NSProblem):
                                 
         return [periodicX, periodicY, periodicZ]
        
-    def update(self, pdesystems):
+    def update(self):
         if (self.tstep-1) % self.NS_solver.prm['save_solution'] == 0:
             V = MixedFunctionSpace([self.NS_solver.V['u0']]*3)
             ff = project(curl(self.NS_solver.u_), V)
