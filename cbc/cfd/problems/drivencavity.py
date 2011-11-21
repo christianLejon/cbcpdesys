@@ -120,6 +120,12 @@ if __name__ == '__main__':
     psi_error = abs(psi-problem.reference(0))
     
     dump_result(problem, solver, t1, psi_error)
+
+    V = VectorFunctionSpace(problem.mesh, 'CG', 1)
+    u_ = project(solver.u_, V)
+
+    file1 = File('u.pvd')
+    file1 << u_
     
     print list_timings()
     interactive()

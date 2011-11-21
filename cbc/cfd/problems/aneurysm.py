@@ -69,13 +69,14 @@ class aneurysm(NSProblem):
             time[i*(n - 1):(i + 1)*(n - 1)] = MCAtime[:-1] + i*max(MCAtime)
 
         self.inflow_t_spline = ius(time, y)
-        n = self.n
         
-        # Dictionary for inlet conditions
+        # Preassemble normal vector on inlet
+        n = self.n
         self.n0 = assemble(-n[0]*ds(2), mesh=self.mesh)
         self.n1 = assemble(-n[1]*ds(2), mesh=self.mesh)
         self.n2 = assemble(-n[2]*ds(2), mesh=self.mesh)
         
+        # Area of inlet 
         self.A0 = assemble(Constant(1.)*ds(2), mesh=self.mesh)
         
         # Set dictionary used for Dirichlet inlet conditions
@@ -130,22 +131,23 @@ class aneurysm(NSProblem):
 if __name__ == '__main__':
     from cbc.cfd.icns import NSFullySegregated, NSSegregated, solver_parameters
     import time
+    parameters["linear_algebra_backend"] = "Epetra"
     set_log_active(True)
     problem_parameters['viscosity'] = 0.00345
-    problem_parameters['T'] = 0.04
+    problem_parameters['T'] = 0.01
     problem_parameters['dt'] = 0.01
     solver_parameters = recursive_update(solver_parameters, 
     dict(degree=dict(u=1,u0=1,u1=1,u2=1),
          pdesubsystem=dict(u=101, p=101, velocity_update=101), 
          linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
-         precond=dict(u='jacobi', p='hypre_amg', velocity_update='ilu'))
+         precond=dict(u='jacobi', p='hypre_amg', velocity_update='jacobi'))
          )
     
     problem = aneurysm(problem_parameters)
     solver = NSFullySegregated(problem, solver_parameters)
     #solver.pdesubsystems['u'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['velocity_update'].prm['monitor_convergence'] = True
-    solver.pdesubsystems['p'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['p'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['u2'].prm['monitor_convergence'] = True
@@ -155,6 +157,11 @@ if __name__ == '__main__':
     t0 = time.time()
     problem.solve()
     t1 = time.time() - t0
+
+    V = VectorFunctionSpace(problem.mesh, 'CG', 1)
+    u_ = project(solver.u_, V)
+    file1 = File('/home/mikaelmo/cbcpdesys/cbc/cfd/u.pvd')
+    file1 << u_
 
     print list_timings()
 

@@ -317,6 +317,35 @@ class PDESubSystemBase:
         """Get a special preconditioner."""
         return None
 
+class PDESubSystem(PDESubSystemBase):
+    def __init__(self, solver_namespace, sub_system, bcs=[], normalize=None, **kwargs):
+        PDESubSystemBase.__init__(self, solver_namespace, sub_system, bcs, normalize, **kwargs)
+
+        if not isinstance(self.bcs, list):
+            raise TypeError("expecting a list of boundary conditions")
+                        
+        self.linear_solver = self.get_solver()
+                                        
+        self.define()
+                        
+    def define(self):
+        
+        form_args = self.solver_namespace.copy()
+        if self.prm['iteration_type'] == 'Picard':
+            self.get_form(form_args)
+            self.a, self.L = lhs(self.F), rhs(self.F)
+            
+        else:
+            # Set up Newton system by switching Function for TrialFunction
+            for name in self.sub_system:
+                form_args[name + '_'] = self.solver_namespace[name]
+            self.get_form(form_args)
+            u_ = self.solver_namespace[self.name + '_']
+            u  = self.solver_namespace[self.name]
+            F_ = action(self.F, coefficient=u_)
+            J_ = derivative(F_, u_, u)
+            self.a, self.L = J_, -F_
+
 class DerivedQuantity(PDESubSystemBase):
     """Base class for derived quantities.        
     Derived quantities are all computed through forms like
@@ -549,35 +578,6 @@ class DerivedQuantity_grad(DerivedQuantity):
     
     def update(self):
         pass
-    
-class PDESubSystem(PDESubSystemBase):
-    def __init__(self, solver_namespace, sub_system, bcs=[], normalize=None, **kwargs):
-        PDESubSystemBase.__init__(self, solver_namespace, sub_system, bcs, normalize, **kwargs)
-
-        if not isinstance(self.bcs, list):
-            raise TypeError("expecting a list of boundary conditions")
-                        
-        self.linear_solver = self.get_solver()
-                                        
-        self.define()
-                        
-    def define(self):
-        
-        form_args = self.solver_namespace.copy()
-        if self.prm['iteration_type'] == 'Picard':
-            self.get_form(form_args)
-            self.a, self.L = lhs(self.F), rhs(self.F)
-            
-        else:
-            # Set up Newton system by switching Function for TrialFunction
-            for name in self.sub_system:
-                form_args[name + '_'] = self.solver_namespace[name]
-            self.get_form(form_args)
-            u_ = self.solver_namespace[self.name + '_']
-            u  = self.solver_namespace[self.name]
-            F_ = action(self.F, coefficient=u_)
-            J_ = derivative(F_, u_, u)
-            self.a, self.L = J_, -F_
 
 class TurbModel(PDESubSystem):
     """Base class for all turbulence models."""
@@ -622,20 +622,20 @@ class extended_normalize:
        on pressure) need to normalize the pressure.
        
        Example of use:
-mesh = UnitSquare(1, 1)
-V = VectorFunctionSpace(mesh, 'CG', 2)
-Q = FunctionSpace(mesh, 'CG', 1)
-VQ = V*Q
-up = Function(VQ)
-normalize_func = extended_normalize(VQ, 2)
-up.vector()[:] = 2.
-print 'before ', up.vector().array().astype('I')
-normalize_func(up.vector())
-print 'after ', up.vector().array().astype('I')
+       mesh = UnitSquare(1, 1)
+       V = VectorFunctionSpace(mesh, 'CG', 2)
+       Q = FunctionSpace(mesh, 'CG', 1)
+       VQ = V*Q
+       up = Function(VQ)
+       normalize_func = extended_normalize(VQ, 2)
+       up.vector()[:] = 2.
+       print 'before ', up.vector().array().astype('I')
+       normalize_func(up.vector())
+       print 'after ', up.vector().array().astype('I')
            
-           results in: 
-               before [2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2]   
-               after  [2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 0 0 0 0]
+       results in: 
+           before [2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2]   
+           after  [2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 0 0 0 0]
 
     """
     def __init__(self, V, part='entire vector'):
@@ -677,7 +677,7 @@ print 'after ', up.vector().array().astype('I')
                 self.x0[:] = 1.
 
 class FlowSubDomain(AutoSubDomain):
-    """Wrapper class that creates a SubDomain compatible with CBC.RANS's
+    """Wrapper class that creates a SubDomain compatible with CBC.PDESys's
        declaration of boundaries in terms of its type. This information is 
        used by the PDESystem to create boundary conditions.
     
@@ -741,7 +741,7 @@ class FlowSubDomain(AutoSubDomain):
 
 def solve_nonlinear(pdesubsystems, max_iter=1, max_err=1e-7, update=lambda: None, 
                     logging=True):
-        """Solve system of equations."""
+        """Generic solver for system of equations"""
         err = 1.
         j = 0
         err_s = " %4.4e %4.4e |"
