@@ -42,16 +42,15 @@ class NSFullySegregated(NSSolver):
                       str(self.prm['pdesubsystem']['u'])
             
         for ui in self.u_components: 
-            self.pdesubsystems[ui] = eval(u_subsystem)(vars(self), [ui], 
-                                                       bcs=self.bc[ui])
+            self.add_pdesubsystem(eval(u_subsystem), [ui], bcs=self.bc[ui])
                 
         p_subsystem = self.prm['time_integration'] + '_Pressure_' + \
                       str(self.prm['pdesubsystem']['p'])
         self.normalize['p'] = extended_normalize(self.V['p'], part='whole')
         #self.normalize['p'] = dolfin_normalize
-        self.pdesubsystems['p'] = eval(p_subsystem)(vars(self), ['p'], 
-                                                    bcs=self.bc['p'],
-                                                    normalize=self.normalize['p'])
+        
+        self.add_pdesubsystem(eval(p_subsystem), ['p'], bcs=self.bc['p'],
+                              normalize=self.normalize['p'])
         
         # Initialize pressure through this presolve (should improve accuracy of first step)
         #self.pdesubsystems['p'].solve()

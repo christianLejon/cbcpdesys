@@ -86,14 +86,14 @@ if __name__ == '__main__':
     problem_parameters['Nx'] = mesh_sizes[N]
     problem_parameters['Ny'] = mesh_sizes[N]
     problem_parameters['Re'] = 1000.
-    problem_parameters['T'] = 0.1
+    problem_parameters['T'] = 2.5
     #problem_parameters['plot_velocity'] = True
     #problem_parameters['plot_pressure'] = True
     problem_parameters['max_iter'] = 1
     problem_parameters['iter_first_timestep'] = 2
     solver_parameters = recursive_update(solver_parameters, 
     dict(degree=dict(u=1, u0=1, u1=1),
-        pdesubsystem=dict(u=1, p=1, velocity_update=1, up=1), 
+        pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
         linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
         precond=dict(u='jacobi', p='hypre_amg', velocity_update='jacobi'),
         max_iter=1 # Number of pressure/velocity iterations on given timestep

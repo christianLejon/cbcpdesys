@@ -87,8 +87,7 @@ class Problem:
                 
                 err = max([eval(s) for s in spr.replace('|','').split()] + [err])
         
-        self.update()
-        
+        self.update()        
 
     def solve_Transient_advance(self, pdesystems, logging):
         """Integrate solution in time.
@@ -126,7 +125,7 @@ class Problem:
             self.prepare()
             err = 1e10
             j = 0
-            # On the first timestep it may be neccessary to use more timesteps
+            # On the first timestep it may be necessary to use more timesteps
             if self.tstep==1:
                 max_iter = max(self.prm['iter_first_timestep'], self.prm['max_iter'])
             else:
@@ -216,7 +215,7 @@ class Problem:
                     info_red('Initial values not provided for all components of sub_system ')
                     return False
             except:
-                info_red('Error in initialize! Provide tuples of strings or Expressions.')
+                info_red('Error in initialize! Provide tuples of strings, Constants or Expressions.')
                 return False
             
             # Initialize solution:

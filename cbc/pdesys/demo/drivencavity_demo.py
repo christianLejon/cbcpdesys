@@ -9,15 +9,15 @@ class drivencavity_Solver(PDESystem):
     """Simple example of Navier-Stokes (NS) solvers using the PDESystem 
     class. Problem is a lid-driven cavity that can be either transient or 
     steady. To make it more interesting we also add a passive scalar 'c' to the 
-    problem. The problem thus consist of two subsystems: ['u', 'p'] for NS and 
+    problem. The problem thus consist of two PDE subsystems: ['u', 'p'] for NS and 
     ['c'] for the passive scalar.
     """
     def __init__(self, mesh, parameter):
         PDESystem.__init__(self, [['u', 'p'], ['c']], mesh, parameters)
-        self.setup() # Generates functionspaces and functions
         self.nu = Constant(self.prm['viscosity'])
         self.dt = Constant(self.prm['dt'])
         self.f = Constant((0, 0))
+        
         # Initialize the problem
         up0 = interpolate(Constant((0, 0, 0)), self.V['up'])
         c0 = Expression("n*n/(2.*pi)*exp(-0.5*n*n*(pow(x[0]-x0, 2) \
@@ -25,8 +25,7 @@ class drivencavity_Solver(PDESystem):
                         n=10, x0=0.5, y0=0.5)
         c0 = interpolate(c0, self.V['c'])
         self.initialize(dict(up=up0, c=c0))
-        self.normalize['up'] = extended_normalize(self.V['up'], 
-                                                  self.u_.value_size())
+        self.normalize['up'] = extended_normalize(self.V['up'], 2)
         # Define boundary conditions. Only natural bcs for c
         self.bc['up'] = [DirichletBC(self.V['up'].sub(0), (0., 0.), "on_boundary"),
                          DirichletBC(self.V['up'].sub(0), (1., 0.), "near(x[1], 1.) \
@@ -38,10 +37,11 @@ class drivencavity_Solver(PDESystem):
         ti = self.prm['time_integration']
         up_name = 'NS_{}_{}'.format(ti, self.prm['pdesubsystem']['up'])
         c_name  = 'Scalar_{}_{}'.format(ti, self.prm['pdesubsystem']['c'])
-        self.pdesubsystems['up'] = eval(up_name)(vars(self), ['u', 'p'], 
-                                                 bcs=self.bc['up'],
-                                                 normalize=self.normalize['up'])
-        self.pdesubsystems['c'] = eval(c_name)(vars(self), ['c'])
+        
+        self.add_pdesubsystem(eval(up_name), ['u', 'p'], bcs=self.bc['up'],
+                              normalize=self.normalize['up'])
+                              
+        self.add_pdesubsystem(eval(c_name), ['c'])
         
     def update(self):
         plot(self.u_, rescale=True)
@@ -82,6 +82,7 @@ class Scalar_Transient_1(PDESubSystem):
         return F
 
 class Scalar_Steady_1(PDESubSystem):
+    """Pseudo-steady form for scalar"""
     def form(self, c, v_c, c_, u, u_, nu, dt, **kwargs):
         F = (1./dt)*inner(c - c_, v_c)*dx + inner(dot(u_, grad(c)), v_c)*dx \
             + nu*inner(grad(v_c), grad(c))*dx
@@ -95,10 +96,10 @@ if __name__=='__main__':
         'T': 1.,
         'degree': {'u':2, 'c': 2},
         'space': {'u': VectorFunctionSpace},
-        'time_integration': 'Transient'
+        'time_integration': 'Steady'
     })
     mesh = UnitSquare(20, 20)
     solver = drivencavity_Solver(mesh, parameters)
-    solver.solve(max_iter=1, redefine=False)
+    solver.solve(max_iter=10, redefine=False)
     interactive()
     #

@@ -293,6 +293,8 @@ class PDESystem:
                                    max_err=max_err or self.prm['max_err'],
                                    logging=logging)
             
+            self.solve_derived_quantities()
+            
             self.Transient_update()    
         
             self.update()
@@ -306,9 +308,16 @@ class PDESystem:
         Will only be used in case there is no Problem class with
         solve functionality. Will probably be removed.
         """
+        self.prepare()
+
         err = self.solve_inner(max_iter=max_iter or self.prm['max_iter'],
                                max_err=max_err or self.prm['max_err'],
                                logging=logging)
+                            
+        self.solve_derived_quantities()
+        
+        self.update()
+        
         return err
                 
     def solve_inner(self, max_iter=1, max_err=1e-7, logging=True):
@@ -340,6 +349,13 @@ class PDESystem:
         """Hook up pdesubsystems"""
         pass
     
+    def add_pdesubsystem(self, pdesubsystem, sub_system, **kwargs):
+        name = ''.join(sub_system)
+        if name in self.system_names:
+            self.pdesubsystems[name] = pdesubsystem(vars(self), sub_system, **kwargs)
+        else:
+            info_red('Wrong sub_system!')
+        
     def info(self):
         print "Base class for solving a system of PDEs"
         

@@ -69,7 +69,7 @@ fully_coupled = eval(sys.argv[-1])
 
 # Set up Navier-Stokes PDE system
 solver_parameters = recursive_update(solver_parameters, {
-    'degree': {'u':2, 'c': 1},
+    'degree': {'u':2, 'c': 2},
     'space': {'u': VectorFunctionSpace},
 })
 
@@ -89,8 +89,8 @@ if fully_coupled:
         bc.apply(NS.upc_.vector())
         bc.apply(NS.upc_1.vector())
     
-    NS.pdesubsystems['upc'] = NavierStokesScalar(vars(NS), ['u', 'p', 'c'], 
-                                        bcs=bcs, normalize=normalization)
+    NS.add_pdesubsystem(NavierStokesScalar, ['u', 'p', 'c'], 
+                         bcs=bcs, normalize=normalization)
                                         
     def update(self):
         sol = self.pdesystems['Navier-Stokes-Scalar']
@@ -110,8 +110,8 @@ else:
     normalization = extended_normalize(NS.V['up'], 2)
     bcs = [DirichletBC(NS.V['u'], (0., 0.), "on_boundary"),
         DirichletBC(NS.V['u'], (1., 0.), "on_boundary && x[1] > 1. - DOLFIN_EPS")]
-    NS.pdesubsystems['up'] = NavierStokes(vars(NS), ['u', 'p'], 
-                                        bcs=bcs, normalize=normalization)
+    
+    NS.add_pdesubsystem(NavierStokes, ['u', 'p'], bcs=bcs, normalize=normalization)
 
     # Overload update method to plot intermediate results. update is called at the end of each timestep
     def update(self):
@@ -124,7 +124,7 @@ else:
     Problem.update = update
 
     # Integrate solution a few timesteps up to prm['T']
-    problem.solve()
+    #problem.solve()
 
     # Set up two scalar PDESystems with different diffusivity and boundary conditions
     solver_parameters['familyname'] = 'Scalar1'
@@ -136,14 +136,14 @@ else:
     bcs1 = [DirichletBC(Scalar1.V['c'], (1.), "on_boundary && x[1] > 1. - DOLFIN_EPS")]
     bcs2 = [DirichletBC(Scalar2.V['c'], (1.), "on_boundary && x[1] < DOLFIN_EPS")]
     Scalar1.nu = Scalar2.nu = Constant(problem.prm['viscosity'])
-    Scalar1.Pr = Constant(10.)
-    Scalar2.Pr = Constant(1.)
+    Scalar1.Pr = Constant(1.)
+    Scalar2.Pr = Constant(2.)
     Scalar1.u_  = Scalar2.u_  = NS.u_
     Scalar1.u_1 = Scalar2.u_1 = NS.u_1
 
     # Hook up the scalar transport form
-    Scalar1.pdesubsystems['c'] = Scalar(vars(Scalar1), ['c'], bcs=bcs1)
-    Scalar2.pdesubsystems['c'] = Scalar(vars(Scalar2), ['c'], bcs=bcs2)
+    Scalar1.add_pdesubsystem(Scalar, ['c'], bcs=bcs1)
+    Scalar2.add_pdesubsystem(Scalar, ['c'], bcs=bcs2)
 
     # Integrate the solution up to prm['T']
     problem.prm['T'] = 2.
