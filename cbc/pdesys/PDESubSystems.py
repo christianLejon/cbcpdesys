@@ -184,8 +184,7 @@ class PDESubSystemBase:
         omega = self.prm['omega']
         self.x.axpy(omega, dx)  # relax
         self.update()
-        #return norm(self.b), dx
-        return 1., dx
+        return norm(self.b), dx
 
     def assemble(self, M):
         """Assemble tensor."""
@@ -193,12 +192,14 @@ class PDESubSystemBase:
             M = assemble(self.a, tensor=M,
                      exterior_facet_domains=self.exterior_facet_domains,
                      reset_sparsity=self.prm['reset_sparsity'])
+            # It is possible to preassemble parts of the matrix in A1. In that case just add the preassembled part
             if not self.A1 is None:
                 M.axpy(1., self.A1, True)
             self.prm['reset_sparsity'] = False
         elif isinstance(M, Vector):
             M = assemble(self.L, tensor=M,
                      exterior_facet_domains=self.exterior_facet_domains)       
+            # It is possible to preassemble parts of the vector in b1. If so add it here
             if not self.b1 is None:
                 M.axpy(1., self.b1)
     
@@ -228,7 +229,8 @@ class PDESubSystemBase:
             prm_sol['error_on_nonconvergence'] = False
             prm_sol['nonzero_initial_guess'] = True
             prm_sol['report'] = False
-            if self.prm['monitor_convergence']: info_red('   Monitoring convergence for ' + self.name)
+            if self.prm['monitor_convergence']:
+                info_red('   Monitoring convergence for ' + self.name)
             
         if not assemble_A:
             # If A is not assembled, then neither is the preconditioner
@@ -290,12 +292,12 @@ class PDESubSystemBase:
 
     def get_form(self, form_args):
         """Set the variational form F.
-           There are three ways of providing F:
-               1) return F from method form
-               2) Provide F as a string through keyword F
-               3) Provide F as ufl.form.Form through keyword F
-               
-           The procedure is to check first in 1), then 2) and finally 3).
+        There are three ways of providing F:
+            1) return F from method form
+            2) Provide F as a string through keyword F
+            3) Provide F as ufl.form.Form through keyword F
+            
+        The procedure is to check first in 1), then 2) and finally 3).
         """
         F = self.form(**form_args)
         if F:
@@ -318,6 +320,7 @@ class PDESubSystemBase:
         return None
 
 class PDESubSystem(PDESubSystemBase):
+    """Base class for most PDESubSystems"""
     def __init__(self, solver_namespace, sub_system, bcs=[], normalize=None, **kwargs):
         PDESubSystemBase.__init__(self, solver_namespace, sub_system, bcs, normalize, **kwargs)
 
@@ -589,9 +592,6 @@ def dolfin_normalize(v):
     """Use l2 normalization because average is not working in parallel"""
     return normalize(v, 'l2')
         
-def dolfin_normalize(v):
-    return normalize(v, 'l2')
-        
 class single_normalize:
     """Normalize part of vector.
        Slicing does not work in parallel."""
@@ -608,35 +608,34 @@ class single_normalize:
         
 class extended_normalize:
     """Normalize part or whole of vector.
-       This routine works in parallel as well.
-       
-       V    = Functionspace we normalize in
-       
-       u    = Function where part is normalized
-       
-       part = The index of the part of the mixed function space
-              that we want to normalize.
-              
-       For example. When solving for velocity and pressure coupled in the
-       Navier-Stokes equations we sometimes (when there is only Neuman BCs 
-       on pressure) need to normalize the pressure.
-       
-       Example of use:
-       mesh = UnitSquare(1, 1)
-       V = VectorFunctionSpace(mesh, 'CG', 2)
-       Q = FunctionSpace(mesh, 'CG', 1)
-       VQ = V*Q
-       up = Function(VQ)
-       normalize_func = extended_normalize(VQ, 2)
-       up.vector()[:] = 2.
-       print 'before ', up.vector().array().astype('I')
-       normalize_func(up.vector())
-       print 'after ', up.vector().array().astype('I')
-           
-       results in: 
-           before [2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2]   
-           after  [2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 0 0 0 0]
+    This routine works in parallel as well.
 
+    V    = Functionspace we normalize in
+
+    u    = Function where part is normalized
+
+    part = The index of the part of the mixed function space
+        that we want to normalize.
+        
+    For example. When solving for velocity and pressure coupled in the
+    Navier-Stokes equations we sometimes (when there is only Neuman BCs 
+    on pressure) need to normalize the pressure.
+
+    Example of use:
+    mesh = UnitSquare(1, 1)
+    V = VectorFunctionSpace(mesh, 'CG', 2)
+    Q = FunctionSpace(mesh, 'CG', 1)
+    VQ = V*Q
+    up = Function(VQ)
+    normalize_func = extended_normalize(VQ, 2)
+    up.vector()[:] = 2.
+    print 'before ', up.vector().array().astype('I')
+    normalize_func(up.vector())
+    print 'after ', up.vector().array().astype('I')
+
+    results in: 
+        before [2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2]   
+        after  [2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 0 0 0 0]
     """
     def __init__(self, V, part='entire vector'):
         self.part = part
@@ -667,7 +666,7 @@ class extended_normalize:
                 self.x0[:] = self.x0[:]*(self.c/c1)
         else:
             # normalize entire vector
-            # dummy = normalize(v) # Doesn't work in parallel, why?
+            # dummy = normalize(v, 'l2')
             self.u.vector()[:] = v[:]
             #c1 = assemble(self.u*dx)
             c1 = self.C1.inner(self.u.vector())
@@ -677,35 +676,35 @@ class extended_normalize:
                 self.x0[:] = 1.
 
 class FlowSubDomain(AutoSubDomain):
-    """Wrapper class that creates a SubDomain compatible with CBC.PDESys's
-       declaration of boundaries in terms of its type. This information is 
-       used by the PDESystem to create boundary conditions.
-    
-       inside_function = inside method taking either x or x, on_boundary as args
-                         e.g., lambda x, on_boundary: near(x[0], 0) and on_boundary
-                         for an inside method where x[0] is close to zero
-                         
-                  func = values for Dirichlet bcs. 
-                         Dictionary using system_names as keys
-                         
-                    mf = FacetFunction identifying boundaries
-                    
-               bc_type = type of boundary. Currently implemented (NS=Navier-Stokes):
-                         VelocityInlet    (NS: DirichletBC on u, nothing on p)
-                         Wall             (NS: DirichletBC on u, nothing on p)
-                         Periodic         (PeriodicBC)
-                         Weak boundary conditions that require meshfunction:
-                         Outlet           (NS: pseudo traction. nu*grad(u)*n - p*n = 0)
-                         ConstantPressure (NS: grad(u)*n=0 and p=func)
-                         (Symmetry        (NS: grad(u)*n=0, u*n=0 experimental)
-                         (Slip            (NS: u*n=0. experimental))
-                         
-          periodic_map = Method that contains periodicity (see PeriodicBC). 
-                         Example:
-                         def periodic_map(x, y):
-                             y[0] = x[0] - 1
-                             y[1] = x[1]
-                  """
+    """Wrapper class that creates a SubDomain compatible with CBC.RANS's
+    declaration of boundaries in terms of its type. This information is 
+    used by the PDESystem to create boundary conditions.
+
+    inside_function = inside method taking either x or x, on_boundary as args
+                        e.g., lambda x, on_boundary: near(x[0], 0) and on_boundary
+                        for an inside method where x[0] is close to zero
+                        
+                func = values for Dirichlet bcs. 
+                        Dictionary using system_names as keys
+                        
+                mf = FacetFunction identifying boundaries
+                
+            bc_type = type of boundary. Currently implemented (NS=Navier-Stokes):
+                        VelocityInlet    (NS: DirichletBC on u, nothing on p)
+                        Wall             (NS: DirichletBC on u, nothing on p)
+                        Periodic         (PeriodicBC)
+                        Weak boundary conditions that require meshfunction:
+                        Outlet           (NS: pseudo traction. nu*grad(u)*n - p*n = 0)
+                        ConstantPressure (NS: grad(u)*n=0 and p=func)
+                        (Symmetry        (NS: grad(u)*n=0, u*n=0 experimental)
+                        (Slip            (NS: u*n=0. experimental))
+                        
+        periodic_map = Method that contains periodicity (see PeriodicBC). 
+                        Example:
+                        def periodic_map(x, y):
+                            y[0] = x[0] - 1
+                            y[1] = x[1]
+    """
     
     def __init__(self, inside_function, bc_type='Wall', func=None, 
                  mf=None, mark=True, periodic_map=None):
@@ -739,8 +738,7 @@ class FlowSubDomain(AutoSubDomain):
         """
         pass
 
-def solve_nonlinear(pdesubsystems, max_iter=1, max_err=1e-7, update=lambda: None, 
-                    logging=True):
+def solve_nonlinear(pdesubsystems, max_iter=1, max_err=1e-7, logging=True):
         """Generic solver for system of equations"""
         err = 1.
         j = 0
@@ -758,7 +756,7 @@ def solve_nonlinear(pdesubsystems, max_iter=1, max_err=1e-7, update=lambda: None
             total_err = ""
             err = 0.            
             for pdesubsystem in pdesubsystems:
-
+                
                 res, dx = pdesubsystem.solve(assemble_A=pdesubsystem.assemble_A,
                                              assemble_b=pdesubsystem.assemble_b) 
                 ndx = norm(dx)
@@ -771,15 +769,13 @@ def solve_nonlinear(pdesubsystems, max_iter=1, max_err=1e-7, update=lambda: None
                     pdesubsystem.assemble_A = pdesubsystem.prm['reassemble_lhs_inner']
                 if pdesubsystem.assemble_b:
                     pdesubsystem.assemble_b = pdesubsystem.prm['reassemble_rhs_inner']
-                          
+                                              
             # print result
             if logging:
                 info_green("    Iter    %s error | " %(j)+ 
                           ' | '.join([pdesubsystem.name 
                                       for pdesubsystem in pdesubsystems]) +
                           " | " + total_err)
-            
-            update()
             
         return total_err, j
     

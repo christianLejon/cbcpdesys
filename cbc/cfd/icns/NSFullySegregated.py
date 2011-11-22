@@ -369,6 +369,7 @@ class Transient_Velocity_101(VelocityBase):
             self.A._scale(-1.)
             self.A.axpy(2./self.dt, self.M, True)
             self.prm['reset_sparsity'] = False 
+            self.A.initialized = True
             ## FixMe. For some reason reset_sparsity must be True for periodic bcs ?? Perhaps the modified sparsity pattern in (1 -1) rows??
             if any([bc.type() == 'Periodic' for bc in self.bcs]):
                 self.prm['reset_sparsity'] = True 
@@ -387,7 +388,9 @@ class Transient_Velocity_101(VelocityBase):
         self.b.axpy(-1., self.P*self.solver_namespace['x_']['p'])
         [bc.apply(self.A, self.b) for bc in self.bcs]
         self.work[:] = self.x[:]    # start vector for iterative solvers
+        # Check out line below to save one matrix vector product
         rv = residual(self.A, self.x, self.b)
+        #rv = 0
         self.setup_solver(assemble_A, assemble_b)
         self.linear_solver.solve(self.A, self.x, self.b)
         self.b[:] = self.bold[:]

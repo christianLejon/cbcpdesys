@@ -15,17 +15,19 @@ def stationary_walls(x, on_boundary):
 
 lid_velocity = Initdict(u=('1', '0'), p='0')
 
+problem_parameters['time_integration']='Transient' # default to transient
+
 class drivencavity(NSProblem):
     """2D lid-driven cavity."""
     def __init__(self, parameters):
         NSProblem.__init__(self, parameters=parameters)
         
-        self.mesh = UnitSquare(self.prm['Nx'], self.prm['Ny'])
-        #self.mesh = self.gen_mesh()
+        #self.mesh = UnitSquare(self.prm['Nx'], self.prm['Ny'])
+        self.mesh = self.gen_mesh()
         # Set viscosity
         self.prm['viscosity'] = 1./self.prm['Re']
         # Set timestep as NSbench
-        self.prm['dt'] = self.prm['T']/ceil(self.prm['T']/0.25/self.mesh.hmin())
+        self.prm['dt'] = self.prm['T']/ceil(self.prm['T']/0.2/self.mesh.hmin())
         # Boundaries
         walls = FlowSubDomain(stationary_walls, bc_type='Wall')
         top   = FlowSubDomain(lid, func=lid_velocity, bc_type='Wall')
@@ -43,7 +45,7 @@ class drivencavity(NSProblem):
 
     def initialize(self, pdesystem):
         """Initialize solution simply by applying lid_velocity to the top boundary"""
-        #return False   # This will simply use u = (0, 0) and p = 0
+        return False   # This will simply use u = (0, 0) and p = 0
         if pdesystem.prm['familyname'] == 'Navier-Stokes':
             for name in pdesystem.system_names:
                 if not name == 'up': # Coupled solver does not need this, makes no difference
@@ -66,7 +68,7 @@ class drivencavity(NSProblem):
     def reference(self, t):
         """Reference min streamfunction for T=2.5, Re = 1000."""
         return -0.061076605
-
+        
     def __str__(self):
         return "Driven cavity"
 
@@ -76,7 +78,6 @@ if __name__ == '__main__':
     import time
     import sys
     set_log_active(True)
-    problem_parameters['time_integration']='Transient'
     mesh_sizes = [2, 11, 16, 23, 32, 45, 64, 91, 128, 181, 256, 362]
     try:
         N = eval(sys.argv[-1])
@@ -85,14 +86,17 @@ if __name__ == '__main__':
     problem_parameters['Nx'] = mesh_sizes[N]
     problem_parameters['Ny'] = mesh_sizes[N]
     problem_parameters['Re'] = 1000.
-    problem_parameters['T'] = 2.5
-    problem_parameters['max_iter'] = 1  # Number of pressure/velocity iterations on given timestep
+    problem_parameters['T'] = 0.1
+    #problem_parameters['plot_velocity'] = True
+    #problem_parameters['plot_pressure'] = True
+    problem_parameters['max_iter'] = 1
+    problem_parameters['iter_first_timestep'] = 2
     solver_parameters = recursive_update(solver_parameters, 
-    dict(degree=dict(u=2, u0=2, u1=2),
-        pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
+    dict(degree=dict(u=1, u0=1, u1=1),
+        pdesubsystem=dict(u=1, p=1, velocity_update=1, up=1), 
         linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
         precond=dict(u='jacobi', p='hypre_amg', velocity_update='jacobi'),
-        plot_velocity=False
+        max_iter=1 # Number of pressure/velocity iterations on given timestep
         ))
     problem = drivencavity(problem_parameters)
     solver = icns.NSFullySegregated(problem, solver_parameters)        
@@ -107,27 +111,20 @@ if __name__ == '__main__':
     problem.solve()
     t1 = time.time()-t0
     info_red('Total computing time = {0:f}'.format(t1))
-    print problem.functional(solver.u_)
+    print 'Functional = ', problem.functional(solver.u_), ' ref ', problem.reference(0)
     
-    ## plot result. For fully segregated solver one should project the velocity vector on the correct space, if not the plot will look poor
-    #if solver.__class__ is icns.NSFullySegregated:
-    #    plot(project(solver.u_, VectorFunctionSpace(solver.mesh, 'CG', solver_parameters['degree']['u0'])))
-    #else:
-    #    plot(solver.u_)
+    ## plot result. For fully segregated solver one should project the velocity vector on the correct space, if not the plot will look bad
+    if solver.__class__ is icns.NSFullySegregated:
+       plot(project(solver.u_, VectorFunctionSpace(solver.mesh, 'CG', solver_parameters['degree']['u0'])))
+    else:
+       plot(solver.u_)
                 
     psi = problem.functional(solver.u_)    
     
     psi_error = abs(psi-problem.reference(0))
     
     dump_result(problem, solver, t1, psi_error)
-
-    V = VectorFunctionSpace(problem.mesh, 'CG', 1)
-    u_ = project(solver.u_, V)
-
-    file1 = File('u.pvd')
-    file1 << u_
     
     print list_timings()
-    interactive()
     
     

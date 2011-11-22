@@ -268,7 +268,9 @@ class PDESystem:
             solve_Steady_advance         --  Steady iteration
         or user defined 
             solve_Transient_something
-            solve_Steady_something                
+            solve_Steady_something   
+        Will only be used in case there is no Problem class with
+        solve functionality. Will probably be removed.
         """
         self.prm = recursive_update(self.prm, kwargs)
         if redefine: 
@@ -277,7 +279,10 @@ class PDESystem:
             
     def solve_Transient_advance(self, max_iter=None, max_err=None, 
                                 logging=True):
-        """Advance solution in steps of dt to time T."""
+        """Advance solution in steps of dt to time T.
+        Will only be used in case there is no Problem class with
+        solve functionality. Will probably be removed.
+        """
         while self.t < (self.prm['T'] - self.tstep*DOLFIN_EPS):
             self.t = self.t + self.dt(0)
             self.tstep = self.tstep + 1
@@ -297,24 +302,26 @@ class PDESystem:
         return err
         
     def solve_Steady_advance(self, max_iter=None, max_err=None, logging=True):
-        """Iterate solution max_iter iterations or until convergence."""
+        """Iterate solution max_iter iterations or until convergence.
+        Will only be used in case there is no Problem class with
+        solve functionality. Will probably be removed.
+        """
         err = self.solve_inner(max_iter=max_iter or self.prm['max_iter'],
                                max_err=max_err or self.prm['max_err'],
-                               update=self.update, logging=logging)
+                               logging=logging)
         return err
                 
-    def solve_inner(self, max_iter=1, max_err=1e-7, update=lambda: None,
-                    logging=True):
+    def solve_inner(self, max_iter=1, max_err=1e-7, logging=True):
         err, j = solve_nonlinear([self.pdesubsystems[name] 
                                   for name in self.system_names],
                                   max_iter=max_iter, max_err=max_err,
-                                  update=update, logging=max_iter>1)
+                                  logging=max_iter>1)
         self.total_number_iters += j
         return err
 
     def solve_derived_quantities(self):
         """
-        Solve for derived quantities
+        Solve for derived quantities found
         in dictionary pdesubsystems['derived quantities'].
         """
         if 'derived quantities' in self.pdesubsystems:
@@ -322,15 +329,15 @@ class PDESystem:
                 pdesubsystem.solve()
     
     def prepare(self):
-        """Called at start of timestep"""
+        """Called at start of iterations over pdesystems"""
         pass
     
     def update(self):
-        """Called at end of timestep"""
+        """Called at end of of iterations over pdesystems"""
         pass
     
     def define(self):
-        """Set up numerical pdesubsystems"""
+        """Hook up pdesubsystems"""
         pass
     
     def info(self):

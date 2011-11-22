@@ -38,8 +38,8 @@ class NSProblem(Problem):
         return self.prm['T']/n
         
     def update(self):
-        """Called at end of timestep for transient simulations or at the end of an
-        iteration for steady simulations."""
+        """Called at end of timestep for transient simulations or at the end of
+        iterations for steady simulations."""
         if self.prm['save_solution']:
             if self.prm['time_integration'] == 'Steady':
                 i = self.total_number_iters
@@ -61,7 +61,18 @@ class NSProblem(Problem):
                         self.resultfile[name] = File(os.path.join(result_path, name + ".pvd"))
                     self.resultfile[name] << self.q_[name]
                 
-        if self.prm['plot_velocity']: plot(self.NS_solver.u_, title = 'Velocity', 
-                                           rescale=True)
-        if self.prm['plot_pressure']: plot(self.NS_solver.p_, title = 'Pressure', 
+        if self.prm['plot_velocity']:
+            if isinstance(self.NS_solver.u_, ufl.tensors.ListTensor):
+                V = VectorFunctionSpace(self.mesh, 'CG', 
+                                        self.NS_solver.prm['degree']['u0'])
+                u_ = project(self.NS_solver.u_, V)
+                if hasattr(self, 'u_plot'):
+                    self.u_plot.vector()[:] = u_.vector()[:]
+                else:
+                    self.u_plot = u_
+            else:
+                self.u_plot = self.NS_solver.u_
+            plot(self.u_plot, title='Velocity', rescale=True)
+
+        if self.prm['plot_pressure']: plot(self.NS_solver.p_, title='Pressure',
                                            rescale=True)

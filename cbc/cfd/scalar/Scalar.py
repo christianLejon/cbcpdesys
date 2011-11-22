@@ -23,7 +23,10 @@ class Scalar(PDESystem):
         PDESystem.setup(self)
             
         self.u_   = self.problem.pdesystems['Navier-Stokes'].u_
+        self.u_1   = self.problem.pdesystems['Navier-Stokes'].u_1
         self.nut_ = self.problem.pdesystems['Navier-Stokes'].nut_
+        # Fixme. Add timelevels for nut_
+        #self.nut_1 = self.problem.pdesystems['Navier-Stokes'].nut_1
         self.nu = Constant(self.problem.prm['viscosity']/self.prm['Schmidt']) 
         if self.nut_:
             self.nu = self.nu + self.nut_/self.prm['Schmidt_T']
@@ -47,7 +50,7 @@ class Scalar(PDESystem):
         
 class ScalarBase(PDESubSystem):
     
-     def define(self):
+    def define(self):
         
         form_args = self.solver_namespace.copy()
         self.exterior = any([bc.type() in ['ConstantPressure', 'Outlet']
@@ -70,22 +73,23 @@ class ScalarBase(PDESubSystem):
             F_ = action(self.F, coefficient=u_)
             J_ = derivative(F_, u_, u)
             self.a, self.L = J_, -F_
-            
+    
     def add_exterior(self, c, v_c, n, nu, **kwargs):
         C = self.Laplace_C
         L = []
         for bc in self.bcs:
             if bc.type() in ('ConstantPressure', 'Outlet'):
                 info_green('Assigning weak boundary condition for ' + bc.type())
-                L.append(-nu*inner(v_c, grad(C)*n)*ds(bc.bid)) 
+                L.append(-nu*inner(v_c, grad(C)*n)*ds(bc.bid))
                 self.exterior_facet_domains = bc.mf 
-                
+            
 class Transient_Scalar_1(ScalarBase):
     
-    def form(self, c_, c, v_c, u_, nu, nut_, **kwargs):
+    def form(self, c_, c_1, c, v_c, u_, u_1, nu, dt, **kwargs):
         C = 0.5*(c + c_1)
+        U_ = 0.5*(u_ + u_1)
         self.Laplace_C = C
-        return (1./dt)*inner(c - c_1)*dx + inner(dot(u_, grad(c)), v_c)*dx
+        return (1./dt)*inner(c - c_1, v_c)*dx + inner(dot(U_, grad(C)), v_c)*dx \
                + nu*inner(grad(C), grad(v_c))*dx
 
 class Steady_Scalar_1(ScalarBase):
@@ -94,4 +98,3 @@ class Steady_Scalar_1(ScalarBase):
         C = 0.5*(c + c_1)
         self.Laplace_C = C
         return inner(dot(u_, grad(c)), v_c)*dx + nu*inner(grad(C), grad(v_c))*dx
-

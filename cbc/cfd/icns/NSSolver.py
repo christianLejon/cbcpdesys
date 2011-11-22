@@ -14,7 +14,9 @@ solver_parameters = recursive_update(solver_parameters, {
     'space': dict(u=VectorFunctionSpace),
     'degree': dict(u=2),
     'apply': defaultdict(lambda: 'use_formula'),
-    'familyname': 'Navier-Stokes'
+    'familyname': 'Navier-Stokes',
+    'plot_velocity': False,
+    'plot_pressure': False
 })
 
 # For segregated solvers we can overload Subdict to use 'u' options where 
@@ -133,3 +135,25 @@ class NSSolver(PDESystem):
         if 'derived quantities' in self.pdesubsystems:
             for pdesubsystem in self.pdesubsystems['derived quantities']:
                 pdesubsystem.solve()
+
+    def update(self):
+        """Called at end of one iteration over pdesubsystems.
+        This function is probably just intended for steady simulations
+        where one wants to plot intermediate iterations to see how the
+        simulation evolves"""
+        if self.prm['plot_velocity']:
+            if not self.problem.prm['time_integration'] == 'Steady':
+                info_red('Set plot_velocity/pressure in problem_parameters to plot at end of timestep')
+            if isinstance(self.u_, ufl.tensors.ListTensor):
+                V = VectorFunctionSpace(self.mesh, 'CG', self.prm['degree']['u0'])
+                u_ = project(self.u_, V)
+                if hasattr(self, 'u_plot'):
+                    self.u_plot.vector()[:] = u_.vector()[:]
+                else:
+                    self.u_plot = u_
+            else:
+                self.u_plot = self.u_
+            plot(self.u_plot, rescale=True)
+            
+        if self.prm['plot_pressure']: plot(self.NS_solver.p_, title='Pressure',
+                                           rescale=True)

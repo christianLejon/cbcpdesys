@@ -30,8 +30,8 @@ class CH_Problem(Problem):
         Problem.__init__(self, parameters=parameters)
         self.mesh = UnitSquare(self.prm['N'], self.prm['N'])
         
-    def update(self, pdesystems):
-        plot(pdesystems[0].c_, rescale=True)
+    def update(self):
+        plot(self.pdesystems['default'].c_, rescale=True)
 
 class CH_Solver(PDESystem):
     

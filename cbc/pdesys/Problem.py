@@ -9,6 +9,7 @@ from cbc.pdesys.PDESubSystems import *
 default_problem_parameters = dict(time_integration='Transient',
                                   max_iter=1,
                                   max_err=1e-7,
+                                  iter_first_timestep=1,
                                   T=1.,
                                   dt=0.01)
 
@@ -54,19 +55,25 @@ class Problem:
         """Iterate solution max_iter iterations or until convergence."""        
         err = 1
         j = 0
+        
+        self.prepare()
+
         while err > self.prm['max_err'] and j < self.prm['max_iter']:
             err = 0.
             j += 1
-            
+                        
             spr = ''
             for pdesystem in pdesystems:
+                
+                pdesystem.prepare()
+                
                 spr += pdesystem.solve_inner(max_iter=pdesystem.prm['max_iter'],
                                              max_err=pdesystem.prm['max_err'],
                                              logging=False)
                 
                 pdesystem.solve_derived_quantities()
                 
-            self.update()
+                pdesystem.update()
                 
             self.total_number_iters += 1
                 
@@ -79,7 +86,9 @@ class Problem:
                         " | " + spr)
                 
                 err = max([eval(s) for s in spr.replace('|','').split()] + [err])
-
+        
+        self.update()
+        
 
     def solve_Transient_advance(self, pdesystems, logging):
         """Integrate solution in time.
@@ -117,20 +126,28 @@ class Problem:
             self.prepare()
             err = 1e10
             j = 0
-            while err > self.prm['max_err'] and j < self.prm['max_iter']:
+            # On the first timestep it may be neccessary to use more timesteps
+            if self.tstep==1:
+                max_iter = max(self.prm['iter_first_timestep'], self.prm['max_iter'])
+            else:
+                max_iter = self.prm['max_iter']
+            while err > self.prm['max_err'] and j < max_iter:
                 err = 0.
                 j += 1                
                 tot_number_iters = 0
                 spr = ''
                 for pdesystem in pdesystems:
                     # Solve all schemes in pdesystem a given number of times
+                    
+                    pdesystem.prepare()
+                    
                     spr += pdesystem.solve_inner(max_iter=pdesystem.prm['max_iter'], 
                                                  max_err=pdesystem.prm['max_err'],
                                                  logging=logging)
                     
                     pdesystem.solve_derived_quantities()
                     
-                    #pdesystem.update()
+                    pdesystem.update()
                                     
                     tot_number_iters += pdesystem.total_number_iters
                             
@@ -211,12 +228,13 @@ class Problem:
         return True
         
     def prepare(self, *args):
-        """Called at the beginning of a timestep for transient simulations."""
+        """Called at the beginning of a timestep for transient simulations or
+        before iterations in steady state simulations."""
         pass
     
     def update(self, *args):
         """Called at the end of a timestep for transient simulations or at the
-        end of an iteration for steady simulations."""
+        end of iterations for steady simulations."""
         pass
     
     def setup(self, pdesystem):
