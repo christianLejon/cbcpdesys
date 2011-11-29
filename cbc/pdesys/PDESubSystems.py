@@ -13,14 +13,11 @@ import operator
 
 import os
 
-parameters["optimize_use_tensor_cache"] = True
-parameters["optimize_form"] = True
-parameters["optimize"] = True
 #parameters["linear_algebra_backend"] = "Epetra"
 parameters["linear_algebra_backend"] = "PETSc"
 #parameters['form_compiler']['representation'] = 'quadrature'
-#parameters["form_compiler"]["optimize"]     = True
-#parameters["form_compiler"]["cpp_optimize"] = True
+parameters["form_compiler"]["optimize"]     = True
+parameters["form_compiler"]["cpp_optimize"] = True
 # Cache for work arrays
 _work = {}
 
@@ -158,6 +155,7 @@ class PDESubSystemBase:
         self.linear_solver.solve(self.A, x_star, self.b)
         if self.normalize: self.normalize(x_star)
         omega = self.prm['omega']
+        err = x_star - self.x
         if abs(omega-1.) < 1.e-8:
             self.x[:] = x_star[:]
         else:
@@ -165,7 +163,7 @@ class PDESubSystemBase:
             x_star.axpy(-1., self.x);  self.x.axpy(omega, x_star)  # relax
         res = residual(self.A, self.x, self.b)
         self.update()
-        return res, x_star
+        return res, err
 
     def solve_Newton_system(self, *args):
         """One assemble and solve of Newton system."""
@@ -185,6 +183,7 @@ class PDESubSystemBase:
         self.x.axpy(omega, dx)  # relax
         self.update()
         return norm(self.b), dx
+        #return 1, dx
 
     def assemble(self, M):
         """Assemble tensor."""
@@ -587,35 +586,16 @@ class TurbModel(PDESubSystem):
 
     def update(self):
         bound(self.x, 1e8)
-
-def dolfin_normalize(v):
-    """Use l2 normalization because average is not working in parallel"""
-    return normalize(v, 'l2')
-        
-class single_normalize:
-    """Normalize part of vector.
-       Slicing does not work in parallel."""
-    def __init__(self, start, stop):
-        self.start = start
-        self.stop = stop
-        self.N = stop - start
-        self._slice = slice(start, stop)
-        self.w = Vector(self.N)
-        
-    def __call__(self, v):
-        self.w[:] = v[self._slice].sum()/self.N
-        v[self._slice] = v[self._slice] - self.w[:]
         
 class extended_normalize:
     """Normalize part or whole of vector.
-    This routine works in parallel as well.
 
     V    = Functionspace we normalize in
 
     u    = Function where part is normalized
 
     part = The index of the part of the mixed function space
-        that we want to normalize.
+           that we want to normalize.
         
     For example. When solving for velocity and pressure coupled in the
     Navier-Stokes equations we sometimes (when there is only Neuman BCs 
@@ -625,7 +605,7 @@ class extended_normalize:
     mesh = UnitSquare(1, 1)
     V = VectorFunctionSpace(mesh, 'CG', 2)
     Q = FunctionSpace(mesh, 'CG', 1)
-    VQ = V*Q
+    VQ = V * Q
     up = Function(VQ)
     normalize_func = extended_normalize(VQ, 2)
     up.vector()[:] = 2.
@@ -639,26 +619,20 @@ class extended_normalize:
     """
     def __init__(self, V, part='entire vector'):
         self.part = part
-        self.c = assemble(Constant(1., cell=V.cell())*dx, mesh=V.mesh())        
-        self.u = Function(V)
-        v = TestFunction(V)
         if isinstance(part, int):
+            self.u = Function(V)
+            v = TestFunction(V)
+            self.c = assemble(Constant(1., cell=V.cell())*dx, mesh=V.mesh())        
             self.pp = ['0']*self.u.value_size()
             self.pp[part] = '1'
             self.u0 = interpolate(Expression(self.pp, element=V.ufl_element()), V)
             self.x0 = self.u0.vector()
             self.C1 = assemble(v[self.part]*dx) 
-        else:
-            self.u0 = Function(V)
-            self.x0 = self.u0.vector()
-            self.x0[:] = 1.
-            self.C1 = assemble(v*dx) 
         
     def __call__(self, v):
         if isinstance(self.part, int):
-            self.u.vector()[:] = v[:]
-            # assemble the part of the vector that we want to normalize
-            c1 = assemble(self.u[self.part]*dx) 
+            # assemble into c1 the part of the vector that we want to normalize
+            c1 = self.C1.inner(v)
             if abs(c1) > 1.e-8:
                 # Perform normalization
                 self.x0[:] = self.x0[:]*(c1/self.c)
@@ -666,14 +640,7 @@ class extended_normalize:
                 self.x0[:] = self.x0[:]*(self.c/c1)
         else:
             # normalize entire vector
-            # dummy = normalize(v, 'l2')
-            self.u.vector()[:] = v[:]
-            #c1 = assemble(self.u*dx)
-            c1 = self.C1.inner(self.u.vector())
-            if abs(c1) > 1.e-8:
-                self.x0[:] = self.x0[:]*(c1/self.c)
-                v.axpy(-1., self.x0)
-                self.x0[:] = 1.
+            dummy = normalize(v)
 
 class FlowSubDomain(AutoSubDomain):
     """Wrapper class that creates a SubDomain compatible with CBC.RANS's

@@ -33,7 +33,7 @@ p_params['t'] = 't'
 exact_velocity = dict(
     u = Expression((exact['u'][0].format(**u_params),
                     exact['u'][1].format(**u_params),
-                    exact['u'][2].format(**u_params)), t=0),
+                    exact['u'][2].format(**u_params)),  t=0),
     u0 = Expression((exact['u'][0].format(**u_params)), t=0),
     u1 = Expression((exact['u'][1].format(**u_params)), t=0),
     u2 = Expression((exact['u'][2].format(**u_params)), t=0),
@@ -71,19 +71,20 @@ class Beltrami(NSProblem):
             val.t = self.t        
         
     def update(self):
-        pass
+        if self.tstep % 10 == 0:
+            print 'Memory usage = ', self.getMyMemoryUsage()
         #self.functional()
         
     def functional(self):
         # errornorm doesn't work with the ListTensor u_ of the segregated solver
         if hasattr(self.NS_solver, 'u0_'):
-            f  = errornorm(self.NS_solver.u0_, exact_velocity['u0'])
-            f += errornorm(self.NS_solver.u1_, exact_velocity['u1'])
-            f += errornorm(self.NS_solver.u2_, exact_velocity['u2'])
+            f  = sqr(errornorm(exact_velocity['u0'], self.NS_solver.u0_)/norm(exact_velocity['u0'], mesh=self.mesh))
+            f += sqr(errornorm(exact_velocity['u1'], self.NS_solver.u1_)/norm(exact_velocity['u1'], mesh=self.mesh))
+            f += sqr(errornorm(exact_velocity['u2'], self.NS_solver.u2_)/norm(exact_velocity['u2'], mesh=self.mesh))
         else:
             f = errornorm(self.NS_solver.u_, exact_velocity['u'])
-        error = f/norm(exact_velocity['u'], mesh=self.mesh)
-        info_red('Energy = {0:2.5e}'.format(error))
+        error = sqrt(f/3.)
+        info_red('Errornorm = {0:2.5e}'.format(error))
         return error
                    
     def info(self):
@@ -94,8 +95,9 @@ if __name__ == '__main__':
     from cbc.cfd.icns import solver_parameters  # parameters to NS solver
     import time
     import sys
-    set_log_active(True)
-    set_log_level(5)
+    parameters["linear_algebra_backend"] = "PETSc"
+    #set_log_active(True)
+    #set_log_level(5)
     
     mesh_sizes = [5, 8, 11, 16, 23, 32, 64]
     try:
@@ -112,24 +114,24 @@ if __name__ == '__main__':
     dict(degree=dict(u=2, u0=1, u1=1, u2=1),
          pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
          linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
-         precond=dict(u='jacobi', p='hypre_amg', velocity_update='jacobi'))
+         precond=dict(u='jacobi', p='hypre_amg', velocity_update='ilu'))
          )
     
     problem = Beltrami(problem_parameters)
-    #solver = icns.NSFullySegregated(problem, solver_parameters)
-    solver = icns.NSSegregated(problem, solver_parameters)
+    solver = icns.NSFullySegregated(problem, solver_parameters)
+    #solver = icns.NSSegregated(problem, solver_parameters)
     #solver = icns.NSCoupled(problem, solver_parameters)
     
-    solver.pdesubsystems['u'].prm['monitor_convergence'] = True
-    #solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
-    #solver.pdesubsystems['u2'].prm['monitor_convergence'] = True
-    solver.pdesubsystems['p'].prm['monitor_convergence'] = True
+    for name in ['u0', 'u1', 'u2', 'p', 'u0_update', 'u1_update', 'u2_update']:
+        solver.pdesubsystems[name].prm['monitor_convergence'] = True
+        solver.pdesubsystems[name].linear_solver.parameters['relative_tolerance'] = 1e-12
+        solver.pdesubsystems[name].linear_solver.parameters['absolute_tolerance'] = 1e-25
     
     t0 = time.time()
     problem.solve()
+    error = problem.functional()
     t1 = time.time()-t0
     print 'time = ', t1
-    error = problem.functional()
     print list_timings()
     
     dump_result(problem, solver, t1, error)

@@ -5,6 +5,8 @@ __license__  = "GNU GPL version 3 or any later version"
 """Super class for solving systems of PDEs."""
 
 from cbc.pdesys.PDESubSystems import *
+from os import getpid
+from commands import getoutput
 
 default_problem_parameters = dict(time_integration='Transient',
                                   max_iter=1,
@@ -243,6 +245,11 @@ class Problem:
         return Constant((0.,)*self.mesh.geometry().dim())
     #def body_force(self):
         #raise NotImplementedError('Set the body force in derived class')
+        
+    def getMyMemoryUsage(self):
+        mypid = getpid()
+        mymemory = getoutput("ps -o rss %s" % mypid).split()[1]
+        return mymemory
     
 def dump_result(problem, solver, cputime, error, filename = "results/results.log"):
     import os, time

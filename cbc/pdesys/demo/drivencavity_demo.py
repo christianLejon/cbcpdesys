@@ -28,8 +28,7 @@ class drivencavity_Solver(PDESystem):
         self.normalize['up'] = extended_normalize(self.V['up'], 2)
         # Define boundary conditions. Only natural bcs for c
         self.bc['up'] = [DirichletBC(self.V['up'].sub(0), (0., 0.), "on_boundary"),
-                         DirichletBC(self.V['up'].sub(0), (1., 0.), "near(x[1], 1.) \
-                                                                  && on_boundary")]
+                         DirichletBC(self.V['up'].sub(0), (1., 0.), "std::abs(x[1] - 1.) < DOLFIN_EPS && on_boundary")]
                          
         self.define()
         
@@ -96,10 +95,10 @@ if __name__=='__main__':
         'T': 1.,
         'degree': {'u':2, 'c': 2},
         'space': {'u': VectorFunctionSpace},
-        'time_integration': 'Steady'
+        'time_integration': 'Transient'
     })
-    mesh = UnitSquare(20, 20)
+    mesh = UnitSquare(10, 10)
     solver = drivencavity_Solver(mesh, parameters)
-    solver.solve(max_iter=10, redefine=False)
+    solver.solve(max_iter=1, redefine=False)
     interactive()
     #

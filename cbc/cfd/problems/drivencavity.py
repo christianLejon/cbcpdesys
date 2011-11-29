@@ -15,20 +15,21 @@ def stationary_walls(x, on_boundary):
 
 lid_velocity = Initdict(u=('1', '0'), p='0')
 
-problem_parameters['time_integration']='Transient' # default to transient
+# set default to transient in case drivencavity is imported elsewhere
+problem_parameters['time_integration'] = 'Transient' 
 
 class drivencavity(NSProblem):
     """2D lid-driven cavity."""
     def __init__(self, parameters):
         NSProblem.__init__(self, parameters=parameters)
         
-        #self.mesh = UnitSquare(self.prm['Nx'], self.prm['Ny'])
-        self.mesh = self.gen_mesh()
+        self.mesh = UnitSquare(self.prm['Nx'], self.prm['Ny'])
+        #self.mesh = self.gen_mesh()
         # Set viscosity
         self.prm['viscosity'] = 1./self.prm['Re']
         # Set timestep as NSbench
         self.prm['dt'] = self.prm['T']/ceil(self.prm['T']/0.2/self.mesh.hmin())
-        # Boundaries
+        # Boundaries        
         walls = FlowSubDomain(stationary_walls, bc_type='Wall')
         top   = FlowSubDomain(lid, func=lid_velocity, bc_type='Wall')
         self.boundaries = [top, walls]
@@ -45,7 +46,7 @@ class drivencavity(NSProblem):
 
     def initialize(self, pdesystem):
         """Initialize solution simply by applying lid_velocity to the top boundary"""
-        return False   # This will simply use u = (0, 0) and p = 0
+        #return False   # This will simply use u = (0, 0) and p = 0
         if pdesystem.prm['familyname'] == 'Navier-Stokes':
             for name in pdesystem.system_names:
                 if not name == 'up': # Coupled solver does not need this, makes no difference
@@ -89,13 +90,14 @@ if __name__ == '__main__':
     problem_parameters['T'] = 2.5
     #problem_parameters['plot_velocity'] = True
     #problem_parameters['plot_pressure'] = True
-    problem_parameters['max_iter'] = 1
+    problem_parameters['max_iter'] = 10
     problem_parameters['iter_first_timestep'] = 2
     solver_parameters = recursive_update(solver_parameters, 
-    dict(degree=dict(u=1, u0=1, u1=1),
+    dict(degree=dict(u=2, u0=2, u1=2),
         pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
         linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
         precond=dict(u='jacobi', p='hypre_amg', velocity_update='jacobi'),
+        iteration_type='Picard',
         max_iter=1 # Number of pressure/velocity iterations on given timestep
         ))
     problem = drivencavity(problem_parameters)
@@ -126,5 +128,3 @@ if __name__ == '__main__':
     dump_result(problem, solver, t1, psi_error)
     
     print list_timings()
-    
-    
