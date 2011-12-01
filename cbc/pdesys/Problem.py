@@ -197,21 +197,21 @@ class Problem:
 
             except KeyError:
 
-                if all(i in q0 for i in sub_system):# Add together individual parts to mixed system
+                if all(i in q0 for i in sub_system):# Add together individual parts to mixed system, e.g., use u and p for sub_system up
                     qi = []
                     for ss in sub_system: # For coupled just add individual lists
-                        q1 = q0[ss]
-                        if isinstance(q1, (str)):
-                            qi.append(q0[ss])
-                        elif isinstance(q1, (float, int)):
-                            qi.append(str(q1))
-                        elif isinstance(q1, Constant):
-                            if q1.value_size() == 1:
-                                qi.append(str(q1(0)))
+                        q = q0[ss]
+                        if isinstance(q, (str)):
+                            qi.append(q)
+                        elif isinstance(q, (float, int)):
+                            qi.append(str(q))
+                        elif isinstance(q, Constant):
+                            if q.value_size() == 1:
+                                qi.append(str(q(0)))
                             else:                                
                                 info_red('Cannot extract value of multidimensional Constant. Consider using strings or Expressions.')
                         else:
-                            qi += list(q0[ss])
+                            qi += list(q)
                     qi = interpolate(Expression(qi), pdesystem.V[name])
                 else:
                     info_red('Initial values not provided for all components of sub_system ')
@@ -272,4 +272,3 @@ def dump_result(problem, solver, cputime, error, filename = "results/results.log
         file.write("%s, %s, %s, %d, %.15g, %.15g,  %d\n" %
                 (time.asctime(), problem.__class__.__name__, solver.__class__.__name__, num_dofs, cputime, error, MPI.num_processes()))
         file.close()
-

@@ -643,7 +643,7 @@ class extended_normalize:
             dummy = normalize(v)
 
 class FlowSubDomain(AutoSubDomain):
-    """Wrapper class that creates a SubDomain compatible with CBC.RANS's
+    """Wrapper class that creates a SubDomain compatible with CBC.PDESys's
     declaration of boundaries in terms of its type. This information is 
     used by the PDESystem to create boundary conditions.
 
@@ -656,15 +656,15 @@ class FlowSubDomain(AutoSubDomain):
                         
                 mf = FacetFunction identifying boundaries
                 
-            bc_type = type of boundary. Currently implemented (NS=Navier-Stokes):
-                        VelocityInlet    (NS: DirichletBC on u, nothing on p)
-                        Wall             (NS: DirichletBC on u, nothing on p)
-                        Periodic         (PeriodicBC)
+            bc_type = type of boundary. Currently recognized:
+                        VelocityInlet 
+                        Wall          
+                        Periodic      
                         Weak boundary conditions that require meshfunction:
-                        Outlet           (NS: pseudo traction. nu*grad(u)*n - p*n = 0)
-                        ConstantPressure (NS: grad(u)*n=0 and p=func)
-                        (Symmetry        (NS: grad(u)*n=0, u*n=0 experimental)
-                        (Slip            (NS: u*n=0. experimental))
+                        Outlet        
+                        ConstantPressure
+                        (Symmetry)
+                        (Slip)
                         
         periodic_map = Method that contains periodicity (see PeriodicBC). 
                         Example:
@@ -694,6 +694,58 @@ class FlowSubDomain(AutoSubDomain):
             
         if periodic_map:
             self.map = periodic_map
+        
+    def apply(self, *args):
+        """Some boundary conditions ('ConstantPressure', 'Outlet', 'Symmetry', 
+        'Slip') are sometimes enforced weakly. Hence, these boundary conditions 
+        should not modify tensors and by using this function they will correctly
+        do-nothing. This apply method is not called in case this subdomain is 
+        used to create a strong BC (like DirichletBC for pressure for a 
+        ConstantPressure), because the DirichletBC has its own apply method.
+        """
+        pass
+
+class MeshSubDomain(SubDomain):
+    """Wrapper class that creates a SubDomain compatible with CBC.PDESys's
+    declaration of boundaries in terms of its type. This information is 
+    used by the PDESystem class to create boundary conditions.
+    
+    To be able to use this subdomain class, the boundary information must
+    be part of the mesh as MeshValueCollections, i.e., the function
+    mesh.domains().is_empty() must return False.
+    
+                 bid = Boundary indicator (int)
+                        
+                func = values for Dirichlet bcs. 
+                        Dictionary using system_names as keys
+                        
+            bc_type = type of boundary. Currently recognized:
+                        VelocityInlet
+                        Wall         
+                        Periodic     
+                        Weak boundary conditions:
+                        Outlet          
+                        ConstantPressure
+                        (Symmetry)       
+                        (Slip)           
+                        
+        periodic_map = Method that contains periodicity (see PeriodicBC). 
+                        Example:
+                        def periodic_map(x, y):
+                            y[0] = x[0] - 1
+                            y[1] = x[1]
+    """
+    
+    def __init__(self, bid, bc_type='Wall', func=None, periodic_map=None):
+        SubDomain.__init__(self)
+        self.bid = bid
+        self.bc_type = bc_type
+        
+        self.type = lambda: self.bc_type
+        
+        if func: self.func = func
+            
+        if periodic_map: self.map = periodic_map
         
     def apply(self, *args):
         """Some boundary conditions ('ConstantPressure', 'Outlet', 'Symmetry', 
@@ -793,7 +845,7 @@ def add_BC(bc_list, V, bc, func):
                 bc_list.append(DirichletBC(V, func, bc.mf, bc.bid))
             bc_list[-1].mf = bc.mf
             bc_list[-1].bid = bc.bid
-        elif hasattr(bc, 'boundary_info_in_mesh'):
+        elif not V.mesh().domains().is_empty(): # Has MeshValueCollections
             bc_list.append(DirichletBC(V, func, bc.bid))
         else:
             bc_list.append(DirichletBC(V, func, bc))
