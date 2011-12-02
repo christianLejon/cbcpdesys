@@ -74,7 +74,7 @@ class Challenge(NSProblem):
 if __name__ == '__main__':
     from cbc.cfd.icns import NSFullySegregated, NSSegregated, solver_parameters
     import time
-    parameters["linear_algebra_backend"] = "PETSc"
+    parameters["linear_algebra_backend"] = "Epetra"
     set_log_active(True)
     problem_parameters['viscosity'] = 0.00345
     problem_parameters['T'] = 0.5
@@ -84,7 +84,7 @@ if __name__ == '__main__':
     dict(degree=dict(u=1,u0=1,u1=1,u2=1),
          pdesubsystem=dict(u=101, p=101, velocity_update=101), 
          linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
-         precond=dict(u='jacobi', p='hypre_amg', velocity_update='jacobi'))
+         precond=dict(u='jacobi', p='amg', velocity_update='jacobi'))
          )
     
     problem = Challenge(problem_parameters)
