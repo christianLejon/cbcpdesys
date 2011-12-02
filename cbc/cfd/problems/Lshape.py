@@ -34,6 +34,7 @@ class Lshape(NSProblem):
         
         self.prm['dt'] = self.timestep()
 
+        # dictionary q0 is used to initialize the flow
         transient = self.prm['time_integration']=='Transient'
         transient_q0 = Initdict({'p': '0', 'u': ('0', '0')})
         steady_q0 = Initdict({'p': 'x[1]', 'u': ('0', '0')})
@@ -68,7 +69,8 @@ class Lshape(NSProblem):
                                                                 
     def prepare(self):
         """Called at start of a new timestep. Set the pressure at new time."""
-        self.p_in.t = self.t
+        if self.prm['time_integration'] == 'Transient':
+            self.p_in.t = self.t
         
     def __info__(self):
         return "Time varying L-shaped domain"
@@ -81,15 +83,15 @@ if __name__ == '__main__':
     problem_parameters['Nx'] = 40
     problem_parameters['Ny'] = 40
     problem_parameters['T'] = 10.
-    problem_parameters['time_integration']='Transient'
-    problem_parameters['max_iter'] = 1
+    problem_parameters['time_integration']='Steady'
+    problem_parameters['max_iter'] = 10
     problem_parameters['plot_velocity'] = True
     solver_parameters = recursive_update(solver_parameters, 
-    dict(degree=dict(u=2, u0=2, u1=2),
+    dict(degree=dict(u=2, u0=1, u1=1),
          pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
          linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab', up='lu'), 
          precond=dict(u='jacobi', p='amg', velocity_update='ilu'),
-         iteration_type='Picard')
+         iteration_type='Newton')
          )
     problem = Lshape(problem_parameters)
     #solver = icns.NSFullySegregated(problem, solver_parameters)

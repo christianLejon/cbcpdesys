@@ -182,7 +182,7 @@ class Problem:
         
         q0 = self.q0
         if not isinstance(q0, dict): raise TypeError('Initialize by specifying the dictionary Problem.q0')
-                        
+                                
         for sub_system in pdesystem.system_composition:
             name = ''.join(sub_system) # e.g., 'u' and 'p' for segregated solver or 'up' for coupled
             
@@ -196,7 +196,6 @@ class Problem:
                     qi = interpolate(Expression(q), pdesystem.V[name])
 
             except KeyError:
-
                 if all(i in q0 for i in sub_system):# Add together individual parts to mixed system, e.g., use u and p for sub_system up
                     qi = []
                     for ss in sub_system: # For coupled just add individual lists
@@ -206,10 +205,10 @@ class Problem:
                         elif isinstance(q, (float, int)):
                             qi.append(str(q))
                         elif isinstance(q, Constant):
-                            if q.value_size() == 1:
-                                qi.append(str(q(0)))
-                            else:                                
-                                info_red('Cannot extract value of multidimensional Constant. Consider using strings or Expressions.')
+                            v = zeros(q.value_size())
+                            x = zeros(q.value_size())
+                            q.eval(v, x)
+                            qi += [str(i) for i in v]
                         else:
                             qi += list(q)
                     qi = interpolate(Expression(qi), pdesystem.V[name])

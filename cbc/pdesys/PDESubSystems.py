@@ -6,7 +6,7 @@ __license__  = "GNU GPL version 3 or any later version"
 import ufl
 import copy
 from dolfin import *
-from numpy import maximum, minimum, array
+from numpy import maximum, minimum, array, zeros
 from collections import defaultdict
 from time import time
 import operator
@@ -877,10 +877,12 @@ class Initdict(dict):
     
     def __missing__(self, key):
         try:
-            self[key] = self[key[:-1]][eval(key[-1])]
+            index = eval(key[-1])
+            if isinstance(index, int):
+                self[key] = self[key[:-1]][index]
+            return self[key]
         except:
             raise KeyError
-        return self[key]
 
 # The following helper functions are available in dolfin versions >= 0.9.9
 # They are redefined here for printing only on process 0. 

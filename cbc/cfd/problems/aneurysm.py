@@ -20,42 +20,16 @@ y1 = array([ 390.        ,  398.76132931,  512.65861027,  642.32628399,
         647.58308157,  589.75830816,  559.96978852,  516.16314199,                                                                                          
         486.37462236,  474.10876133,  456.58610272,  432.05438066,  390.        ])/574.21
 
-class SubDomains(SubDomain):
-    
-    def __init__(self, bid, func=None):
-        SubDomain.__init__(self)
-        self.bid = bid            # Boundary indicator
-        self.boundary_info_in_mesh = True
-        if func: self.func = func
-            
-    def apply(self, *args):
-        """BCs that are applied weakly need to pass on regular apply.
-        Other regular BCs like DirichletBC have their own apply method."""
-        pass
-
-class Walls(SubDomains):
-    def type(self):
-        return 'Wall'
-        
-class Inlet(SubDomains):
-    def type(self):
-        return 'VelocityInlet'
-                
-class PressureOutlet(SubDomains):
-    def type(self):
-        return 'ConstantPressure'
-        
 class aneurysm(NSProblem):
     
     def __init__(self, parameters):
         NSProblem.__init__(self, parameters=parameters)
         #self.mesh = Mesh("../data/100_1314k.xml.gz")
         self.mesh = Mesh("../data/Aneurysm.xml.gz")
-        self.n = FacetNormal(self.mesh)        
         self.boundaries = self.create_boundaries()
+        
         # To initialize solution set the dictionary q0: 
         #self.q0 = Initdict(u = ('0', '0', '0'), p = ('0')) # Or not, zero is default anyway
-        self.A1 = None
         
     def create_boundaries(self):
         # Define the spline for enough heart beats
@@ -71,71 +45,75 @@ class aneurysm(NSProblem):
         self.inflow_t_spline = ius(time, y)
         
         # Preassemble normal vector on inlet
-        n = self.n
-        self.n0 = assemble(-n[0]*ds(2), mesh=self.mesh)
-        self.n1 = assemble(-n[1]*ds(2), mesh=self.mesh)
-        self.n2 = assemble(-n[2]*ds(2), mesh=self.mesh)
+        n = self.n = FacetNormal(self.mesh)        
+        self.normal  = [assemble(-n[0]*ds(2), mesh=self.mesh)]
+        self.normal += [assemble(-n[1]*ds(2), mesh=self.mesh)]
+        self.normal += [assemble(-n[2]*ds(2), mesh=self.mesh)]
         
         # Area of inlet 
         self.A0 = assemble(Constant(1.)*ds(2), mesh=self.mesh)
         
-        # Set dictionary used for Dirichlet inlet conditions
-        # For now we need to explicitly set u0, u1 and u2. Should be able to fix using just u.
-        self.inflow = {'u': Expression(('n0*u_mean', 'n1*u_mean', 'n2*u_mean'), 
-                                  n0=self.n0, n1=self.n1, n2=self.n2, u_mean=0),
-                       'u0': Expression(('n0*u_mean'), n0=self.n0, u_mean=0),
-                       'u1': Expression(('n1*u_mean'), n1=self.n1, u_mean=0),
-                       'u2': Expression(('n2*u_mean'), n2=self.n2, u_mean=0)}
+        # Create dictionary used for Dirichlet inlet conditions. Values are assigned in prepare, called at the start of a new timestep                       
+        self.inflow = {'u' : Constant((0, 0, 0)),
+                       'u0': Constant(0),
+                       'u1': Constant(0),
+                       'u2': Constant(0)}
 
         # Pressures on outlets are specified by DirichletBCs, values are computed in prepare
-        self.p_out1 = Expression('p', p=0)
-        self.p_out2 = Expression('p', p=0)
+        self.p_out1 = Constant(0)
+        self.p_out2 = Constant(0)
 
         # Specify the boundary subdomains and hook up dictionaries for DirichletBCs
-        walls = Walls(0)
-        inlet = Inlet(2, self.inflow)
-        pressure1 = PressureOutlet(1, {'p': self.p_out1})
-        pressure2 = PressureOutlet(3, {'p': self.p_out2})
+        walls     = MeshSubDomain(0, 'Wall')
+        inlet     = MeshSubDomain(2, 'VelocityInlet', self.inflow)
+        pressure1 = MeshSubDomain(1, 'ConstantPressure', {'p': self.p_out1})
+        pressure2 = MeshSubDomain(3, 'ConstantPressure', {'p': self.p_out2})
         
         return [walls, inlet, pressure1, pressure2]
         
     def prepare(self):
         """Called at start of a new timestep. Set the outlet pressure at new time."""
         solver = self.pdesystems['Navier-Stokes']
-        u_mean = self.inflow_t_spline(self.t)[0]*695./750./self.A0
-        for val in self.inflow.itervalues():
-            val.u_mean = u_mean
+        u_mean = self.inflow_t_spline(self.t)[0]*695./750./self.A0        
+        self.inflow['u'].assign(Constant(u_mean*array(self.normal)))
+        for i in range(3):
+            self.inflow['u'+str(i)].assign(u_mean*self.normal[i])
+            
         info_green('UMEAN = {0:2.5f} at time {1:2.5f}'.format(u_mean, self.t))
         # First time around we assemble some vectors that can be used to compute 
         # the outlet pressures with merely inner products and no further assembling.
-        if not self.A1: 
+        if not hasattr(self, 'A1'): 
             self.A1 = []
             self.A3 = []
             v = solver.vt['u0']
             for i in range(3):
-                self.A1.append(assemble(v*problem.n[i]*ds(1)))
-                self.A3.append(assemble(v*problem.n[i]*ds(3)))
+                self.A1.append(assemble(v*self.n[i]*ds(1)))
+                self.A3.append(assemble(v*self.n[i]*ds(3)))
         
-        # Compute outlet pressures
-        self.p_out1.p = 0
-        self.p_out2.p = 0
+        # Compute outlet pressures fast
+        p1 = 0
+        p2 = 0
         for i in range(3):
-            self.p_out1.p += self.A1[i].inner(solver.u_[i].vector())
-            self.p_out2.p += self.A3[i].inner(solver.u_[i].vector())
-            
-        #self.p_out1.p = assemble(dot(solver.u_, self.n)*ds(1))
-        info_green('Pressure outlet 2 = {0:2.5f}'.format(self.p_out1.p))
-        #self.p_out2.p = assemble(dot(solver.u_, self.n)*ds(3))
-        info_green('Pressure outlet 3 = {0:2.5f}'.format(self.p_out2.p))
+            p1 += self.A1[i].inner(solver.u_[i].vector())
+            p2 += self.A3[i].inner(solver.u_[i].vector())
+        self.p_out1.assign(p1)
+        self.p_out2.assign(p2)            
+        # Or the slow approach:
+        #self.p_out1.assign(assemble(dot(solver.u_, self.n)*ds(1)))
+        #self.p_out2.assign(assemble(dot(solver.u_, self.n)*ds(3)))
+        
+        info_green('Pressure outlet 1 = {0:2.5f}'.format(self.p_out1(0)))
+        info_green('Pressure outlet 3 = {0:2.5f}'.format(self.p_out2(0)))
 
 if __name__ == '__main__':
     from cbc.cfd.icns import NSFullySegregated, NSSegregated, solver_parameters
     import time
-    parameters["linear_algebra_backend"] = "Epetra"
+    parameters["linear_algebra_backend"] = "PETSc"
     set_log_active(True)
     problem_parameters['viscosity'] = 0.00345
     problem_parameters['T'] = 0.01
     problem_parameters['dt'] = 0.01
+    problem_parameters['iter_first_timestep'] = 2
     solver_parameters = recursive_update(solver_parameters, 
     dict(degree=dict(u=1,u0=1,u1=1,u2=1),
          pdesubsystem=dict(u=101, p=101, velocity_update=101), 
@@ -145,12 +123,8 @@ if __name__ == '__main__':
     
     problem = aneurysm(problem_parameters)
     solver = NSFullySegregated(problem, solver_parameters)
-    #solver.pdesubsystems['u'].prm['monitor_convergence'] = True
-    #solver.pdesubsystems['velocity_update'].prm['monitor_convergence'] = True
-    #solver.pdesubsystems['p'].prm['monitor_convergence'] = True
-    #solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
-    #solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
-    #solver.pdesubsystems['u2'].prm['monitor_convergence'] = True
+    for name in solver.system_names:
+        solver.pdesubsystems[name].prm['monitor_convergence'] = True
     #solver.pdesubsystems['u0_update'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['u1_update'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['u2_update'].prm['monitor_convergence'] = True
@@ -158,12 +132,12 @@ if __name__ == '__main__':
     problem.solve()
     t1 = time.time() - t0
 
-    V = VectorFunctionSpace(problem.mesh, 'CG', 1)
-    u_ = project(solver.u_, V)
-    file1 = File('/home/mikaelmo/cbcpdesys/cbc/cfd/u.pvd')
-    file1 << u_
+    # Save solution
+    #V = VectorFunctionSpace(problem.mesh, 'CG', 1)
+    #u_ = project(solver.u_, V)
+    #file1 = File('u.pvd')
+    #file1 << u_
 
     print list_timings()
 
     dump_result(problem, solver, t1, 0)
-    

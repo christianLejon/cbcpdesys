@@ -10,13 +10,12 @@ class CSF(NSProblem):
     def __init__(self, parameters):
         NSProblem.__init__(self, parameters=parameters)
         self.mesh = Mesh('../data/patient5_small.xml')
-        self.n = FacetNormal(self.mesh)        
         self.boundaries = self.create_boundaries()
         # To initialize solution set the dictionary q0: 
         #self.q0 = Initdict(u = ('0', '0', '0'), p = ('0')) # Or not, zero is default anyway
         
     def create_boundaries(self):
-        # Pressures on top and bottom are specified by DirichletBCs, values can be modified in prepare
+        # Pressures are specified on top and bottom, values can be modified in prepare
         self.p_top = Constant(0)
         self.p_bottom = Constant(1)
 
@@ -30,7 +29,6 @@ class CSF(NSProblem):
         
     def prepare(self):
         """Called at start of a new timestep. Set new pressure BCs at new time."""
-        #solver = self.pdesystems['Navier-Stokes']            
         #self.p_top.assign(1)
         #self.p_bottom.assign(0)
         info_green('Pressure Top    = {0:2.5f}'.format(self.p_top(0)))
@@ -60,7 +58,7 @@ if __name__ == '__main__':
 
     #V = VectorFunctionSpace(problem.mesh, 'CG', 1)
     #u_ = project(solver.u_, V)
-    #file1 = File('/home/mikaelmo/cbcpdesys/cbc/cfd/u.pvd')
+    #file1 = File('u.pvd')
     #file1 << u_
 
     print list_timings()
