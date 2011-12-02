@@ -1,5 +1,5 @@
 __author__ = "Mikael Mortensen <Mikael.Mortensen@ffi.no>"
-__date__ = "2011-08-22"
+__date__ = "2011-12-02"
 __copyright__ = "Copyright (C) 2011 " + __author__
 __license__  = "GNU GPL version 3 or any later version"
 
@@ -12,7 +12,7 @@ MCAtime = array([    0.,    27.,    42.,    58.,    69.,    88.,   110.,   130.,
         347.,   365.,   402.,   425.,   440.,   491.,   546.,   618.,                                                                                      
         703.,   758.,   828.,   897.,  1002.])
     
-y1 = array([ 390.        ,  398.76132931,  512.65861027,  642.32628399,                                                        
+y1 = array([ 390.      ,  398.76132931,  512.65861027,  642.32628399,                                                        
         710.66465257,  770.24169184,  779.00302115,  817.55287009,                                                                                          
         877.12990937,  941.96374622,  970.        ,  961.2386707 ,                                                                                          
         910.42296073,  870.12084592,  843.83685801,  794.7734139 ,                                                                                          
@@ -21,12 +21,12 @@ y1 = array([ 390.        ,  398.76132931,  512.65861027,  642.32628399,
         486.37462236,  474.10876133,  456.58610272,  432.05438066,  390.]
         )*0.001*2./3.
 
-class aneurysm(NSProblem):
+class Challenge(NSProblem):
     
     def __init__(self, parameters):
         NSProblem.__init__(self, parameters=parameters)
         #self.mesh = Mesh("../data/100_1314k.xml.gz")
-        self.mesh = Mesh("../data/Aneurysm.xml.gz")
+        self.mesh = Mesh("../data/mesh_coarse.xml")
         self.boundaries = self.create_boundaries()
         
         # To initialize solution set the dictionary q0: 
@@ -38,12 +38,12 @@ class aneurysm(NSProblem):
         
         # Preassemble normal vector on inlet
         n = self.n = FacetNormal(self.mesh)        
-        self.normal  = [assemble(-n[0]*ds(2), mesh=self.mesh)]
-        self.normal += [assemble(-n[1]*ds(2), mesh=self.mesh)]
-        self.normal += [assemble(-n[2]*ds(2), mesh=self.mesh)]
+        self.normal  = [assemble(-n[0]*ds(4), mesh=self.mesh)]
+        self.normal += [assemble(-n[1]*ds(4), mesh=self.mesh)]
+        self.normal += [assemble(-n[2]*ds(4), mesh=self.mesh)]
         
         # Area of inlet 
-        self.A0 = assemble(Constant(1.)*ds(2), mesh=self.mesh)
+        self.A0 = assemble(Constant(1.)*ds(4), mesh=self.mesh)
         
         # Create dictionary used for Dirichlet inlet conditions. Values are assigned in prepare, called at the start of a new timestep                       
         self.inflow = {'u' : Constant((0, 0, 0)),
@@ -53,50 +53,23 @@ class aneurysm(NSProblem):
 
         # Pressures on outlets are specified by DirichletBCs, values are computed in prepare
         self.p_out1 = Constant(0)
-        self.p_out2 = Constant(0)
 
         # Specify the boundary subdomains and hook up dictionaries for DirichletBCs
-        walls     = MeshSubDomain(0, 'Wall')
-        inlet     = MeshSubDomain(2, 'VelocityInlet', self.inflow)
-        pressure1 = MeshSubDomain(1, 'ConstantPressure', {'p': self.p_out1})
-        pressure2 = MeshSubDomain(3, 'ConstantPressure', {'p': self.p_out2})
+        walls     = MeshSubDomain(3, 'Wall')
+        inlet     = MeshSubDomain(4, 'VelocityInlet', self.inflow)
+        pressure1 = MeshSubDomain(5, 'ConstantPressure', {'p': self.p_out1})
         
-        return [walls, inlet, pressure1, pressure2]
+        return [walls, inlet, pressure1]
         
     def prepare(self):
-        """Called at start of a new timestep. Set the outlet pressure at new time."""
+        """Called at start of a new timestep."""
         solver = self.pdesystems['Navier-Stokes']
         t = self.t - floor(self.t/1002.0)*1002.0
         u_mean = self.inflow_t_spline(t)[0]/self.A0        
         self.inflow['u'].assign(Constant(u_mean*array(self.normal)))
         for i in range(3):
             self.inflow['u'+str(i)].assign(u_mean*self.normal[i])
-            
-        info_green('UMEAN = {0:2.5f} at time {1:2.5f}'.format(u_mean, self.t))
-        # First time around we assemble some vectors that can be used to compute 
-        # the outlet pressures with merely inner products and no further assembling.
-        if not hasattr(self, 'A1'): 
-            self.A1 = []
-            self.A3 = []
-            v = solver.vt['u0']
-            for i in range(3):
-                self.A1.append(assemble(v*self.n[i]*ds(1)))
-                self.A3.append(assemble(v*self.n[i]*ds(3)))
-        
-        # Compute outlet pressures fast
-        p1 = 0
-        p2 = 0
-        for i in range(3):
-            p1 += self.A1[i].inner(solver.u_[i].vector())
-            p2 += self.A3[i].inner(solver.u_[i].vector())
-        self.p_out1.assign(p1)
-        self.p_out2.assign(p2)            
-        # Or the slow approach:
-        #self.p_out1.assign(assemble(dot(solver.u_, self.n)*ds(1)))
-        #self.p_out2.assign(assemble(dot(solver.u_, self.n)*ds(3)))
-        
-        info_green('Pressure outlet 1 = {0:2.5f}'.format(self.p_out1(0)))
-        info_green('Pressure outlet 3 = {0:2.5f}'.format(self.p_out2(0)))
+
 
 if __name__ == '__main__':
     from cbc.cfd.icns import NSFullySegregated, NSSegregated, solver_parameters
@@ -114,7 +87,7 @@ if __name__ == '__main__':
          precond=dict(u='jacobi', p='hypre_amg', velocity_update='jacobi'))
          )
     
-    problem = aneurysm(problem_parameters)
+    problem = Challenge(problem_parameters)
     solver = NSFullySegregated(problem, solver_parameters)
     for name in solver.system_names:
         solver.pdesubsystems[name].prm['monitor_convergence'] = False
