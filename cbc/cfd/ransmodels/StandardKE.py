@@ -19,7 +19,8 @@ class StandardKE(TurbSolver):
         DQ, DQ_NoBC = DerivedQuantity, DerivedQuantity_NoBC 
         NS, V = self.problem.NS_solver, self.V['dq']
         NS.pdesubsystems['derived quantities'] = [
-            DQ_NoBC(vars(NS), 'Sij', NS.S, "epsilon(u_)", bounded=False)]
+            DQ_NoBC(vars(NS), 'Sij', NS.S, "epsilon(u_)", bounded=False),
+            DQ_NoBC(vars(NS), 'S2', V, 'inner(epsilon(u_), epsilon(u_))')]
         self.Sij_ = NS.Sij_
         ns = vars(self)
         self.pdesubsystems['derived quantities'] = [

@@ -216,17 +216,19 @@ class VelocityUpdate_101(VelocityUpdateBase):
     """ 
     Optimized version of VelocityUpdate_1.
     """    
-    def form(self, v, p, dt, dpx, **kwargs): 
+    def form(self, v, p, p_, dt, dpx, **kwargs): 
         self.dt = dt(0)
         self.dpx = dpx
         # Assemble matrix used to compute rhs
-        #self.P = assemble(inner(v, p.dx(self.index))*dx)   
-        self.P = assemble(v * p.dx(self.index) * dx)   
+        if self.x.size()==p_.vector().size(): # Reuse matrix to save memory
+            self.P = self.solver_namespace['pdesubsystems']['u'+str(self.index)].P
+        else:
+            self.P = assemble(v * p.dx(self.index) * dx)            
         self.b = Vector(self.x)
         return False
         
     def assemble(self, M):
-        # Use the assembled matrix of u0
+        # Use the assembled matrix of u0 or reuse M from momentum equation
         if self.index == 0:
             if any([bc.type() in ['Periodic'] for bc in self.bcs]):
                 self.A = self.solver_namespace['pdesubsystems']['u0'].M.copy()
@@ -243,7 +245,7 @@ class VelocityUpdate_101(VelocityUpdateBase):
             [bc.apply(self.A) for bc in self.bcs]
             #self.A.compress()
         # Compute rhs using matrix-vector products
-        self.b[:] = self.A*self.x
+        self.b[:] = self.A*self.x        
         self.b.axpy(-self.dt, self.P*self.dpx)
         [bc.apply(self.b) for bc in self.bcs]
         
@@ -265,9 +267,7 @@ class Transient_Pressure_101(PressureBase):
     """ Optimized version of Transient_Pressure_1."""     
     def form(self, u, p, q, dt, dim, **kwargs): 
         # Preassemble matrices used to compute rhs
-        self.R = []        
-        for i in range(dim):
-            self.R.append(assemble(inner(q, u.dx(i))*dx))
+        self.R = [assemble(inner(q, u.dx(i))*dx) for i in range(dim)]
         self.dim = dim
         self.b = Vector(self.x)
         return inner(grad(q), dt*grad(p))*dx
@@ -279,14 +279,15 @@ class Transient_Pressure_101(PressureBase):
             [bc.apply(self.A) for bc in self.bcs]
             #self.A.compress()
         self.b[:] = self.A*self.x
-        for i in range(self.dim):        
+        for i in range(self.dim):
             self.b.axpy(-1., self.R[i]*self.solver_namespace['u_'][i].vector()) # Divergence of u_
+
         [bc.apply(self.b) for bc in self.bcs]
         self.rp = residual(self.A, self.x, self.b)
         self.work[:] = self.x[:]
         self.setup_solver(assemble_A, assemble_b)
         self.linear_solver.solve(self.A, self.x, self.b)
-        if self.normalize: self.normalize(self.x)
+        #if self.normalize: self.normalize(self.x)
         self.update()
         return self.rp, self.x - self.work
 
@@ -321,30 +322,28 @@ class Transient_Velocity_2(VelocityBase):
                0.5*self.conv(v, u_2[self.index], u_2, convection_form)*dx + \
                nu*inner(grad(U), grad(v))*dx + \
                inner(v, p_.dx(self.index))*dx - inner(v, f[self.index])*dx
-
+            
 class Transient_Velocity_101(VelocityBase):
     """ 
     Optimized version of Transient_Velocity_1
     """     
     def form(self, u_, u, v, p, q, p_, u_1, u_2, nu, f, dt, convection_form, dim, **kwargs): 
              
-        U_ = 1.5*u_1 - 0.5*u_2                 # AB-projection
-        self.a = 0.5*self.conv(v, u, U_, convection_form)*dx # convection form that changes in time
-        self.dt = dt(0)
-        self.dim = dim
-        self.x_1 = self.solver_namespace['x_1']
-        self.pdes = self.solver_namespace['pdesubsystems']
         if self.index == 0:
             # Assemble matrices that don't change
             self.M = assemble(inner(v, u)*dx)                # mass
             self.K = assemble(nu*inner(grad(v), grad(u))*dx) # diffusion
-            
+            U_ = 1.5*u_1 - 0.5*u_2                           # AB-projection
+            self.a = 0.5*self.conv(v, u, U_, convection_form)*dx # convection form that changes in time
+        self.dt = dt(0)
+        self.x_1 = self.solver_namespace['x_1']           
+        self.b0 = assemble(inner(f[self.index], v)*dx)    
+        self.pdes = self.solver_namespace['pdesubsystems']
         self.P = assemble(inner(v, p.dx(self.index))*dx) # Different for each component
         #self.P = assemble(-inner(v.dx(self.index), p)*dx) # Different for each component
         # Set the initial rhs-vector equal to the constant body force.
         self.b = Vector(self.x)
         self.bold = Vector(self.x)
-        self.b0 = assemble(inner(f[self.index], v)*dx)
         
         # Do not reassemble lhs when iterating over pressure-velocity system on given timestep
         # This is possible because self.a does not depend on u_ (the new solution)
@@ -364,7 +363,7 @@ class Transient_Velocity_101(VelocityBase):
             for ui in self.solver_namespace['u_components']:
                 self.pdes[ui].b[:] = self.pdes[ui].b0[:]
                 self.pdes[ui].b.axpy(1., self.A*self.x_1[ui])
-            
+
             # Reset matrix for lhs
             self.A._scale(-1.)
             self.A.axpy(2./self.dt, self.M, True)
@@ -394,7 +393,7 @@ class Transient_Velocity_101(VelocityBase):
         self.linear_solver.solve(self.A, self.x, self.b)
         self.b[:] = self.bold[:]  # preassemble part
         return rv, self.x - self.work
-
+        
 class Transient_Velocity_102(VelocityBase):
     """ 
     Optimized version of Transient_Velocity_2

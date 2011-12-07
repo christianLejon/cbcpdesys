@@ -82,7 +82,7 @@ class channel(NSProblem):
             p = periodic_map
             p.L = self.L
                 
-            periodic = FlowSubDomain(lambda x, on_boundary: near(x[0], 0.) and on_boundary,
+            periodic = FlowSubDomain(lambda x, on_boundary: abs(x[0]) < 10.*DOLFIN_EPS and on_boundary,
                                     bc_type = 'Periodic',
                                     mf = self.mf,
                                     periodic_map = p)
@@ -147,13 +147,13 @@ if __name__ == '__main__':
     from cbc.cfd import icns                    # Navier-Stokes solvers
     from cbc.cfd.icns import solver_parameters  # parameters to NS solver
     set_log_active(True)
-    problem_parameters['time_integration'] = 'Transient'
+    problem_parameters['time_integration'] = 'Steady'
     problem_parameters['T'] = 0.5
     problem_parameters['Re'] = 8.
-    problem_parameters['max_iter'] = 100          # iterations per timestep
+    problem_parameters['max_iter'] = 100
     problem_parameters['max_err'] = 1e-10
     problem_parameters['plot_velocity'] = False # plot velocity at end of timestep
-    problem_parameters['periodic'] = False      # Use or not periodic boundary conditions
+    problem_parameters['periodic'] = True      # Use or not periodic boundary conditions
     
     solver_parameters = recursive_update(solver_parameters, 
     dict(degree=dict(u=2),
@@ -167,13 +167,13 @@ if __name__ == '__main__':
     
     # Choose Navier-Stokes solver
     #NS_solver = icns.NSFullySegregated(NS_problem, solver_parameters)
-    NS_solver = icns.NSSegregated(NS_problem, solver_parameters)
-    #NS_solver = icns.NSCoupled(NS_problem, solver_parameters)
+    #NS_solver = icns.NSSegregated(NS_problem, solver_parameters)
+    NS_solver = icns.NSCoupled(NS_problem, solver_parameters)
     
     # Solve the problem
     NS_problem.solve()
     plot(NS_solver.u_)
 
     # Check where the time went
-    print summary()
+    print list_timings()
     

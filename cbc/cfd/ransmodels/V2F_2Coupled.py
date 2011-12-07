@@ -45,18 +45,15 @@ class V2F_2Coupled(V2F):
                     bcu['v2f'][-1].type = bc.type
         return bcu
         
-    def solve_inner(self, max_iter=1, max_err=1e-7, update=lambda: None,
-                    logging=True):
-        total_error = ""
+    def solve_inner(self, max_iter=1, max_err=1e-7, logging=True):
         for name in self.system_names:
             err, j = solve_nonlinear([self.pdesubsystems[name]],
-                                 max_iter=max_iter, max_err=max_err,
-                                 update=update, logging=logging)
+                                     max_iter=max_iter, max_err=max_err,
+                                     logging=max_iter>1)
             self.solve_derived_quantities()
-            total_error += err 
         self.total_number_iters += j
-        return total_error
-        
+        return err
+                
 class V2FBase(TurbModel):
     
     def update(self):

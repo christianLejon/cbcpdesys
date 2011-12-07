@@ -22,10 +22,10 @@ class StandardKE_Coupled(StandardKE):
     def create_BCs(self, bcs):
         bcu = StandardKE.create_BCs(self, bcs)
         # Overload default Wall behavior using wallfunctions
-        for bc in bcs:
+        for i, bc in enumerate(bcs):
             if bc.type() == 'Wall':
-                bcu['ke'].append(QWall['ke'](bc, self.y, self.nu(0)))
-                bcu['ke'][-1].type = bc.type
+                bcu['ke'].insert(i+1, QWall['ke'](bc, self.y, self.nu(0)))
+                bcu['ke'][i+1].type = bc.type
         return bcu
                 
     def define(self):

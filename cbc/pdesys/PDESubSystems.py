@@ -434,8 +434,10 @@ class DerivedQuantity(PDESubSystemBase):
                 self._form = eval(self.formula, globals(), self.solver_namespace)
             else:
                 # Use conditional to bound the derived quantity
-                self._form = eval("max_(%s, Constant(1.e-12, cell=V['dq'].cell()))" 
-                                   %(self.formula), globals(), self.solver_namespace)
+                # New bug? Don't know why this does not work any more MM-071211
+                #self._form = eval("max_(%s, Constant(1.e-12, cell=V['dq'].cell()))" 
+                #                   %(self.formula), globals(), self.solver_namespace)
+                self._form = eval(self.formula, globals(), self.solver_namespace)                   
         else:
             self._form = eval(self.formula, globals(), self.solver_namespace)
         
@@ -455,8 +457,9 @@ class DerivedQuantity(PDESubSystemBase):
         setattr(self, self.name, self.dq)  # attr w/real name
         self.solver_namespace[self.name + '_'] = self.dq
         self.x = self.dq.vector()
-        info_red('make_function does not work in parallell!')
-        self.b = Vector(self.x.size(0))
+        if MPI.num_processes() > 1:
+            info_red('make_function does not work in parallell!')
+        self.b = Vector(self.x)
         self.work = self.get_work_vector()
             
     def project(self):
@@ -554,24 +557,24 @@ class DerivedQuantity(PDESubSystemBase):
     def _info(self):
         return "Derived Quantity: %s" %(self.name)
 
-#class DerivedQuantity_NoBC(DerivedQuantity):
-    #"""
-    #Derived quantity where default is no assigned boundary conditions.
-    #"""
-    #def create_BCs(self, bcs):
-        #bcu = []
-        #for bc in bcs:
-            #if bc.type() == 'Periodic':
-                #bcu.append(PeriodicBC(self.V, bc))
-                #bcu[-1].type = bc.type
-        #return bcu
-
 class DerivedQuantity_NoBC(DerivedQuantity):
     """
     Derived quantity where default is no assigned boundary conditions.
     """
     def create_BCs(self, bcs):
-        return []
+        bcu = []
+        for bc in bcs:
+            if bc.type() == 'Periodic':
+                bcu.append(PeriodicBC(self.V, bc))
+                bcu[-1].type = bc.type
+        return bcu
+
+#class DerivedQuantity_NoBC(DerivedQuantity):
+    #"""
+    #Derived quantity where default is no assigned boundary conditions.
+    #"""
+    #def create_BCs(self, bcs):
+        #return []
         
 class DerivedQuantity_grad(DerivedQuantity):
     """Derived quantity using the gradient of the test function."""
@@ -627,7 +630,10 @@ class extended_normalize:
             self.pp[part] = '1'
             self.u0 = interpolate(Expression(self.pp, element=V.ufl_element()), V)
             self.x0 = self.u0.vector()
-            self.C1 = assemble(v[self.part]*dx) 
+            self.C1 = assemble(v[self.part]*dx)
+        else:
+            self.u = Function(V)
+            self.vv = self.u.vector()
         
     def __call__(self, v):
         if isinstance(self.part, int):
@@ -640,7 +646,12 @@ class extended_normalize:
                 self.x0[:] = self.x0[:]*(self.c/c1)
         else:
             # normalize entire vector
-            dummy = normalize(v)
+            #dummy = normalize(v) # does not work in parallel
+            #self.vv = Vector(v)
+            self.vv[:] = 1./v.size()
+            c = v.inner(self.vv)
+            self.vv[:] = c
+            v.axpy(-1., self.vv)
 
 class FlowSubDomain(AutoSubDomain):
     """Wrapper class that creates a SubDomain compatible with CBC.PDESys's

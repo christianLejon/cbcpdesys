@@ -64,11 +64,12 @@ if __name__=='__main__':
     # Set up turbulent channel problem
     # Turbulent channel only works with periodic boundaries
     problem_parameters['periodic'] = True
-    problem_parameters['time_integration']='Steady'
+    problem_parameters['time_integration'] = 'Steady'
     problem_parameters['Re_tau'] = Re_tau= 395.
     problem_parameters['utau'] = utau = 0.05
     problem_parameters['plot_velocity'] = True
-    problem_parameters['Ny'] =100
+    problem_parameters['Ny'] = 100
+    problem_parameters['Nx'] = 10
     problem = channel(problem_parameters)
     problem.prm['viscosity'] = utau/Re_tau
     problem.pressure_gradient = Constant((utau**2, 0.)) # turbulent pressure gradient
@@ -98,6 +99,6 @@ if __name__=='__main__':
     problem_parameters['max_iter'] = 100
     problem.solve()
     print 'time = ', time()-t0
-    print summary()
+    print list_timings()
     plot(NS_solver.u_)
 

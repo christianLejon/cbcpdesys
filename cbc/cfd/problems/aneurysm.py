@@ -12,7 +12,7 @@ MCAtime = array([    0.,    27.,    42.,    58.,    69.,    88.,   110.,   130.,
         347.,   365.,   402.,   425.,   440.,   491.,   546.,   618.,                                                                                      
         703.,   758.,   828.,   897.,  1002.])
     
-y1 = array([ 390.        ,  398.76132931,  512.65861027,  642.32628399,                                                        
+MCAval = array([ 390.        ,  398.76132931,  512.65861027,  642.32628399,                                                        
         710.66465257,  770.24169184,  779.00302115,  817.55287009,                                                                                          
         877.12990937,  941.96374622,  970.        ,  961.2386707 ,                                                                                          
         910.42296073,  870.12084592,  843.83685801,  794.7734139 ,                                                                                          
@@ -34,13 +34,11 @@ class aneurysm(NSProblem):
         
     def create_boundaries(self):
         # Define the spline for the heart beat
-        self.inflow_t_spline = ius(MCAtime, y1)
+        self.inflow_t_spline = ius(MCAtime, MCAval)
         
         # Preassemble normal vector on inlet
         n = self.n = FacetNormal(self.mesh)        
-        self.normal  = [assemble(-n[0]*ds(2), mesh=self.mesh)]
-        self.normal += [assemble(-n[1]*ds(2), mesh=self.mesh)]
-        self.normal += [assemble(-n[2]*ds(2), mesh=self.mesh)]
+        self.normal = [assemble(-n[i]*ds(2), mesh=self.mesh) for i in range(3)]
         
         # Area of inlet 
         self.A0 = assemble(Constant(1.)*ds(2), mesh=self.mesh)
@@ -97,6 +95,9 @@ class aneurysm(NSProblem):
         
         info_green('Pressure outlet 1 = {0:2.5f}'.format(self.p_out1(0)))
         info_green('Pressure outlet 3 = {0:2.5f}'.format(self.p_out2(0)))
+        
+        if self.tstep % 10 == 0:
+            print 'Memory usage = ', self.getMyMemoryUsage()
 
 if __name__ == '__main__':
     from cbc.cfd.icns import NSFullySegregated, NSSegregated, solver_parameters
@@ -104,7 +105,7 @@ if __name__ == '__main__':
     parameters["linear_algebra_backend"] = "PETSc"
     set_log_active(True)
     problem_parameters['viscosity'] = 0.00345
-    problem_parameters['T'] = 0.5
+    problem_parameters['T'] = 0.05
     problem_parameters['dt'] = 0.05
     problem_parameters['iter_first_timestep'] = 2
     solver_parameters = recursive_update(solver_parameters, 

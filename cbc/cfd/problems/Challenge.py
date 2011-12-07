@@ -6,26 +6,12 @@ __license__  = "GNU GPL version 3 or any later version"
 from NSProblem import *
 from scipy.interpolate import InterpolatedUnivariateSpline as ius
 from numpy import array, zeros, floor
-
-MCAtime = array([    0.,    27.,    42.,    58.,    69.,    88.,   110.,   130.,                                                                    
-        136.,   168.,   201.,   254.,   274.,   290.,   312.,   325.,                                                                                      
-        347.,   365.,   402.,   425.,   440.,   491.,   546.,   618.,                                                                                      
-        703.,   758.,   828.,   897.,  1002.])
-    
-y1 = array([ 390.      ,  398.76132931,  512.65861027,  642.32628399,                                                        
-        710.66465257,  770.24169184,  779.00302115,  817.55287009,                                                                                          
-        877.12990937,  941.96374622,  970.        ,  961.2386707 ,                                                                                          
-        910.42296073,  870.12084592,  843.83685801,  794.7734139 ,                                                                                          
-        694.89425982,  714.16918429,  682.62839879,  644.07854985,                                                                                          
-        647.58308157,  589.75830816,  559.96978852,  516.16314199,                                                                                          
-        486.37462236,  474.10876133,  456.58610272,  432.05438066,  390.]
-        )*0.001*2./3.
+from aneurysm import MCAtime, MCAval
 
 class Challenge(NSProblem):
     
     def __init__(self, parameters):
         NSProblem.__init__(self, parameters=parameters)
-        #self.mesh = Mesh("../data/100_1314k.xml.gz")
         self.mesh = Mesh("../data/mesh_coarse.xml")
         self.boundaries = self.create_boundaries()
         
@@ -34,24 +20,22 @@ class Challenge(NSProblem):
         
     def create_boundaries(self):
         # Define the spline for the heart beat
-        self.inflow_t_spline = ius(MCAtime, y1)
+        self.inflow_t_spline = ius(MCAtime, MCAval)
         
         # Preassemble normal vector on inlet
         n = self.n = FacetNormal(self.mesh)        
-        self.normal  = [assemble(-n[0]*ds(4), mesh=self.mesh)]
-        self.normal += [assemble(-n[1]*ds(4), mesh=self.mesh)]
-        self.normal += [assemble(-n[2]*ds(4), mesh=self.mesh)]
+        self.normal = [assemble(-n[i]*ds(4), mesh=self.mesh) for i in range(3)]
         
         # Area of inlet 
         self.A0 = assemble(Constant(1.)*ds(4), mesh=self.mesh)
         
-        # Create dictionary used for Dirichlet inlet conditions. Values are assigned in prepare, called at the start of a new timestep                       
+        # Create dictionary used for Dirichlet inlet conditions. Values are assigned in prepare
         self.inflow = {'u' : Constant((0, 0, 0)),
                        'u0': Constant(0),
                        'u1': Constant(0),
                        'u2': Constant(0)}
 
-        # Pressures on outlets are specified by DirichletBCs, values are computed in prepare
+        # Pressures on outlets are specified by DirichletBCs
         self.p_out1 = Constant(0)
 
         # Specify the boundary subdomains and hook up dictionaries for DirichletBCs
@@ -63,13 +47,11 @@ class Challenge(NSProblem):
         
     def prepare(self):
         """Called at start of a new timestep."""
-        solver = self.pdesystems['Navier-Stokes']
         t = self.t - floor(self.t/1002.0)*1002.0
         u_mean = self.inflow_t_spline(t)[0]/self.A0        
         self.inflow['u'].assign(Constant(u_mean*array(self.normal)))
         for i in range(3):
             self.inflow['u'+str(i)].assign(u_mean*self.normal[i])
-
 
 if __name__ == '__main__':
     from cbc.cfd.icns import NSFullySegregated, NSSegregated, solver_parameters

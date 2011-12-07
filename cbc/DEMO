@@ -23,7 +23,7 @@ Case 2. Turbulent channel flow. Coupled velocity-pressure formulation, P1-P1 ele
 to a constant pressure gradient equal to u_tau**2, where u_tau is the friction
 velocity (u_tau=sqrt(nu*du/dy)_wall).
 
-Unix> cd ../ransmodels
+Unix> cd ../ransmodels/demo
 Unix> ipython
 ...
 [1] run turbulent_channel

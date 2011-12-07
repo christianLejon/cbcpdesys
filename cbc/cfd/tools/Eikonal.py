@@ -4,22 +4,21 @@ __copyright__ = "Copyright (C) 2011 " + __author__
 __license__  = "GNU GPL version 3 or any later version"
 
 """
-Solver for the Eikonal equation.
+Newton solver for the stabilized Eikonal equation.
 """
-from cbc.pdesys import *
+from cbc.pdesys.PDESystem import *
 
-solver_parameters = copy.deepcopy(solver_parameters)
+solver_parameters = copy.deepcopy(default_solver_parameters)
 solver_parameters = recursive_update(solver_parameters, {
     'eps' : Constant(0.02),
     'iteration_type': 'Newton',
-    'time_integration': 'Steady'
+    'time_integration': 'Steady',
+    'max_iter': 100
 })
 
 class Eikonal(PDESystem):
-    """Newton solver for Eikonal's equation."""
     def __init__(self, mesh, boundaries, parameters=solver_parameters):
         PDESystem.__init__(self, [['y']], mesh, parameters)
-        self.setup()
         self.f = f = Constant(1.0)
         self.bc['y'] = self.create_BCs(boundaries, self.V['y'])
         
@@ -30,8 +29,7 @@ class Eikonal(PDESystem):
         A1, b1 = assemble_system(a1, L1)
         for bc in self.bc['y']: bc.apply(A1, b1)
         solve(A1, self.y_.vector(), b1)
-        
-        # Solve Eikonal equation (stabilized)
+        #
         self.solve()
 
     def define(self):
@@ -45,7 +43,7 @@ class Eikonal(PDESystem):
         conditions on walls. """
         bcu = []
         for bc in bcs:
-            if bc.type() in ('Periodic', 'Wall'):
+            if bc.type() in ('Wall'):
                 add_BC(bcu, V, bc, Constant(0.))
         return bcu
         
