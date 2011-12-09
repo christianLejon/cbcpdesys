@@ -147,17 +147,17 @@ if __name__ == '__main__':
     from cbc.cfd import icns                    # Navier-Stokes solvers
     from cbc.cfd.icns import solver_parameters  # parameters to NS solver
     set_log_active(True)
-    problem_parameters['time_integration'] = 'Steady'
+    problem_parameters['time_integration'] = 'Transient'
     problem_parameters['T'] = 0.5
     problem_parameters['Re'] = 8.
-    problem_parameters['max_iter'] = 100
+    problem_parameters['max_iter'] = 1
     problem_parameters['max_err'] = 1e-10
     problem_parameters['plot_velocity'] = False # plot velocity at end of timestep
     problem_parameters['periodic'] = True      # Use or not periodic boundary conditions
     
     solver_parameters = recursive_update(solver_parameters, 
     dict(degree=dict(u=2),
-         pdesubsystem=dict(u=30, p=30, velocity_update=0, up=1),
+         pdesubsystem=dict(u=30, p=30, velocity_update=0, up=1), max_iter=5,         # GRPC
          linear_solver=dict(u='lu', p='lu', velocity_update='bicgstab'), 
          precond=dict(u='jacobi', p='amg', velocity_update='jacobi'))
     )
@@ -167,8 +167,8 @@ if __name__ == '__main__':
     
     # Choose Navier-Stokes solver
     #NS_solver = icns.NSFullySegregated(NS_problem, solver_parameters)
-    #NS_solver = icns.NSSegregated(NS_problem, solver_parameters)
-    NS_solver = icns.NSCoupled(NS_problem, solver_parameters)
+    NS_solver = icns.NSSegregated(NS_problem, solver_parameters)
+    #NS_solver = icns.NSCoupled(NS_problem, solver_parameters)
     
     # Solve the problem
     NS_problem.solve()

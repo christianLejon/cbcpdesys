@@ -1,5 +1,5 @@
-"""This demo illustrates how to use of DOLFIN and the PDESystem
-for solving the Cahn-Hilliard equation, which is a time-dependent 
+"""This demo illustrates how to use DOLFIN and CBC.PDESys
+to solve the Cahn-Hilliard equation, which is a time-dependent 
 nonlinear PDE """
 
 __author__ = "Mikael Mortensen <Mikael.Mortensen@ffi.no>"
