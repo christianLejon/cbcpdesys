@@ -9,7 +9,8 @@ class NSFullySegregated(NSSolver):
     """Segregated solver for the Navier-Stokes equations.
     The velocity vector is implemented as individual components u0, u1 (u2)
     using FunctionSpaces and not a VectorFunctionSpace. 
-    The velocity-components all make use of the same coefficient matrix.
+    The velocity-components all make use of the same coefficient matrix
+    since the uncoupled Laplace-form of the NS equations is used.
     """
    
     def __init__(self, problem, parameters):
@@ -107,7 +108,7 @@ class NSFullySegregated(NSSolver):
             dummy = self.pdesubsystems[ui + '_update'].solve()
         NSSolver.Transient_update(self)
         
-######### Factory functions or classes for numerical pdesubsystems ###################
+######### PDESubsystems ###################
  
 class VelocityBase(PDESubSystem):
     """Variational form for velocity."""    
@@ -166,12 +167,10 @@ class PressureBase(PDESubSystem):
         PDESubSystem.__init__(self, solver_namespace, unknown, bcs=bcs, 
                                     normalize=normalize, **kwargs)
         
-        # Create functions for the pressure correction
+        # Create function to hold the pressure correction
         self.solver_namespace['dp'] = Function(self.V)
         self.solver_namespace['dpx'] = self.dpx = self.solver_namespace['dp'].vector()        
         self.prm['iteration_type'] = 'Picard'
-        self.p_old = Function(self.V)
-        self.px_old = self.p_old.vector()
         self.prm['reassemble_lhs'] = False # Constant coefficient matrix
         
     def define(self):
@@ -200,11 +199,11 @@ class PressureBase(PDESubSystem):
                             
     def prepare(self):
         """Remember old pressure solution"""
-        self.px_old[:] = self.x[:]
+        self.dpx[:] = self.x[:]
         
     def update(self):
-        """Get pressure correction"""
-        self.dpx[:] = self.x[:] - self.px_old[:]
+        """Set pressure correction"""
+        self.dpx[:] = self.x[:] - self.dpx[:]
         
 ############# Velocity update #################################
 class VelocityUpdate_1(VelocityUpdateBase):
@@ -287,7 +286,7 @@ class Transient_Pressure_101(PressureBase):
         self.work[:] = self.x[:]
         self.setup_solver(assemble_A, assemble_b)
         self.linear_solver.solve(self.A, self.x, self.b)
-        #if self.normalize: self.normalize(self.x)
+        if self.normalize: self.normalize(self.x)
         self.update()
         return self.rp, self.x - self.work
 
@@ -334,28 +333,61 @@ class Transient_Velocity_101(VelocityBase):
             self.M = assemble(inner(v, u)*dx)                # mass
             self.K = assemble(nu*inner(grad(v), grad(u))*dx) # diffusion
             U_ = 1.5*u_1 - 0.5*u_2                           # AB-projection
-            self.a = 0.5*self.conv(v, u, U_, convection_form)*dx # convection form that changes in time
+            self.a = -0.5*self.conv(v, u, U_, convection_form)*dx # convection form that changes in time
         self.dt = dt(0)
-        self.x_1 = self.solver_namespace['x_1']           
-        self.b0 = assemble(inner(f[self.index], v)*dx)    
+        self.x_1 = self.solver_namespace['x_1']        
+        if isinstance(f, Constant):
+            self.b0 = assemble(inner(f[self.index], v)*dx)
+        else:
+            self.b0 = Vector(self.x)
+            self.b0[:] = 0.
+            
+        # Get a short cut to all the subsystems
         self.pdes = self.solver_namespace['pdesubsystems']
+        
+        # Assemble matrix for computing pressure gradient
         self.P = assemble(inner(v, p.dx(self.index))*dx) # Different for each component
         #self.P = assemble(-inner(v.dx(self.index), p)*dx) # Different for each component
-        # Set the initial rhs-vector equal to the constant body force.
+        
+        # Allocate vectors for the rhs
         self.b = Vector(self.x)
         self.bold = Vector(self.x)
         
         # Do not reassemble lhs when iterating over pressure-velocity system on given timestep
-        # This is possible because self.a does not depend on u_ (the new solution)
+        # This is possible because self.a does not depend on u_ (the new solution).
+        # The second iteration on the same timestep is much faster than the first.
         self.prm['reassemble_lhs_inner'] = False
         self.exterior = False
         return False
             
     def assemble(self, *args):
-        if self.index == 0: # Assemble only for first velocity component
-            # Set up coefficient matrix                
+        # Assemble only for first velocity component
+        # The matrices used are:
+        #
+        #     A  = Coefficient (lhs) matrix or rhs matrix
+        #     Ac = Convection matrix
+        #     K  = Diffusion matrix
+        #     M  = Mass matrix
+        #
+        # For the lhs A is computed as:
+        #
+        #     A  = 1/dt*M + 0.5*Ac + 0.5*K
+        #
+        # The rhs coefficient matrix and vector are computed as:
+        #
+        #     Ar = 1/dt*M - 0.5*Ac - 0.5*K
+        #     b  = A*u_1.vector()
+        #
+        #  Ac needs to be reassembled each new timestep into A to save memory.
+        #  A and Ar are recreated each timestep by assembling Ac, setting up Ar 
+        #  with axpy and then using the following to create the lhs A:
+        #
+        #    A = - Ar + 2/dt*M
+        #  
+        if self.index == 0: 
+            # Set up coefficient matrix. Start by assembling convection
             self.A = assemble(self.a, tensor=self.A, reset_sparsity=self.prm['reset_sparsity']) 
-            self.A._scale(-1.) # Negative convection on the rhs 
+            #self.A._scale(-1.) # Negative convection on the rhs 
             self.A.axpy(1./self.dt, self.M, True)    # Add mass
             self.A.axpy(-0.5, self.K, True)          # Add diffusion                
             
@@ -364,7 +396,7 @@ class Transient_Velocity_101(VelocityBase):
                 self.pdes[ui].b[:] = self.pdes[ui].b0[:]
                 self.pdes[ui].b.axpy(1., self.A*self.x_1[ui])
 
-            # Reset matrix for lhs
+            # Reset matrix for lhs A = -Ar + 2/dt*M
             self.A._scale(-1.)
             self.A.axpy(2./self.dt, self.M, True)
             self.prm['reset_sparsity'] = False 
@@ -401,10 +433,6 @@ class Transient_Velocity_102(VelocityBase):
     def form(self, u_, u, v, p, q, p_, u_1, u_2, nu, f, dt, convection_form, dim, **kwargs):
         self.dt = dt(0)
         self.dim = dim
-        self.ac1 = self.conv(v, u, u_1, convection_form)*dx
-        self.ac2 = self.conv(v, u, u_2, convection_form)*dx
-        self.Ac1 = Matrix()
-        self.Ac2 = Matrix()
         self.x_1 = self.solver_namespace['x_1']
         self.x_2 = self.solver_namespace['x_2']
         self.pdes = self.solver_namespace['pdesubsystems']
@@ -415,6 +443,10 @@ class Transient_Velocity_102(VelocityBase):
             self.M = assemble(inner(v, u)*dx)
             self.A.axpy(1./self.dt, self.M, True)    # Add mass
             [bc.apply(self.A) for bc in self.bcs]
+            self.ac1 = self.conv(v, u, u_1, convection_form)*dx
+            self.ac2 = self.conv(v, u, u_2, convection_form)*dx
+            self.Ac1 = Matrix()
+            self.Ac2 = Matrix()
         else:
             self.A = self.pdes['u0'].A
             

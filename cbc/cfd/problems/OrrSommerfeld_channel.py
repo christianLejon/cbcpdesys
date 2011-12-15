@@ -31,8 +31,8 @@ set_log_active(True)
 
 from numpy import real, exp, dot as ndot
 
-class U0(Expression):
-    """ Expression for the Orr-Sommerfeld solution """
+class U_data(object):
+    """Class for the Orr-Sommerfeld solution """
     def __init__(self, OS, **kwargs):
         self.par={  
             'eps':1.e-4,
@@ -43,34 +43,31 @@ class U0(Expression):
         self.OS = OS
         [setattr(self, name, val) for name, val in self.par.iteritems()]
         
-    def eval(self, values, x):
+    def __call__(self, x):
         self.OS.interp(x[1])
-        values[0] = self.theta*(1.-x[1]**2) + self.eps*ndot(self.OS.f, 
+        val1 = self.theta*(1.-x[1]**2) + self.eps*ndot(self.OS.f, 
                          real(self.OS.dphidy*exp(1j*(x[0] - self.OS.eigval*self.t))))
-        values[1] = -self.eps*ndot(self.OS.f, real(1j*self.OS.phi*exp(1j*(x[0] - 
+        val2 = -self.eps*ndot(self.OS.f, real(1j*self.OS.phi*exp(1j*(x[0] - 
                          self.OS.eigval*self.t))))
+        return val1, val2
+
+class U0(Expression):
+    def __init__(self, OS, **kwargs):
+        self.u0 = U_data(OS, **kwargs)
+        
+    def eval(self, values, x):
+        values[0], values[1] = self.u0(x)
 
     def value_shape(self):
         return (2,)
-        
+
 class UP0(Expression):
     """ Expression for the Orr-Sommerfeld solution """
     def __init__(self, OS, **kwargs):
-        self.par={  
-            'eps':1.e-4,
-            't':0.,
-            'theta':1.
-        }
-        self.par.update(kwargs)
-        self.OS = OS
-        [setattr(self, name, val) for name, val in self.par.iteritems()]
+        self.u0 = U_data(OS, **kwargs)
         
     def eval(self, values, x):
-        self.OS.interp(x[1])
-        values[0] = self.theta*(1.-x[1]**2) + self.eps*ndot(self.OS.f, 
-                         real(self.OS.dphidy*exp(1j*(x[0] - self.OS.eigval*self.t))))
-        values[1] = -self.eps*ndot(self.OS.f, real(1j*self.OS.phi*exp(1j*(x[0] - 
-                         self.OS.eigval*self.t))))
+        values[0], values[1] = self.u0(x)
         values[2] = 0
 
     def value_shape(self):
