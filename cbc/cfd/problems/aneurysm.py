@@ -31,6 +31,7 @@ class aneurysm(NSProblem):
         
         # To initialize solution set the dictionary q0: 
         #self.q0 = Initdict(u = ('0', '0', '0'), p = ('0')) # Or not, zero is default anyway
+        self.u_file = File("results/Aneurysm/u.pvd")
         
     def create_boundaries(self):
         # Define the spline for the heart beat
@@ -62,7 +63,8 @@ class aneurysm(NSProblem):
         return [walls, inlet, pressure1, pressure2]
         
     def prepare(self):
-        """Called at start of a new timestep. Set the outlet pressure at new time."""
+        """Called at start of a new timestep. Compute inlet velocity and
+        set the resistance outlet pressure at new time."""
         solver = self.pdesystems['Navier-Stokes']
         t = self.t - floor(self.t/1002.0)*1002.0
         u_mean = self.inflow_t_spline(t)[0]/self.A0        
@@ -71,6 +73,7 @@ class aneurysm(NSProblem):
             self.inflow['u'+str(i)].assign(u_mean*self.normal[i])
             
         info_green('UMEAN = {0:2.5f} at time {1:2.5f}'.format(u_mean, self.t))
+
         # First time around we assemble some vectors that can be used to compute 
         # the outlet pressures with merely inner products and no further assembling.
         if not hasattr(self, 'A1'): 
@@ -99,6 +102,13 @@ class aneurysm(NSProblem):
         if self.tstep % 10 == 0:
             print 'Memory usage = ', self.getMyMemoryUsage()
 
+    def update(self):
+        self.pdesystems['Navier-Stokes'].prm['max_iter'] = 1
+        if self.tstep % 100 == 0:
+            V = VectorFunctionSpace(self.mesh, 'CG', 1)
+            u = project(self.pdesystems['Navier-Stokes'].u_, V)
+            self.u_file << u
+
 if __name__ == '__main__':
     from cbc.cfd.icns import NSFullySegregated, NSSegregated, solver_parameters
     import time
@@ -112,8 +122,8 @@ if __name__ == '__main__':
     dict(degree=dict(u=1,u0=1,u1=1,u2=1),
          pdesubsystem=dict(u=101, p=101, velocity_update=101), 
          linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
-         precond=dict(u='jacobi', p='hypre_amg', velocity_update='jacobi'))
-         )
+         precond=dict(u='jacobi', p='hypre_amg', velocity_update='jacobi'), 
+         max_iter=5))
     
     problem = aneurysm(problem_parameters)
     solver = NSFullySegregated(problem, solver_parameters)
@@ -131,7 +141,6 @@ if __name__ == '__main__':
     #u_ = project(solver.u_, V)
     #file1 = File('u.pvd')
     #file1 << u_
-
     print list_timings()
 
     dump_result(problem, solver, t1, 0)

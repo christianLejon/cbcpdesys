@@ -33,6 +33,7 @@ class drivencavity(NSProblem):
         walls = FlowSubDomain(stationary_walls, bc_type='Wall')
         top   = FlowSubDomain(lid, func=lid_velocity, bc_type='Wall')
         self.boundaries = [top, walls]
+        self.u_file = File("results/drivencavity/u.pvd")
                 
     def gen_mesh(self):
         m = Rectangle(-1., -1., 1., 1., self.prm['Nx'], self.prm['Ny'])
@@ -73,7 +74,7 @@ class drivencavity(NSProblem):
     def reference(self, t):
         """Reference min streamfunction for T=2.5, Re = 1000."""
         return -0.061076605
-        
+
     def __str__(self):
         return "Driven cavity"
 
