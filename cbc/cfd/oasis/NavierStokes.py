@@ -57,7 +57,7 @@ from cbc.cfd.oasis import *
 
 #parameters["linear_algebra_backend"] = "Epetra"
 parameters["linear_algebra_backend"] = "PETSc"
-parameters["form_compiler"]["optimize"]     = False
+parameters["form_compiler"]["optimize"]     = True
 parameters["form_compiler"]["cpp_optimize"] = True
 set_log_active(True)
 
@@ -71,7 +71,7 @@ mesh = UnitSquare(45, 45)
 nu = Constant(0.001)          # Viscosity
 t = 0                         # time
 tstep = 0                     # Timestep
-T = 2.5                       # End time
+T = 0.5                       # End time
 #T = 2*dt(0)
 max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
@@ -173,12 +173,13 @@ else:
 #p_sol = LUSolver()
 #p_sol.parameters['reuse_factorization'] = True
 
-u_sol = KrylovSolver('bicgstab', 'jacobi')
+u_sol = KrylovSolver('bicgstab', 'hypre_euclid')
 u_sol.parameters['error_on_nonconvergence'] = False
 u_sol.parameters['nonzero_initial_guess'] = True
+u_sol.parameters['monitor_convergence'] = True
 reset_sparsity = True
 
-du_sol = KrylovSolver('bicgstab', 'jacobi')
+du_sol = KrylovSolver('bicgstab', 'hypre_euclid')
 du_sol.parameters['error_on_nonconvergence'] = False
 du_sol.parameters['nonzero_initial_guess'] = True
 du_sol.parameters['preconditioner']['reuse'] = True
@@ -253,7 +254,7 @@ while t < (T - tstep*DOLFIN_EPS):
         if tstep % check == 0:
             if num_iter > 1:
                 if j == 1: info_blue('                 error u  error p')
-                info_blue('    Iter = {:4d}, {:2.2e} {:2.2e}'.format(j, err, rp))
+                info_blue('    Iter = {0:4d}, {1:2.2e} {2:2.2e}'.format(j, err, rp))
 
     ### Update velocity ###
     for ui in u_components:
@@ -269,12 +270,12 @@ while t < (T - tstep*DOLFIN_EPS):
         
     # Print some information
     if tstep % check == 0:
-        info_green('Time = {:2.4e}, timestep = {:6d}, End time = {:2.4e}'.format(t, tstep, T)) 
+        info_green('Time = {0:2.4e}, timestep = {1:6d}, End time = {2:2.4e}'.format(t, tstep, T)) 
 
-info_red('Additional memory use of solver = {}'.format(eval(getMyMemoryUsage()) - eval(dolfin_memory_use)))
+info_red('Additional memory use of solver = {0}'.format(eval(getMyMemoryUsage()) - eval(dolfin_memory_use)))
 info_red('Total memory use = ' + getMyMemoryUsage())
 list_timings()
-plot(project(u_, Vv))    
+#plot(project(u_, Vv))    
 info_red('Total computing time = {0:f}'.format(time.time()- t0))
 
 
