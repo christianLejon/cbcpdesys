@@ -16,7 +16,7 @@ import os
 #parameters["linear_algebra_backend"] = "Epetra"
 parameters["linear_algebra_backend"] = "PETSc"
 #parameters['form_compiler']['representation'] = 'quadrature'
-parameters["form_compiler"]["optimize"]     = True
+parameters["form_compiler"]["optimize"]     = False
 parameters["form_compiler"]["cpp_optimize"] = True
 # Cache for work arrays
 _work = {}
