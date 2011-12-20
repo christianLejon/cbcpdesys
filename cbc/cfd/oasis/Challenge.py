@@ -57,7 +57,7 @@ from cbc.cfd.oasis import *
 
 #parameters["linear_algebra_backend"] = "Epetra"
 parameters["linear_algebra_backend"] = "PETSc"
-parameters["form_compiler"]["optimize"]     = False
+parameters["form_compiler"]["optimize"]     = True   # I somatimes get memory access error with True here (MM)
 parameters["form_compiler"]["cpp_optimize"] = True
 set_log_active(True)
 
@@ -128,19 +128,33 @@ class InflowComp(Expression):
     def eval_cell(self, values, x, ufc_cell):
         values[0] = self.data(x, ufc_cell)[self.component]
 
-mesh = Mesh("/home/kent-and/Challenge/mesh_500k.xml.gz")
+# Read mesh
+testcase = 1
+refinement = 0
+stationary = False
+boundary_layers = True
+if boundary_layers:
+    mesh_filename = "/home/kent-and/Challenge/mesh_750k_BL_t.xml.gz"
+    if refinement==1: mesh_filename = "/home/kent-and/Challenge/mesh_2mio_BL_t.xml.gz"
+    if refinement==2: mesh_filename = "/home/kent-and/Challenge/mesh_4mio_BL_t.xml.gz"
+else:
+    mesh_filename = "/home/kent-and/Challenge/mesh_500k.xml.gz"
+    if refinement==1: mesh_filename = "/home/kent-and/Challenge/mesh_1mio.xml.gz"
+    if refinement==2: mesh_filename = "/home/kent-and/Challenge/mesh_2mio.xml.gz"
+    if refinement==3: mesh_filename = "/home/kent-and/Challenge/mesh_4mio.xml.gz"
+    
+mesh = Mesh(mesh_filename)
+
+# Set parameters
 nu = Constant(0.04)           # Viscosity
 t = 0                         # time
 tstep = 0                     # Timestep
-T = 0.01                       # End time
+T = 0.05                      # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
 max_error = 1e-6
 dt = Constant(T/ceil(T/0.2/MPI.min(mesh.hmin()))) # timestep
-check = 10                    # print out info every check timestep 
-
-testcase = 1
-stationary = False
+check = 1                    # print out info every check timestep 
 
 flux = 0
 if testcase == 1: 
@@ -203,7 +217,7 @@ u_  = as_vector([q_[ui]  for ui in u_components]) # Velocity vector at t
 u_1 = as_vector([q_1[ui] for ui in u_components]) # Velocity vector at t - dt
 u_2 = as_vector([q_2[ui] for ui in u_components]) # Velocity vector at t - 2*dt
 
-q_['p'] = Function(Q)  # pressure at t - dt/2
+q_['p'] = p_ = Function(Q)  # pressure at t - dt/2
 dp_ = Function(Q)      # pressure correction
 
 ###################  Boundary conditions  ###########################
@@ -211,9 +225,10 @@ dp_ = Function(Q)      # pressure correction
 bcs = dict((ui, []) for ui in sys_comp)
 
 bcw = DirichletBC(V, 0., 0)
-bcs['u0'] = [DirichletBC(V, InflowComp(mesh, velocity, stationary, 0), 1), bcw]
-bcs['u1'] = [DirichletBC(V, InflowComp(mesh, velocity, stationary, 1), 1), bcw]
-bcs['u2'] = [DirichletBC(V, InflowComp(mesh, velocity, stationary, 2), 1), bcw]
+inflow = InflowData(mesh, velocity, stationary)
+bcs['u0'] = [DirichletBC(V, InflowComp(inflow, 0), 1), bcw]
+bcs['u1'] = [DirichletBC(V, InflowComp(inflow, 1), 1), bcw]
+bcs['u2'] = [DirichletBC(V, InflowComp(inflow, 2), 1), bcw]
 bcs['p']  = [DirichletBC(Q, 0., 2)]
 
 # Normalize pressure or not?
@@ -260,12 +275,12 @@ else:
 #p_sol = LUSolver()
 #p_sol.parameters['reuse_factorization'] = True
 
-u_sol = KrylovSolver('bicgstab', 'jacobi')
+u_sol = KrylovSolver('bicgstab', 'hypre_euclid')
 u_sol.parameters['error_on_nonconvergence'] = False
 u_sol.parameters['nonzero_initial_guess'] = True
 reset_sparsity = True
 
-du_sol = KrylovSolver('bicgstab', 'jacobi')
+du_sol = KrylovSolver('bicgstab', 'hypre_euclid')
 du_sol.parameters['error_on_nonconvergence'] = False
 du_sol.parameters['nonzero_initial_guess'] = True
 du_sol.parameters['preconditioner']['reuse'] = True
@@ -291,6 +306,9 @@ while t < (T - tstep*DOLFIN_EPS):
     j = 0
     err = 1e8
     total_iters += 1
+    ####
+    inflow.t = t
+    ####
     if tstep == 1:
         num_iter = max(iters_on_first_timestep, max_iter)
     else:
@@ -340,7 +358,7 @@ while t < (T - tstep*DOLFIN_EPS):
         if tstep % check == 0:
             if num_iter > 1:
                 if j == 1: info_blue('                 error u  error p')
-                info_blue('    Iter = {:4d}, {:2.2e} {:2.2e}'.format(j, err, rp))
+                info_blue('    Iter = {0:4d}, {1:2.2e} {2:2.2e}'.format(j, err, rp))
 
     ### Update velocity ###
     for ui in u_components:
@@ -353,15 +371,25 @@ while t < (T - tstep*DOLFIN_EPS):
     for ui in u_components:
         x_2[ui][:] = x_1[ui][:]
         x_1[ui][:] = x_ [ui][:]
+
+    ################ Hack!! Because PETSc bicgstab with jacobi errors on the first tstep and exits in parallel ##
+    if tstep == 1:
+        u_sol = KrylovSolver('bicgstab', 'jacobi')
+        u_sol.parameters['error_on_nonconvergence'] = False
+        u_sol.parameters['nonzero_initial_guess'] = True
+    #################################################################################################
         
     # Print some information
     if tstep % check == 0:
-        info_green('Time = {:2.4e}, timestep = {:6d}, End time = {:2.4e}'.format(t, tstep, T)) 
-
-info_red('Additional memory use of solver = {}'.format(eval(getMyMemoryUsage()) - eval(dolfin_memory_use)))
+        info_green('Time = {0:2.4e}, timestep = {1:6d}, End time = {2:2.4e}'.format(t, tstep, T)) 
+info_red('Additional memory use of solver = {0}'.format(eval(getMyMemoryUsage()) - eval(dolfin_memory_use)))
 info_red('Total memory use = ' + getMyMemoryUsage())
 list_timings()
-plot(project(u_, Vv))    
 info_red('Total computing time = {0:f}'.format(time.time()- t0))
+file1 = File('u.pvd')
+file1 << project(u_, Vv)
+file2 = File('p.pvd')
+file2 << p_
+#plot(project(u_, Vv))    
 
 
