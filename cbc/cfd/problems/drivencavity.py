@@ -69,8 +69,9 @@ class drivencavity(NSProblem):
         return vmin
         
     def update(self):
-        if self.tstep % 10 == 0:
-            info_red('Memory usage = ' + self.getMyMemoryUsage())
+        pass
+        #if self.tstep % 100 == 0:
+            #info_red('Memory usage = ' + self.getMyMemoryUsage())
 
     def reference(self, t):
         """Reference min streamfunction for T=2.5, Re = 1000."""
@@ -106,7 +107,7 @@ if __name__ == '__main__':
         linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
         precond=dict(u='jacobi', p='hypre_amg', velocity_update='jacobi'),
         iteration_type='Picard',
-        max_iter=1 # Number of pressure/velocity iterations on given timestep
+        max_iter=4 # Number of pressure/velocity iterations on given timestep
         ))
     problem = drivencavity(problem_parameters)
     solver = icns.NSFullySegregated(problem, solver_parameters)        
@@ -118,13 +119,14 @@ if __name__ == '__main__':
     #solver.pdesubsystems['p'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['u0_update'].prm['monitor_convergence'] = True
     t0 = time.time()
-    problem.solve()
+    problem.solve(logging=True)
     t1 = time.time()-t0
     info_red('Total computing time = {0:f}'.format(t1))
+    list_timings()
+
     print 'Functional = ', problem.functional(solver.u_), ' ref ', problem.reference(0)
 
     info_red('Additional memory use of solver = {}'.format(eval(problem.getMyMemoryUsage()) - eval(problem.init_memory_use)))
-    list_timings()
 
     ## plot result. For fully segregated solver one should project the velocity vector on the correct space, if not the plot will look bad
     if solver.__class__ is icns.NSFullySegregated:

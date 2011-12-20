@@ -73,12 +73,12 @@ t = 0                         # time
 tstep = 0                     # Timestep
 T = 0.5                       # End time
 #T = 2*dt(0)
-max_iter = 1                  # Pressure velocity iterations on given timestep
+max_iter = 4                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
 max_error = 1e-6
 #dt = Constant(0.012254901960784314)
 dt = Constant(T/ceil(T/0.2/mesh.hmin())) # timestep
-check = 10                    # print out info every check timestep 
+check = 1                     # print out info every check timestep 
 
 # Specify body force
 dim = mesh.geometry().dim()
@@ -172,6 +172,7 @@ else:
 
 #p_sol = LUSolver()
 #p_sol.parameters['reuse_factorization'] = True
+list_timings()
 
 u_sol = KrylovSolver('bicgstab', 'hypre_euclid')
 u_sol.parameters['error_on_nonconvergence'] = False
