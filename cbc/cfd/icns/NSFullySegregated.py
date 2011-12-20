@@ -218,12 +218,9 @@ class VelocityUpdate_101(VelocityUpdateBase):
     def form(self, v, p, p_, dt, dpx, **kwargs): 
         self.dt = dt(0)
         self.dpx = dpx
-        # Assemble matrix used to compute rhs
-        if self.x.size()==p_.vector().size(): # Reuse matrix to save memory
-            self.P = self.solver_namespace['pdesubsystems']['u'+str(self.index)].P
-        else:
-            self.P = assemble(v * p.dx(self.index) * dx)            
-        self.b = Vector(self.x)
+        # Reuse matrix and vector from velocity pdesubsystem
+        self.P = self.solver_namespace['pdesubsystems']['u'+str(self.index)].P
+        self.b = self.solver_namespace['pdesubsystems']['u'+str(self.index)].b
         return False
         
     def assemble(self, M):

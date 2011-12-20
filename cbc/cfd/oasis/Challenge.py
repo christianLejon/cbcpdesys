@@ -71,18 +71,18 @@ from scipy.interpolate import InterpolatedUnivariateSpline as ius
 from scipy.interpolate import splrep, splev
 from numpy import array, zeros, floor
 
-A = [1, -0.23313344, -0.11235758, 0.10141715, 0.06681337, -0.044572343, -0.055327477, 0.040199067, 0.01279207, -0.002555173, -0.006805238, 0.002761498, -0.003147682, 0.003569664, 0.005402948, -0.002816467, 0.000163798, 8.38311E-05, -0.001517142, 0.001394522, 0.00044339, -0.000565792, -6.48123E-05] 
+AA = [1, -0.23313344, -0.11235758, 0.10141715, 0.06681337, -0.044572343, -0.055327477, 0.040199067, 0.01279207, -0.002555173, -0.006805238, 0.002761498, -0.003147682, 0.003569664, 0.005402948, -0.002816467, 0.000163798, 8.38311E-05, -0.001517142, 0.001394522, 0.00044339, -0.000565792, -6.48123E-05] 
 
-B = [0, 0.145238823, -0.095805132, -0.117147521, 0.07563348, 0.060636658, -0.046028338, -0.031658495, 0.015095811, 0.01114202, 0.001937877, -0.003619434, 0.000382924, -0.005482582, 0.003510867, 0.003397822, -0.000521362, 0.000866551, -0.001248326, -0.00076668, 0.001208502, 0.000163361, 0.000388013]
+BB = [0, 0.145238823, -0.095805132, -0.117147521, 0.07563348, 0.060636658, -0.046028338, -0.031658495, 0.015095811, 0.01114202, 0.001937877, -0.003619434, 0.000382924, -0.005482582, 0.003510867, 0.003397822, -0.000521362, 0.000866551, -0.001248326, -0.00076668, 0.001208502, 0.000163361, 0.000388013]
 
 counter = 0 
 N = 100 
 
 def time_dependent_velocity(t): 
   velocity = 0 
-  for k in range(len(A)): 
-    velocity += A[k]*cos(2*pi*k*t)
-    velocity += B[k]*sin(2*pi*k*t)
+  for k in range(len(AA)): 
+    velocity += AA[k]*cos(2*pi*k*t)
+    velocity += BB[k]*sin(2*pi*k*t)
   return velocity
 
 class InflowData(object):
@@ -132,7 +132,7 @@ mesh = Mesh("/home/kent-and/Challenge/mesh_500k.xml.gz")
 nu = Constant(0.04)           # Viscosity
 t = 0                         # time
 tstep = 0                     # Timestep
-T = 2.5                       # End time
+T = 0.01                       # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
 max_error = 1e-6
@@ -152,7 +152,7 @@ elif testcase == 3:
 elif testcase == 4:
     flux = 11.42 
 
-ne = Constant(1)
+one = Constant(1)
 V0 = assemble(one*dx, mesh=mesh)
 A0 = assemble(one*ds(0), mesh=mesh)
 A1 = assemble(one*ds(1), mesh=mesh)
@@ -181,7 +181,7 @@ f = Constant((0,)*dim)
 #####################################################################
 
 # Declare solution Functions and FunctionSpaces
-V = FunctionSpace(mesh, 'CG', 2)
+V = FunctionSpace(mesh, 'CG', 1)
 Q = FunctionSpace(mesh, 'CG', 1)
 Vv = VectorFunctionSpace(mesh, 'CG', V.ufl_element().degree())
 u = TrialFunction(V)
