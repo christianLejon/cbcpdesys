@@ -192,6 +192,10 @@ print "Number of vertices ", mesh.num_vertices()
 dim = mesh.geometry().dim()
 f = Constant((0,)*dim)
 
+dt =  0.2*(h / U)
+n  = int(T / dt + 1.0)
+dt = Constant(T / n)
+
 #####################################################################
 
 # Declare solution Functions and FunctionSpaces
@@ -254,8 +258,8 @@ U_ = 1.5*u_1 - 0.5*u_2
 a  = 0.5*inner(v, dot(U_, nabla_grad(u)))*dx
 
 # Preassemble constant body force
-assert(isinstance(f, Constant))
-b0 = dict((ui, assemble(v*f[i]*dx)) for i, ui in enumerate(u_components))
+#assert(isinstance(f, Constant))
+#b0 = dict((ui, assemble(v*f[i]*dx)) for i, ui in enumerate(u_components))
 
 # Preassemble constant pressure gradient matrix
 P = dict((ui, assemble(v*p.dx(i)*dx)) for i, ui in enumerate(u_components))
@@ -278,17 +282,20 @@ else:
 u_sol = KrylovSolver('bicgstab', 'hypre_euclid')
 u_sol.parameters['error_on_nonconvergence'] = False
 u_sol.parameters['nonzero_initial_guess'] = True
+u_sol.parameters['monitor_convergence'] = True
 reset_sparsity = True
 
 du_sol = KrylovSolver('bicgstab', 'hypre_euclid')
 du_sol.parameters['error_on_nonconvergence'] = False
 du_sol.parameters['nonzero_initial_guess'] = True
 du_sol.parameters['preconditioner']['reuse'] = True
+du_sol.parameters['monitor_convergence'] = True
 
 p_sol = KrylovSolver('gmres', 'hypre_amg')
 p_sol.parameters['error_on_nonconvergence'] = False
 p_sol.parameters['nonzero_initial_guess'] = True
 p_sol.parameters['preconditioner']['reuse'] = True
+p_sol.parameters['monitor_convergence'] = True
 
 x_  = dict((ui, q_ [ui].vector()) for ui in sys_comp)     # Solution vectors t
 x_1 = dict((ui, q_1[ui].vector()) for ui in u_components) # Solution vectors t - dt
@@ -297,7 +304,7 @@ b   = dict((ui, Vector(x_[ui])) for ui in sys_comp)       # rhs vectors
 bold= dict((ui, Vector(x_[ui])) for ui in sys_comp)       # rhs temp storage vectors
 work = Vector(x_['u0'])
 
-t0 = time.time()
+t0 = t1 = time.time()
 dt_ = dt(0)
 total_iters = 0
 while t < (T - tstep*DOLFIN_EPS):
@@ -328,8 +335,7 @@ while t < (T - tstep*DOLFIN_EPS):
             
             # Compute rhs for all velocity components
             for ui in u_components:
-                b[ui][:] = b0[ui][:]
-                b[ui].axpy(1., A*x_1[ui])
+                b[ui][:] = A*x_1[ui]
 
             # Reset matrix for lhs
             A._scale(-1.)
@@ -337,12 +343,11 @@ while t < (T - tstep*DOLFIN_EPS):
             [bc.apply(A) for bc in bcs['u0']]
         
         for ui in u_components:
-            bold[ui][:] = b[ui][:] 
+            b[ui][:] = 0.
             b[ui].axpy(-1., P[ui]*x_['p'])
             [bc.apply(b[ui]) for bc in bcs[ui]]
             work[:] = x_[ui][:]
             u_sol.solve(A, x_[ui], b[ui])
-            b[ui][:] = bold[ui][:]  # preassemble part
             err += norm(work - x_[ui])
             
         ### Solve pressure ###
@@ -373,10 +378,13 @@ while t < (T - tstep*DOLFIN_EPS):
         x_1[ui][:] = x_ [ui][:]
 
     ################ Hack!! Because PETSc bicgstab with jacobi errors on the first tstep and exits in parallel ##
+    info_red('Total computing time = {0:f}'.format(time.time() - t1))
+    t1 = time.time()
     if tstep == 1:
         u_sol = KrylovSolver('bicgstab', 'jacobi')
         u_sol.parameters['error_on_nonconvergence'] = False
         u_sol.parameters['nonzero_initial_guess'] = True
+        u_sol.parameters['monitor_convergence'] = True
     #################################################################################################
         
     # Print some information
