@@ -85,20 +85,21 @@ t = 0                         # time
 tstep = 0                     # Timestep
 T = 10.                       # End time
 #T = 2*dt(0)
-max_iter = 5                  # Iterations on timestep
+max_iter = 10                  # Iterations on timestep
 max_error = 1e-6
 dt = Constant(0.05)
 #dt = Constant(T/ceil(T/0.2/mesh.hmin())) # timestep
 check = 1                     # print out info every check timestep 
 T0 = Constant(294.)
 T1 = Constant(317.)
+rho0 = Constant(1000.)
 beta = Constant(200.e-5)  # beta*g
 Pr = Constant(7.)
 
 #####################################################################
 
 # Declare solution Functions and FunctionSpaces
-V = FunctionSpace(mesh, 'CG', 2)
+V = FunctionSpace(mesh, 'CG', 1)
 Q = FunctionSpace(mesh, 'CG', 1)
 Vv = VectorFunctionSpace(mesh, 'CG', V.ufl_element().degree())
 u = TrialFunction(V)
@@ -206,22 +207,32 @@ u_sol = KrylovSolver('bicgstab', 'jacobi')
 u_sol.parameters['error_on_nonconvergence'] = False
 u_sol.parameters['nonzero_initial_guess'] = True
 #u_sol.parameters['monitor_convergence'] = True
+u_sol.parameters['relative_tolerance'] = 1e-13
+u_sol.parameters['absolute_tolerance'] = 1e-20
 reset_sparsity = True
 
 du_sol = KrylovSolver('bicgstab', 'ilu')
 du_sol.parameters['error_on_nonconvergence'] = False
 du_sol.parameters['nonzero_initial_guess'] = True
 du_sol.parameters['preconditioner']['reuse'] = True
+#du_sol.parameters['monitor_convergence'] = True
+du_sol.parameters['relative_tolerance'] = 1e-13
+du_sol.parameters['absolute_tolerance'] = 1e-20
 
 p_sol = KrylovSolver('gmres', 'hypre_amg')
 p_sol.parameters['error_on_nonconvergence'] = False
 p_sol.parameters['nonzero_initial_guess'] = True
 p_sol.parameters['preconditioner']['reuse'] = True
+#p_sol.parameters['monitor_convergence'] = True
+p_sol.parameters['relative_tolerance'] = 1e-13
+p_sol.parameters['absolute_tolerance'] = 1e-20
 
 c_sol = KrylovSolver('bicgstab', 'ilu')
 c_sol.parameters['error_on_nonconvergence'] = False
 c_sol.parameters['nonzero_initial_guess'] = True
 #c_sol.parameters['monitor_convergence'] = True
+c_sol.parameters['relative_tolerance'] = 1e-13
+c_sol.parameters['absolute_tolerance'] = 1e-20
 
 x_  = dict((ui, q_ [ui].vector()) for ui in sys_comp)     # Solution vectors t
 x_1 = dict((ui, q_1[ui].vector()) for ui in uc_comp)      # Solution vectors t - dt
@@ -247,20 +258,20 @@ while t < (T - tstep*DOLFIN_EPS):
         Ac = assemble(a, tensor=Ac, reset_sparsity=reset_sparsity) 
         reset_sparsity = False   # Warning! Must be true for periodic boundary conditions
         A._scale(0.)
-        A.axpy(-1., Ac, True)    # Negative convection on the rhs
-        A.axpy(1./dt_, M, True)  # Add mass
-        A.axpy(-0.5, K, True)    # Add diffusion      
+        A.axpy(-rho0(0), Ac, True)    # Negative convection on the rhs
+        A.axpy(rho0(0)/dt_, M, True)  # Add mass
+        A.axpy(-0.5*rho0(0), K, True)    # Add diffusion      
         
         # Compute rhs for all velocity components
         for ui in u_components:
             b[ui][:].axpy(1., A*x_1[ui])
             if ui == 'u1':
-                fv = assemble(inner(v, f[ui])*dx)
+                fv = assemble(inner(v, rho0*f[ui])*dx)
                 b[ui].axpy(1., fv)
 
         # Reset matrix for lhs
         A._scale(-1.)
-        A.axpy(2./dt_, M, True)
+        A.axpy(2.*rho0(0)/dt_, M, True)
         [bc.apply(A) for bc in bcs['u0']]
         
         for ui in u_components:
@@ -277,7 +288,7 @@ while t < (T - tstep*DOLFIN_EPS):
         dp_.vector()[:] = x_['p'][:]
         b['p'][:] = Ap*x_['p']
         for ui in u_components:
-            b['p'].axpy(-1., R[ui]*x_[ui]) # Divergence of u_
+            b['p'].axpy(-rho0(0), R[ui]*x_[ui]) # Divergence of u_
         [bc.apply(b['p']) for bc in bcs['p']]
         error['p'] = residual(Ap, x_['p'], b['p'])
         p_sol.solve(Ap, x_['p'], b['p'])
@@ -288,7 +299,7 @@ while t < (T - tstep*DOLFIN_EPS):
         ### Update velocity ###
         for ui in u_components:
             b[ui][:] = Mu*x_[ui][:]        
-            b[ui].axpy(-dt_, P[ui]*dp_.vector())
+            b[ui].axpy(-dt_/rho0(0), P[ui]*dp_.vector())
             [bc.apply(b[ui]) for bc in bcs[ui]]        
             du_sol.solve(Mu, x_[ui], b[ui])
         
