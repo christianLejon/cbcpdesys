@@ -282,20 +282,20 @@ else:
 u_sol = KrylovSolver('bicgstab', 'hypre_euclid')
 u_sol.parameters['error_on_nonconvergence'] = False
 u_sol.parameters['nonzero_initial_guess'] = True
-u_sol.parameters['monitor_convergence'] = True
+#u_sol.parameters['monitor_convergence'] = True
 reset_sparsity = True
 
 du_sol = KrylovSolver('bicgstab', 'hypre_euclid')
 du_sol.parameters['error_on_nonconvergence'] = False
 du_sol.parameters['nonzero_initial_guess'] = True
 du_sol.parameters['preconditioner']['reuse'] = True
-du_sol.parameters['monitor_convergence'] = True
+#du_sol.parameters['monitor_convergence'] = True
 
 p_sol = KrylovSolver('gmres', 'hypre_amg')
 p_sol.parameters['error_on_nonconvergence'] = False
 p_sol.parameters['nonzero_initial_guess'] = True
 p_sol.parameters['preconditioner']['reuse'] = True
-p_sol.parameters['monitor_convergence'] = True
+#p_sol.parameters['monitor_convergence'] = True
 
 x_  = dict((ui, q_ [ui].vector()) for ui in sys_comp)     # Solution vectors t
 x_1 = dict((ui, q_1[ui].vector()) for ui in u_components) # Solution vectors t - dt
