@@ -2,7 +2,7 @@
 Optimized And StrIpped Solvers
 """
 from dolfin import *
-from os import getpid
+from os import getpid, path, makedirs, getcwd
 from commands import getoutput
 import time
 from numpy import ceil

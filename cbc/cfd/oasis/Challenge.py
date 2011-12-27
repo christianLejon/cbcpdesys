@@ -144,17 +144,16 @@ else:
     if refinement==3: mesh_filename = "/home/kent-and/Challenge/mesh_4mio.xml.gz"
     
 mesh = Mesh(mesh_filename)
-
+    
 # Set parameters
 nu = Constant(0.04)           # Viscosity
 t = 0                         # time
 tstep = 0                     # Timestep
-T = 0.05                      # End time
+T = 1.0                       # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
 max_error = 1e-6
-dt = Constant(T/ceil(T/0.2/MPI.min(mesh.hmin()))) # timestep
-check = 1                    # print out info every check timestep 
+check = 10                    # print out info every check timestep 
 
 flux = 0
 if testcase == 1: 
@@ -180,7 +179,7 @@ print "Areal  of the outflow is (ds(2)) ", A2
 velocity = flux / A1 
 
 # Characteristic velocity (U) in the domain (used to determine timestep)
-U = velocity*16  
+U = velocity*5  
 h  = MPI.min(mesh.hmin())
 print "Characteristic velocity set to", U
 print "mesh size          ", h
@@ -192,9 +191,20 @@ print "Number of vertices ", mesh.num_vertices()
 dim = mesh.geometry().dim()
 f = Constant((0,)*dim)
 
-dt =  0.2*(h / U)
+# Set the timestep
+#dt =  0.2*(h / U)
+dt = 0.001
 n  = int(T / dt + 1.0)
 dt = Constant(T / n)
+
+# Create a new folder for each run
+folder = path.join(getcwd(), mesh_filename.split('/')[-1][:-7], 
+                              'stationary' if stationary else 'transient',
+                              'testcase_{0}'.format(testcase),
+                              'dt={0:2.4e}'.format(dt(0)),
+                              time.ctime().replace(' ', '_'))
+if MPI.process_number()==0:
+    makedirs(folder)
 
 #####################################################################
 
@@ -222,7 +232,7 @@ u_1 = as_vector([q_1[ui] for ui in u_components]) # Velocity vector at t - dt
 u_2 = as_vector([q_2[ui] for ui in u_components]) # Velocity vector at t - 2*dt
 
 q_['p'] = p_ = Function(Q)  # pressure at t - dt/2
-dp_ = Function(Q)      # pressure correction
+dp_ = Function(Q)           # pressure correction
 
 ###################  Boundary conditions  ###########################
 
@@ -237,7 +247,28 @@ bcs['p']  = [DirichletBC(Q, 0., 2)]
 
 # Normalize pressure or not?
 normalize = False
-#normalize = dolfin_normalize(Q)
+#normalize = dolfin_normalize(Q) 
+
+# Set up files for storing intermediate solutions
+files = dict((ui, File(path.join(folder, ui + '.xml.gz'))) for ui in sys_comp)
+
+# Set up probes
+probes = [array((-1.75, -2.55, -0.32)),
+          array((-0.17, -0.59, 1.17)),
+          array((-0.14, -0.91, 1.26)),
+          array((-0.38, -0.35, 0.89)),
+          array((-1.17, -0.87, 0.45))]
+
+probe_dict = {}
+for jj, probe in enumerate(probes):
+    try:
+        # If we're on the correct processor then allocate dictionary to hold the probe values for all timesteps
+        val = q_['u0'](probe)
+        probe_dict[jj] = dict((ui, zeros(n)) for ui in sys_comp)
+        
+    except RuntimeError:        
+        # probe is not on this processor
+        probe_dict[jj] = None
 
 #####################################################################
 
@@ -257,10 +288,6 @@ U_ = 1.5*u_1 - 0.5*u_2
 # Convection form
 a  = 0.5*inner(v, dot(U_, nabla_grad(u)))*dx
 
-# Preassemble constant body force
-#assert(isinstance(f, Constant))
-#b0 = dict((ui, assemble(v*f[i]*dx)) for i, ui in enumerate(u_components))
-
 # Preassemble constant pressure gradient matrix
 P = dict((ui, assemble(v*p.dx(i)*dx)) for i, ui in enumerate(u_components))
 
@@ -270,32 +297,23 @@ if V.ufl_element().degree() == Q.ufl_element().degree():
 else:
     R = dict((ui, assemble(q*u.dx(i)*dx)) for i, ui in  enumerate(u_components))
 
-# Set up linear solvers
-#u_sol = LUSolver()
-
-#du_sol = LUSolver()
-#du_sol.parameters['reuse_factorization'] = True
-
-#p_sol = LUSolver()
-#p_sol.parameters['reuse_factorization'] = True
-
 u_sol = KrylovSolver('bicgstab', 'hypre_euclid')
 u_sol.parameters['error_on_nonconvergence'] = False
 u_sol.parameters['nonzero_initial_guess'] = True
-u_sol.parameters['monitor_convergence'] = True
+#u_sol.parameters['monitor_convergence'] = True
 reset_sparsity = True
 
 du_sol = KrylovSolver('bicgstab', 'hypre_euclid')
 du_sol.parameters['error_on_nonconvergence'] = False
 du_sol.parameters['nonzero_initial_guess'] = True
 du_sol.parameters['preconditioner']['reuse'] = True
-du_sol.parameters['monitor_convergence'] = True
+#du_sol.parameters['monitor_convergence'] = True
 
 p_sol = KrylovSolver('gmres', 'hypre_amg')
 p_sol.parameters['error_on_nonconvergence'] = False
 p_sol.parameters['nonzero_initial_guess'] = True
 p_sol.parameters['preconditioner']['reuse'] = True
-p_sol.parameters['monitor_convergence'] = True
+#p_sol.parameters['monitor_convergence'] = True
 
 x_  = dict((ui, q_ [ui].vector()) for ui in sys_comp)     # Solution vectors t
 x_1 = dict((ui, q_1[ui].vector()) for ui in u_components) # Solution vectors t - dt
@@ -378,26 +396,34 @@ while t < (T - tstep*DOLFIN_EPS):
         x_1[ui][:] = x_ [ui][:]
 
     ################ Hack!! Because PETSc bicgstab with jacobi errors on the first tstep and exits in parallel ##
-    info_red('Total computing time = {0:f}'.format(time.time() - t1))
-    t1 = time.time()
     if tstep == 1:
         u_sol = KrylovSolver('bicgstab', 'jacobi')
         u_sol.parameters['error_on_nonconvergence'] = False
         u_sol.parameters['nonzero_initial_guess'] = True
-        u_sol.parameters['monitor_convergence'] = True
+        #u_sol.parameters['monitor_convergence'] = True
     #################################################################################################
         
-    # Print some information
+    # Print some information and save intermediate solution
     if tstep % check == 0:
+        info_red('Total computing time on previous {0:d} timesteps = {1:f}'.format(check, time.time() - t1))
+        t1 = time.time()
         info_green('Time = {0:2.4e}, timestep = {1:6d}, End time = {2:2.4e}'.format(t, tstep, T)) 
+        for ui in sys_comp:
+            files[ui] << q_[ui]
+    
+    # Save probe values
+    for jj, probe in enumerate(probes):
+        if probe_dict[jj]:
+            for ui in sys_comp:
+                probe_dict[jj][ui][tstep-1] = q_[ui](probe)
+
 info_red('Additional memory use of solver = {0}'.format(eval(getMyMemoryUsage()) - eval(dolfin_memory_use)))
 info_red('Total memory use = ' + getMyMemoryUsage())
 list_timings()
 info_red('Total computing time = {0:f}'.format(time.time()- t0))
-file1 = File('u.pvd')
-file1 << project(u_, Vv)
-file2 = File('p.pvd')
-file2 << p_
-#plot(project(u_, Vv))    
-
-
+#plot(project(u_, Vv))
+# Store probes to files
+for jj, probe in enumerate(probes):
+    if probe_dict[jj]:
+        for ui in sys_comp:
+            probe_dict[jj][ui].dump(path.join(folder, 'probe_{0:d}_{1}.dat'.format(jj, ui)))
