@@ -4,8 +4,9 @@ __copyright__ = "Copyright (C) 2011 " + __author__
 __license__  = "GNU GPL version 3 or any later version"
 
 """
-This is a highly tuned and stripped down Navier-Stokes solver optimized
-for both speed and memory.  
+This is a highly tuned and stripped down Navier-Stokes solver for
+natural convection problems. The Boussinesq model is used as a body 
+force in the momentum equation and we solve for the temperature.
 
 To use this solver for a new problem you have to modify two sections.
 
@@ -16,7 +17,7 @@ To use this solver for a new problem you have to modify two sections.
 
     'Boundary conditions':
         Simply create the dictionary bcs, with keys 
-        'u0', 'u1', 'u2' and 'p' and value a list of 
+        'u0', 'u1', 'u2', 'p' and 'c' and value a list of 
         boundary conditions. 
         If necessary enable normalization of the pressure.
         
@@ -24,10 +25,10 @@ The algorithm used is a second order in time fractional step method
 (incremental pressure correction).
 
 We use a Crank-Nicolson discretization in time of the Laplacian and 
-the convected velocity. The convecting velocity is computed with an 
-Adams-Bashforth projection. The fractional step method can be used
-both non-iteratively or with iterations over the pressure velocity 
-system.
+the convected velocity. The convecting velocity is computed with an
+iterative midpoint 0.5*(u_ + u_1). 
+
+    inner(v, dot(0.5*(u_+u_1), grad(u)))*dx
 
 We assemble a single coefficient matrix used by all velocity componenets
 and build it by preassembling as much as possible. The matrices used are:
@@ -52,7 +53,18 @@ A and Ar are recreated each timestep by assembling Ac, setting up Ar
 and then using the following to create the lhs A:
 
    A = - Ar + 2/dt*M
+   
+For temperature we use
+    C = 0.5*(c + c_1)
+    U_ = 0.5*(u_ + u_1)
+    F = (1./dt)*inner(c - c_1, v_c)*dx + inner(dot(U_, grad(C)), v_c)*dx \
+        + nu/Pr*inner(grad(C), grad(v_c))*dx 
+        - nu/Pr*inner(dot(n, grad(C)), v_c)*ds
 
+    T = 1/dt*M + 0.5*Ac + 0.5/Pr*K  = lhs matrix
+    
+    Tr = 1/dt*M - 0.5*Ac - 0.5/Pr*K = rhs matrix
+    
 """
 from cbc.cfd.oasis import *
 
@@ -69,21 +81,20 @@ info_red('Memory use of plain dolfin = ' + dolfin_memory_use)
 ################### Problem dependent parameters ####################
 
 mesh = UnitSquare(45, 45)
-nu = Constant(0.001)          # Viscosity
+nu = Constant(1.e-3)          # Viscosity
 t = 0                         # time
 tstep = 0                     # Timestep
 T = 0.5                       # End time
 #T = 2*dt(0)
-max_iter = 1                  # Pressure velocity iterations on given timestep
-iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
+max_iter = 5                  # Iterations on timestep
 max_error = 1e-6
 #dt = Constant(0.012254901960784314)
 dt = Constant(T/ceil(T/0.2/mesh.hmin())) # timestep
 check = 1                     # print out info every check timestep 
-
-# Specify body force
-dim = mesh.geometry().dim()
-f = Constant((0,)*dim)
+T0 = Constant(294.)
+T1 = Constant(317.)
+beta = Constant(200.e-6)
+Pr = Constant(7.)
 
 #####################################################################
 
@@ -95,66 +106,77 @@ u = TrialFunction(V)
 v = TestFunction(V)
 p = TrialFunction(Q)
 q = TestFunction(Q)
+dim = mesh.geometry().dim()
+n = FacetNormal(mesh)
 
 if dim == 2:
     u_components = ['u0', 'u1']
 else:
     u_components = ['u0', 'u1', 'u2']
-sys_comp =  u_components + ['p']
+sys_comp =  u_components + ['p'] + ['c']
+uc_comp  =  u_components + ['c']
 
 # Use dictionaries to hold all Functions
-q_  = dict((ui, Function(V)) for ui in u_components)
-q_1 = dict((ui, Function(V)) for ui in u_components)
-q_2 = dict((ui, Function(V)) for ui in u_components)
+q_  = dict((ui, Function(V)) for ui in uc_comp)
+q_1 = dict((ui, Function(V)) for ui in uc_comp)
 u_  = as_vector([q_[ui]  for ui in u_components]) # Velocity vector at t
 u_1 = as_vector([q_1[ui] for ui in u_components]) # Velocity vector at t - dt
-u_2 = as_vector([q_2[ui] for ui in u_components]) # Velocity vector at t - 2*dt
 
-q_['p'] = Function(Q)  # pressure at t - dt/2
-dp_ = Function(Q)      # pressure correction
+q_['p'] = p_ = Function(Q)  # pressure at t - dt/2
+dp_ = Function(Q)           # pressure correction
+
+c_  = q_ ['c']
+c_1 = q_1['c']
 
 ###################  Boundary conditions  ###########################
 
 bcs = dict((ui, []) for ui in sys_comp)
 
-# Driven cavity example:
-def lid(x, on_boundary):
-    return (on_boundary and near(x[1], 1.0))
+# Single heated wall:
+def bottom(x, on_boundary):
+    return (on_boundary and near(x[1], 0.0))
     
-def stationary_walls(x, on_boundary):
-    return on_boundary and (near(x[0], 0.) or near(x[0], 1.) or near(x[1], 0.))
+def walls(x, on_boundary):
+    return on_boundary
 
-bc0  = DirichletBC(V, 0., stationary_walls)
-bc00 = DirichletBC(V, 1., lid)
-bc01 = DirichletBC(V, 0., lid)
-bcs['u0'] = [bc00, bc0]
-bcs['u1'] = [bc01, bc0]
+bc0  = DirichletBC(V, 0., walls)
+bcs['u0'] = [bc0]
+bcs['u1'] = [bc0]
+bcs['c']  = [DirichletBC(V, T0, walls), DirichletBC(V, T1, bottom)]
 
 # Normalize pressure or not?
 #normalize = False
 normalize = dolfin_normalize(Q)
 
+# Specify body force
+C_ = 0.5*(c_ + c_1)
+f  = dict(u0=Constant(0), u1=beta*(C_ - T0))
+
+c_ .vector()[:] = T0(0)
+c_1.vector()[:] = T0(0)
+[bc.apply(c_ .vector()) for bc in bcs['c']]
+[bc.apply(c_1.vector()) for bc in bcs['c']]
 #####################################################################
 
 # Preassemble some constant in time matrices
 M = assemble(inner(u, v)*dx)                    # Mass matrix
 K = assemble(nu*inner(grad(u), grad(v))*dx)     # Diffusion matrix
+KS= assemble(nu/Pr*inner(dot(n, grad(u)), v)*ds)   # Diffusion matrix on surface
 Ap = assemble(inner(grad(q), dt*grad(p))*dx)    # Pressure Laplacian
-A = Matrix()                                    # Coefficient matrix (needs reassembling)
+Ac = Matrix()                                   # Convection
+A = Matrix(K)                                   # Coefficient matrix (needs reassembling)
+Ta = Matrix(K)                                  # Coefficient matrix (needs reassembling)
+Mu = Matrix(M)
 
-# Apply boundary conditions on M and Ap that are used directly in solve
-[bc.apply(M)  for bc in bcs['u0']]
+# Apply boundary conditions on Mu and Ap that are used directly in solve
+[bc.apply(Mu) for bc in bcs['u0']]
 [bc.apply(Ap) for bc in bcs['p']]
 
-# Adams Bashforth projection of velocity at t - dt/2
-U_ = 1.5*u_1 - 0.5*u_2
+# Midpoint velocity at t - dt/2
+U_ = 0.5*(u_ + u_1)
 
 # Convection form
 a  = 0.5*inner(v, dot(U_, nabla_grad(u)))*dx
-
-# Preassemble constant body force
-assert(isinstance(f, Constant))
-b0 = dict((ui, assemble(v*f[i]*dx)) for i, ui in enumerate(u_components))
 
 # Preassemble constant pressure gradient matrix
 P = dict((ui, assemble(v*p.dx(i)*dx)) for i, ui in enumerate(u_components))
@@ -173,7 +195,6 @@ else:
 
 #p_sol = LUSolver()
 #p_sol.parameters['reuse_factorization'] = True
-list_timings()
 
 u_sol = KrylovSolver('bicgstab', 'hypre_euclid')
 u_sol.parameters['error_on_nonconvergence'] = False
@@ -191,12 +212,17 @@ p_sol.parameters['error_on_nonconvergence'] = False
 p_sol.parameters['nonzero_initial_guess'] = True
 p_sol.parameters['preconditioner']['reuse'] = True
 
+c_sol = KrylovSolver('bicgstab', 'hypre_euclid')
+c_sol.parameters['error_on_nonconvergence'] = False
+c_sol.parameters['nonzero_initial_guess'] = True
+#c_sol.parameters['monitor_convergence'] = True
+
 x_  = dict((ui, q_ [ui].vector()) for ui in sys_comp)     # Solution vectors t
-x_1 = dict((ui, q_1[ui].vector()) for ui in u_components) # Solution vectors t - dt
-x_2 = dict((ui, q_2[ui].vector()) for ui in u_components) # Solution vectors t - 2*dt
+x_1 = dict((ui, q_1[ui].vector()) for ui in uc_comp)      # Solution vectors t - dt
 b   = dict((ui, Vector(x_[ui])) for ui in sys_comp)       # rhs vectors
 bold= dict((ui, Vector(x_[ui])) for ui in sys_comp)       # rhs temp storage vectors
 work = Vector(x_['u0'])
+error = dict((ui, 0.) for ui in sys_comp)
 
 t0 = time.time()
 dt_ = dt(0)
@@ -207,32 +233,28 @@ while t < (T - tstep*DOLFIN_EPS):
     j = 0
     err = 1e8
     total_iters += 1
-    if tstep == 1:
-        num_iter = max(iters_on_first_timestep, max_iter)
-    else:
-        num_iter = max_iter
-    while err > max_error and j < num_iter:
+    while err > max_error and j < max_iter:
         err = 0
         j += 1
         ### Start by solving for an intermediate velocity ###
-        if j == 1:
-            # Only on the first iteration because nothing here is changing in time
-            # Set up coefficient matrix for computing the rhs:
-            A = assemble(a, tensor=A, reset_sparsity=reset_sparsity) 
-            reset_sparsity = False   # Warning! Must be true for periodic boundary conditions
-            A._scale(-1.)            # Negative convection on the rhs 
-            A.axpy(1./dt_, M, True)  # Add mass
-            A.axpy(-0.5, K, True)    # Add diffusion                
-            
-            # Compute rhs for all velocity components
-            for ui in u_components:
-                b[ui][:] = b0[ui][:]
-                b[ui].axpy(1., A*x_1[ui])
+        # Set up coefficient matrix for computing the rhs:
+        Ac = assemble(a, tensor=Ac, reset_sparsity=reset_sparsity) 
+        reset_sparsity = False   # Warning! Must be true for periodic boundary conditions
+        A._scale(0.)
+        A.axpy(-1., Ac, True)    # Negative convection on the rhs
+        A.axpy(1./dt_, M, True)  # Add mass
+        A.axpy(-0.5, K, True)    # Add diffusion                
+        
+        # Compute rhs for all velocity components
+        for ui in u_components:
+            b[ui][:] = A*x_1[ui]
+            fv = assemble(inner(v, f[ui])*dx)  # Boussinesq term
+            b[ui].axpy(1., M*fv)
 
-            # Reset matrix for lhs
-            A._scale(-1.)
-            A.axpy(2./dt_, M, True)
-            [bc.apply(A) for bc in bcs['u0']]
+        # Reset matrix for lhs
+        A._scale(-1.)
+        A.axpy(2./dt_, M, True)
+        [bc.apply(A) for bc in bcs['u0']]
         
         for ui in u_components:
             bold[ui][:] = b[ui][:] 
@@ -241,7 +263,8 @@ while t < (T - tstep*DOLFIN_EPS):
             work[:] = x_[ui][:]
             u_sol.solve(A, x_[ui], b[ui])
             b[ui][:] = bold[ui][:]  # preassemble part
-            err += norm(work - x_[ui])
+            error[ui] = norm(work - x_[ui])
+            err += error[ui]             
             
         ### Solve pressure ###
         dp_.vector()[:] = x_['p'][:]
@@ -249,26 +272,44 @@ while t < (T - tstep*DOLFIN_EPS):
         for ui in u_components:
             b['p'].axpy(-1., R[ui]*x_[ui]) # Divergence of u_
         [bc.apply(b['p']) for bc in bcs['p']]
-        rp = residual(Ap, x_['p'], b['p'])
+        error['p'] = residual(Ap, x_['p'], b['p'])
         p_sol.solve(Ap, x_['p'], b['p'])
         if normalize: normalize(x_['p'])
         dp_.vector()[:] = x_['p'][:] - dp_.vector()[:]
+        err += error['p']
+
+        ### Update velocity ###
+        for ui in u_components:
+            b[ui][:] = Mu*x_[ui][:]        
+            b[ui].axpy(-dt_, P[ui]*dp_.vector())
+            [bc.apply(b[ui]) for bc in bcs[ui]]        
+            du_sol.solve(Mu, x_[ui], b[ui])
+        
+        Ta._scale(0.)
+        Ta.axpy(-1., Ac, True)       # Negative convection on the rhs
+        Ta.axpy(1./dt_, M, True)     # Add mass
+        Ta.axpy(-0.5/Pr(0), K, True) # Add diffusion    
+        #Ta.axpy(0.5, KS, True)       # Add diffusion on surface    
+        b['c'][:] = Ta*x_1['c']      # Compute rhs
+        Ta._scale(-1.)
+        Ta.axpy(2./dt_, M, True)
+        [bc.apply(Ta, b['c']) for bc in bcs['c']]
+        work[:] = x_['c']
+        c_sol.solve(Ta, x_['c'], b['c'])
+        error['c'] = norm(x_['c']- work)
+        err += error['c']
+        
         if tstep % check == 0:
-            if num_iter > 1:
-                if j == 1: info_blue('                 error u  error p')
-                info_blue('    Iter = {0:4d}, {1:2.2e} {2:2.2e}'.format(j, err, rp))
-
-    ### Update velocity ###
-    for ui in u_components:
-        b[ui][:] = M*x_[ui][:]        
-        b[ui].axpy(-dt_, P[ui]*dp_.vector())
-        [bc.apply(b[ui]) for bc in bcs[ui]]        
-        du_sol.solve(M, x_[ui], b[ui])
-
+            if j == 1: info_blue('                 error u  error p  error c')
+            info_blue('    Iter = {0:4d}, {1:2.2e} {2:2.2e} {3:2.2e}'.format(j, err, error['p'], error['c']))
+        
     # Update to a new timestep
-    for ui in u_components:
-        x_2[ui][:] = x_1[ui][:]
+    for ui in uc_comp:
         x_1[ui][:] = x_ [ui][:]
+        
+    #if tstep % check == 0:
+        #plot(project(u_, Vv))
+        #plot(c_)
         
     # Print some information
     if tstep % check == 0:

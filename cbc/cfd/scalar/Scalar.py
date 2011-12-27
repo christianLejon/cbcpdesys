@@ -11,6 +11,7 @@ solver_parameters  = copy.deepcopy(default_solver_parameters)
 solver_parameters = recursive_update(solver_parameters, {
     'Schmidt': 0.7,
     'Schmidt_T': 0.7,
+    'Prandtl': 7.,
     'familyname': 'Passive-Scalar'
 })
 
@@ -23,11 +24,12 @@ class Scalar(PDESystem):
         PDESystem.setup(self)
             
         self.u_   = self.problem.pdesystems['Navier-Stokes'].u_
-        self.u_1   = self.problem.pdesystems['Navier-Stokes'].u_1
+        self.u_1  = self.problem.pdesystems['Navier-Stokes'].u_1
         self.nut_ = self.problem.pdesystems['Navier-Stokes'].nut_
+        self.n = FacetNormal(self.mesh)
         # Fixme. Add timelevels for nut_
         #self.nut_1 = self.problem.pdesystems['Navier-Stokes'].nut_1
-        self.nu = Constant(self.problem.prm['viscosity']/self.prm['Schmidt']) 
+        self.nu = Constant(self.problem.prm['viscosity']/self.prm['Prandtl']) 
         if self.nut_:
             self.nu = self.nu + self.nut_/self.prm['Schmidt_T']
         
@@ -48,12 +50,45 @@ class Scalar(PDESystem):
                     str(self.prm['pdesubsystem']['c'])
         self.pdesubsystems['c'] = eval(classname)(vars(self), ['c'], bcs=self.bc['c'])
         
+    def create_BCs(self, bcs):
+        """Create boundary conditions for scalar
+        """
+        bcu = {}
+        for name in self.system_names:
+            bcu[name] = []
+            
+        for bc in bcs:
+            for name in self.system_names:
+                V = self.V[name]
+                if bc.type() in ('VelocityInlet'):
+                    if hasattr(bc, 'func'):
+                        assert isinstance(bc.func, dict)
+                        add_BC(bcu[name], V, bc, bc.func[name])
+                    else:
+                        raise TypeError('expected func for VelocityInlet')
+                elif bc.type() == 'Wall':
+                    if hasattr(bc, 'func'):
+                        assert isinstance(bc.func, dict)
+                        if 'c' in bc.func:
+                            add_BC(bcu[name], V, bc, bc.func[name])
+                        else:
+                            bcu[name].append(bc)  # Neuman condition
+                elif bc.type() in ('ConstantPressure', 'Outlet'):
+                    # This bc could be weakly enforced
+                    bcu[name].append(bc)
+                elif bc.type() == 'Periodic':
+                    add_BC(bcu[name], V, bc, None)
+                else:
+                    info("No assigned boundary condition for %s -- skipping..."
+                         %(bc.__class__.__name__))                
+        return bcu
+        
 class ScalarBase(PDESubSystem):
     
     def define(self):
         
         form_args = self.solver_namespace.copy()
-        self.exterior = any([bc.type() in ['ConstantPressure', 'Outlet']
+        self.exterior = any([bc.type() in ['ConstantPressure', 'Outlet', 'Wall']
                              for bc in self.bcs]) 
         self.Laplace_C = self.solver_namespace['c']
         if self.prm['iteration_type'] == 'Picard':
@@ -78,11 +113,14 @@ class ScalarBase(PDESubSystem):
         C = self.Laplace_C
         L = []
         for bc in self.bcs:
-            if bc.type() in ('ConstantPressure', 'Outlet'):
+            if (bc.type() in ('ConstantPressure', 'Outlet') or
+                bc.type() == 'Wall' and isinstance(bc, SubDomain)):
                 info_green('Assigning weak boundary condition for ' + bc.type())
-                L.append(-nu*inner(v_c, grad(C)*n)*ds(bc.bid))
-                self.exterior_facet_domains = bc.mf 
+                L.append(-nu*inner(v_c, dot(grad(C), n))*ds(bc.bid))
+                self.exterior_facet_domains = bc.mf                 
             
+        return reduce(operator.add, L)
+        
 class Transient_Scalar_1(ScalarBase):
     
     def form(self, c_, c_1, c, v_c, u_, u_1, nu, dt, **kwargs):
