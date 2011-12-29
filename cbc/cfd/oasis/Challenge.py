@@ -422,7 +422,7 @@ while t < (T - tstep*DOLFIN_EPS):
             newfile = File(path.join(newfolder, ui + '.xml.gz'))
             newfile << q_[ui]
         
-        if tstep % save_restart_file:
+        if tstep % save_restart_file == 0:
             for ui in u_components:
                 newfile_1 = File(path.join(newfolder, ui + '_1.xml.gz'))
                 newfile_1 << q_1[ui]
