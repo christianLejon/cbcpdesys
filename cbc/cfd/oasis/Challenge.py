@@ -54,6 +54,7 @@ and then using the following to create the lhs A:
 
 """
 from cbc.cfd.oasis import *
+from cbc.cfd.tools.Probe import Probedict, Probes
 
 #parameters["linear_algebra_backend"] = "Epetra"
 parameters["linear_algebra_backend"] = "PETSc"
@@ -149,11 +150,12 @@ mesh = Mesh(mesh_filename)
 nu = Constant(0.04)           # Viscosity
 t = 0                         # time
 tstep = 0                     # Timestep
-T = 1.0                       # End time
+T = 1.                        # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
 max_error = 1e-6
-check = 10                    # print out info every check timestep 
+check = 10                    # print out info and save solution every check timestep 
+save_restart_file = 10*check  # Saves two previous timesteps needed for a clean restart
 
 flux = 0
 if testcase == 1: 
@@ -193,9 +195,10 @@ f = Constant((0,)*dim)
 
 # Set the timestep
 #dt =  0.2*(h / U)
-dt = 0.001
-n  = int(T / dt + 1.0)
-dt = Constant(T / n)
+#n  = int(T / dt + 1.0)
+#dt = Constant(T / n)
+dt = Constant(0.001)
+n = int(T / dt(0))
 
 # Create a new folder for each run
 folder = path.join(getcwd(), mesh_filename.split('/')[-1][:-7], 
@@ -206,6 +209,11 @@ folder = path.join(getcwd(), mesh_filename.split('/')[-1][:-7],
 if MPI.process_number()==0:
     makedirs(folder)
 
+#### Set a folder that contains xml.gz files of the solution. 
+restart_folder = None        
+#restart_folder = '/home/mikaelmo/cbcpdesys/cbc/cfd/oasis/mesh_750k_BL_t/transient/testcase_1/dt=1.0000e-03/Thu_Dec_29_11:12:28_2011/timestep=5'
+#### Use for initialization if not None
+    
 #####################################################################
 
 # Declare solution Functions and FunctionSpaces
@@ -223,15 +231,23 @@ else:
     u_components = ['u0', 'u1', 'u2']
 sys_comp =  u_components + ['p']
 
-# Use dictionaries to hold all Functions
-q_  = dict((ui, Function(V)) for ui in u_components)
-q_1 = dict((ui, Function(V)) for ui in u_components)
-q_2 = dict((ui, Function(V)) for ui in u_components)
+# Use dictionaries to hold all Functions and FunctionSpaces
+VV = dict((ui, V) for ui in u_components); VV['p'] = Q
+
+# Start from previous solution if restart_folder is given
+if restart_folder:
+    q_  = dict((ui, Function(VV[ui], path.join(restart_folder, ui + '.xml.gz'))) for ui in sys_comp)
+    q_1 = dict((ui, Function(V, path.join(restart_folder, ui + '.xml.gz'))) for ui in u_components)
+    q_2 = dict((ui, Function(V, path.join(restart_folder, ui + '_1.xml.gz'))) for ui in u_components)
+else:
+    q_  = dict((ui, Function(VV[ui])) for ui in sys_comp)
+    q_1 = dict((ui, Function(V)) for ui in u_components)
+    q_2 = dict((ui, Function(V)) for ui in u_components)
+
 u_  = as_vector([q_[ui]  for ui in u_components]) # Velocity vector at t
 u_1 = as_vector([q_1[ui] for ui in u_components]) # Velocity vector at t - dt
 u_2 = as_vector([q_2[ui] for ui in u_components]) # Velocity vector at t - 2*dt
-
-q_['p'] = p_ = Function(Q)  # pressure at t - dt/2
+p_ = q_['p']                # pressure at t - dt/2
 dp_ = Function(Q)           # pressure correction
 
 ###################  Boundary conditions  ###########################
@@ -247,10 +263,6 @@ bcs['p']  = [DirichletBC(Q, 0., 2)]
 
 # Normalize pressure or not?
 normalize = False
-#normalize = dolfin_normalize(Q) 
-
-# Set up files for storing intermediate solutions
-files = dict((ui, File(path.join(folder, ui + '.xml.gz'))) for ui in sys_comp)
 
 # Set up probes
 probes = [array((-1.75, -2.55, -0.32)),
@@ -259,16 +271,8 @@ probes = [array((-1.75, -2.55, -0.32)),
           array((-0.38, -0.35, 0.89)),
           array((-1.17, -0.87, 0.45))]
 
-probe_dict = {}
-for jj, probe in enumerate(probes):
-    try:
-        # If we're on the correct processor then allocate dictionary to hold the probe values for all timesteps
-        val = q_['u0'](probe)
-        probe_dict[jj] = dict((ui, zeros(n)) for ui in sys_comp)
-        
-    except RuntimeError:        
-        # probe is not on this processor
-        probe_dict[jj] = None
+# Collect all probes in a common dictionary
+probe_dict = Probedict((ui, Probes(probes, VV[ui], n)) for ui in sys_comp)
 
 #####################################################################
 
@@ -408,22 +412,29 @@ while t < (T - tstep*DOLFIN_EPS):
         info_red('Total computing time on previous {0:d} timesteps = {1:f}'.format(check, time.time() - t1))
         t1 = time.time()
         info_green('Time = {0:2.4e}, timestep = {1:6d}, End time = {2:2.4e}'.format(t, tstep, T)) 
+        newfolder = path.join(folder, 'timestep='+str(tstep))
+        if MPI.process_number()==0:
+            try:
+                makedirs(newfolder)
+            except OSError:
+                pass
         for ui in sys_comp:
-            files[ui] << q_[ui]
+            newfile = File(path.join(newfolder, ui + '.xml.gz'))
+            newfile << q_[ui]
+        
+        if tstep % save_restart_file:
+            for ui in u_components:
+                newfile_1 = File(path.join(newfolder, ui + '_1.xml.gz'))
+                newfile_1 << q_1[ui]
     
-    # Save probe values
-    for jj, probe in enumerate(probes):
-        if probe_dict[jj]:
-            for ui in sys_comp:
-                probe_dict[jj][ui][tstep-1] = q_[ui](probe)
-
+    # Save probe values collectively
+    probe_dict.probe(q_, tstep-1)
+        
 info_red('Additional memory use of solver = {0}'.format(eval(getMyMemoryUsage()) - eval(dolfin_memory_use)))
 info_red('Total memory use = ' + getMyMemoryUsage())
 list_timings()
 info_red('Total computing time = {0:f}'.format(time.time()- t0))
 #plot(project(u_, Vv))
 # Store probes to files
-for jj, probe in enumerate(probes):
-    if probe_dict[jj]:
-        for ui in sys_comp:
-            probe_dict[jj][ui].dump(path.join(folder, 'probe_{0:d}_{1}.dat'.format(jj, ui)))
+probe_dict.dump(path.join(folder, 'probe'))
+    
