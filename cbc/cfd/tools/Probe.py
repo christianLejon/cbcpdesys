@@ -7,7 +7,7 @@ This module contains functionality for probing a problem.
 """
 from dolfin import Point, Cell
 import ufc
-from numpy import zeros, array, squeeze
+from numpy import zeros, array, squeeze, load
 
 class Probe:
     """Compute one single probe efficiently when it needs to be called repeatedly."""
@@ -35,41 +35,49 @@ class Probe:
         
     def __call__(self, u, n=0):
         """Probe the Function u and either return or store result in self.probes."""
+        
         u.restrict(self.coefficients, self.element, self.cell, self.ufc_cell)
+        
         self.val[:] = 0.
         for i in range(self.element.space_dimension()):
             self.element.evaluate_basis(i, self.basis, self.x, self.cell)
             self.val[:] += self.coefficients[i]*self.basis[:]
+        
         if not self.probes is None:
             self.probes[:, n] = self.val[:] 
         else:
             return self.val
             
     def dump(self, filename):
+        """Dump probes to filename."""
         squeeze(self.probes).dump(filename)
+        
+    def load(self, filename):
+        """Load the probe previously stored in filename"""
+        return load(filename)
         
 class Probedict(dict):
     """Dictionary of probes. The key is the variable we're probing 
-    and the value is a list of probes.
+    and the value is a list of probes returned from the function Probes.
     """
     def probe(self, q_, n):
         for ui in self.keys():
-            for probe in self[ui]:
+            for i, probe in self[ui]:
                 probe(q_[ui], n)
                 
     def dump(self, filename):
         for ui in self.keys():
-            for jj, probe in enumerate(self[ui]):
-                probe.dump(filename + '_' + ui + '_' + str(jj) + '.probe')
+            for i, probe in self[ui]:
+                probe.dump(filename + '_' + ui + '_' + str(i) + '.probe')
 
 def Probes(list_of_probes, V, max_probes=None):
     """Return a list of probes. Each processor is appended with a new 
     Probe class only when the probe is found on that processor.
     """
     probes = []
-    for probe in list_of_probes:
+    for i, probe in enumerate(list_of_probes):
         try:
-            probes.append(Probe(probe, V, max_probes))
+            probes.append((i, Probe(probe, V, max_probes)))
         except RuntimeError:
             pass
     return probes
@@ -90,11 +98,11 @@ if __name__=='__main__':
     probesV = Probes(x, V)
     probesVv = Probes(x, Vv)
 
-    for probe in probesV:
+    for i, probe in probesV:
         print 'Process rank that contains the probe = ', MPI.process_number()
         print 'Probe of u0 at ({0}, {1}) = {2}'.format(probe.x[0], probe.x[1], *probe(u0))
         print 'Probe of u1 at ({0}, {1}) = {2}'.format(probe.x[0], probe.x[1], *probe(u1))
-    for probe in probesVv:
+    for i, probe in probesVv:
         print 'Process rank that contains the probe = ', MPI.process_number()
         print 'Probe v at ({0}, {1}) = {2}, {3}'.format(probe.x[0], probe.x[1], *probe(v))
 
