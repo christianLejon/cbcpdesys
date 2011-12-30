@@ -138,7 +138,7 @@ class Problem:
                 tot_number_iters = 0
                 spr = ''
                 for pdesystem in pdesystems:
-                    # Solve all schemes in pdesystem a given number of times
+                    # Solve all pdesystems a given number of times
                     
                     pdesystem.prepare()
                     
@@ -177,53 +177,68 @@ class Problem:
         or
               self.q0 = {'u': Expression(('x[1](1-x[1])', '0')),
                          'p': Constant(0)}
+        
+        Another option is to give a path to files stored in dolfin xml
+        format, e.g.
+        
+              self.q0 = "$(HOME)/cbcpdesys/cbc/cfd/problems/results/drivencavity/1/{}.xml.gz"
+
         """
         if self.q0 == {}: return False
         
         q0 = self.q0
-        if not isinstance(q0, dict): raise TypeError('Initialize by specifying the dictionary Problem.q0')
+        if not isinstance(q0, (dict, str)): raise TypeError('Initialize by specifying Problem.q0 as a dictionary of Expressions/Constants or a string representing stored xml.gz files')
                                 
         for sub_system in pdesystem.system_composition:
             name = ''.join(sub_system) # e.g., 'u' and 'p' for segregated solver or 'up' for coupled
-            
-            try:
-                q = q0[name]
-                if isinstance(q, (Expression, Constant)):
-                    qi = interpolate(q, pdesystem.V[name])
-                elif isinstance(q, (float, int)):
-                    qi = interpolate(Constant(q), pdesystem.V[name])
-                else:
-                    qi = interpolate(Expression(q), pdesystem.V[name])
 
-            except KeyError:
-                if all(i in q0 for i in sub_system):# Add together individual parts to mixed system, e.g., use u and p for sub_system up
-                    qi = []
-                    for ss in sub_system: # For coupled just add individual lists
-                        q = q0[ss]
-                        if isinstance(q, (str)):
-                            qi.append(q)
-                        elif isinstance(q, (float, int)):
-                            qi.append(str(q))
-                        elif isinstance(q, Constant):
-                            v = zeros(q.value_size())
-                            x = zeros(q.value_size())
-                            q.eval(v, x)
-                            qi += [str(i) for i in v]
-                        else:
-                            qi += list(q)
-                    qi = interpolate(Expression(qi), pdesystem.V[name])
-                else:
-                    info_red('Initial values not provided for all components of sub_system ')
+            if isinstance(q0, str):
+                f = File(q0.format(name))
+                f >> pdesystem.q_[name]
+                if self.prm['time_integration'] == 'Transient':
+                    f >> pdesystem.q_1[name]
+                    f = File(q0.format(name + '_1'))
+                    f >> pdesystem.q_2[name]
+                    
+            else:
+                try:
+                    q = q0[name]
+                    if isinstance(q, (Expression, Constant)):
+                        qi = interpolate(q, pdesystem.V[name])
+                    elif isinstance(q, (float, int)):
+                        qi = interpolate(Constant(q), pdesystem.V[name])
+                    else:
+                        qi = interpolate(Expression(q), pdesystem.V[name])
+
+                except KeyError:
+                    if all(i in q0 for i in sub_system):# Add together individual parts to mixed system, e.g., use u and p for sub_system up
+                        qi = []
+                        for ss in sub_system: # For coupled just add individual lists
+                            q = q0[ss]
+                            if isinstance(q, (str)):
+                                qi.append(q)
+                            elif isinstance(q, (float, int)):
+                                qi.append(str(q))
+                            elif isinstance(q, Constant):
+                                v = zeros(q.value_size())
+                                x = zeros(q.value_size())
+                                q.eval(v, x)
+                                qi += [str(i) for i in v]
+                            else:
+                                qi += list(q)
+                        qi = interpolate(Expression(qi), pdesystem.V[name])
+                    else:
+                        info_red('Initial values not provided for all components of sub_system ')
+                        return False
+                except:
+                    info_red('Error in initialize! Provide tuples of strings, Constants or Expressions.')
                     return False
-            except:
-                info_red('Error in initialize! Provide tuples of strings, Constants or Expressions.')
-                return False
-            
-            # Initialize solution:
-            pdesystem.q_[name].vector()[:] = qi.vector()[:] 
-            if self.prm['time_integration']=='Transient':
-                pdesystem.q_1[name].vector()[:] = qi.vector()[:] 
-                pdesystem.q_2[name].vector()[:] = qi.vector()[:]
+                
+                # Initialize solution:
+                pdesystem.q_[name].vector()[:] = qi.vector()[:] 
+                if self.prm['time_integration'] == 'Transient':
+                    pdesystem.q_1[name].vector()[:] = qi.vector()[:] 
+                    pdesystem.q_2[name].vector()[:] = qi.vector()[:]
                 
         return True
         
@@ -250,6 +265,15 @@ class Problem:
         mymemory = getoutput("ps -o rss %s" % mypid).split()[1]
         return mymemory
     
+    def dump(self, folder, restart=False):
+        for pdesystem in self.pdesystems:
+            for name in pdesystem.system_names:
+                f = File(os.path.join(folder, '{}_{}.xml.gz'.format(name, self.tstep)))
+                f << pdesystem.q_[name]
+                if restart and self.prm['time_integration'] == 'Transient':
+                    f = File(os.path.join(folder, '{}_1_{}.xml.gz'.format(name, self.tstep)))
+                    f << pdesystem.q_1[name]
+                    
 def dump_result(problem, solver, cputime, error, filename = "results/results.log"):
     import os, time
     num_dofs = 0

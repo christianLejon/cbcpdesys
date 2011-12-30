@@ -3,7 +3,7 @@ __date__ = "2011-12-19"
 __copyright__ = "Copyright (C) 2011 " + __author__
 __license__  = "GNU GPL version 3 or any later version"
 """
-This module contains functionality for probing a problem. 
+This module contains functionality for efficiently probing a Function. 
 """
 from dolfin import Point, Cell
 import ufc
@@ -11,7 +11,7 @@ from numpy import zeros, array, squeeze, load
 
 class Probe:
     """Compute one single probe efficiently when it needs to be called repeatedly."""
-    def __init__(self, x, V, max_probes=None):
+    def __init__(self, x, V, max_probes=1):
         mesh = V.mesh()
         c = mesh.intersected_cell(Point(*x))
         if c == -1:
@@ -29,24 +29,16 @@ class Probe:
         self.coefficients = zeros(self.element.space_dimension())
         self.basis = zeros(self.num_tensor_entries)
         self.val = zeros(self.num_tensor_entries)
-        self.probes = max_probes
-        if not self.probes is None:             
-            self.probes = zeros((self.num_tensor_entries, max_probes))
+        self.probes = zeros((self.num_tensor_entries, max_probes))
         
     def __call__(self, u, n=0):
-        """Probe the Function u and either return or store result in self.probes."""
-        
-        u.restrict(self.coefficients, self.element, self.cell, self.ufc_cell)
-        
+        """Probe the Function u and store result in self.probes."""        
+        u.restrict(self.coefficients, self.element, self.cell, self.ufc_cell)        
         self.val[:] = 0.
         for i in range(self.element.space_dimension()):
             self.element.evaluate_basis(i, self.basis, self.x, self.cell)
-            self.val[:] += self.coefficients[i]*self.basis[:]
-        
-        if not self.probes is None:
-            self.probes[:, n] = self.val[:] 
-        else:
-            return self.val
+            self.val[:] += self.coefficients[i]*self.basis[:]        
+        self.probes[:, n] = self.val[:]
             
     def dump(self, filename):
         """Dump probes to filename."""
@@ -57,8 +49,9 @@ class Probe:
         return load(filename)
         
 class Probedict(dict):
-    """Dictionary of probes. The key is the variable we're probing 
-    and the value is a list of probes returned from the function Probes.
+    """Dictionary of probes. The keys are the names of the functions 
+    we're probing and the values are lists of probes returned from 
+    the function Probes.
     """
     def probe(self, q_, n):
         for ui in self.keys():
@@ -109,7 +102,7 @@ if __name__=='__main__':
     # Test Probedict
     q_ = {'u0':u0, 'u1':u1}
     VV = {'u0':V, 'u1':V}
-    pd = Probedict((ui, Probes(x, VV[ui], 5)) for ui in ['u0', 'u1'])
+    pd = Probedict((ui, Probes(x, VV[ui], 1)) for ui in ['u0', 'u1'])
     pd.probe(q_, 0)
     pd.dump('test')
     

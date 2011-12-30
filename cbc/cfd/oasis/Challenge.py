@@ -131,7 +131,7 @@ class InflowComp(Expression):
 
 # Read mesh
 testcase = 1
-refinement = 0
+refinement = 2
 stationary = False
 boundary_layers = True
 if boundary_layers:
