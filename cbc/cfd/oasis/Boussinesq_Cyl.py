@@ -1,4 +1,4 @@
-__author__ = "Mikael Mortensen <mikael.mortensen@gmail.com>"
+__author__ = "Mikael Mortensen <mikaem@math.uio.no>"
 __date__ = "2011-12-19"
 __copyright__ = "Copyright (C) 2011 " + __author__
 __license__  = "GNU GPL version 3 or any later version"
@@ -83,7 +83,7 @@ mesh = Mesh('../data/11116_fenics_2d.xml')
 nu = Constant(1.e-6)          # Viscosity
 t = 0                         # time
 tstep = 0                     # Timestep
-T = 10.                       # End time
+T = 50.                       # End time
 #T = 2*dt(0)
 max_iter = 10                  # Iterations on timestep
 max_error = 1e-6
@@ -93,13 +93,16 @@ check = 1                     # print out info every check timestep
 T0 = Constant(294.)
 T1 = Constant(317.)
 rho0 = Constant(1000.)
-beta = Constant(200.e-5)  # beta*g
+beta = Constant(200.e-5)      # beta*g
 Pr = Constant(7.)
+restart_files = '.xml.gz'     # if None then we initialize with zero
+#restart_files = False
+save_solution = '.xml.gz'
 
 #####################################################################
 
 # Declare solution Functions and FunctionSpaces
-V = FunctionSpace(mesh, 'CG', 1)
+V = FunctionSpace(mesh, 'CG', 2)
 Q = FunctionSpace(mesh, 'CG', 1)
 Vv = VectorFunctionSpace(mesh, 'CG', V.ufl_element().degree())
 u = TrialFunction(V)
@@ -117,15 +120,24 @@ sys_comp =  u_components + ['p'] + ['c']
 uc_comp  =  u_components + ['c']
 
 # Use dictionaries to hold all Functions
-q_  = dict((ui, Function(V)) for ui in uc_comp)
-q_1 = dict((ui, Function(V)) for ui in uc_comp)
+if restart_files:
+    q_  = dict((ui, Function(V, ui + restart_files)) for ui in uc_comp)
+    q_1 = dict((ui, Function(V, ui + '_1' + restart_files)) for ui in uc_comp)
+else:
+    q_  = dict((ui, Function(V)) for ui in uc_comp)
+    q_1 = dict((ui, Function(V)) for ui in uc_comp)
 u_  = as_vector([q_[ui]  for ui in u_components]) # Velocity vector at t
 u_1 = as_vector([q_1[ui] for ui in u_components]) # Velocity vector at t - dt
 
-q_['p'] = p_ = Function(Q)  # pressure at t - dt/2
+# pressure at t - dt/2
+if restart_files:
+    q_['p'] = p_ = Function(Q, 'p' + restart_files)  
+else:
+    q_['p'] = p_ = Function(Q)  # pressure at t - dt/2
+    
 dp_ = Function(Q)           # pressure correction
 
-c_  = q_ ['c']
+c_  = q_ ['c']              # Short forms
 c_1 = q_1['c']
 
 ###################  Boundary conditions  ###########################
@@ -151,7 +163,7 @@ bcc = DirichletBC(V, T1, Cylinder)
 bcc2 = DirichletBC(V, T0, Walls)
 bcs['u0'] = [bc0, bc1]
 bcs['u1'] = [bc0, bc1]
-bcs['c'] = [bcc, bcc2]
+bcs['c'] = [bcc]
 # Normalize pressure or not?
 #normalize = False
 normalize = dolfin_normalize(Q)
@@ -161,10 +173,11 @@ C_ = 0.5*(c_ + c_1)
 f  = dict(u0=Constant(0), u1=beta*(C_ - T0))
 
 # Initialize temperature
-c_ .vector()[:] = T0(0)
-c_1.vector()[:] = T0(0)
-bcc.apply(c_ .vector())
-bcc.apply(c_1.vector())
+if not restart_files:
+    c_ .vector()[:] = T0(0)
+    c_1.vector()[:] = T0(0)
+    bcc.apply(c_ .vector())   # Apply wall temperature on walls
+    bcc.apply(c_1.vector())
 
 #####################################################################
 
@@ -338,4 +351,10 @@ list_timings()
 #plot(project(u_, Vv))    
 info_red('Total computing time = {0:f}'.format(time.time()- t0))
 
-
+if save_solution:
+    for ui in sys_comp:
+        f0 = File(ui + save_solution)        
+        f0 << q_[ui]
+        if not ui == 'p':
+            f_1 = File(ui + '_1' + save_solution)
+            f_1 << q_1[ui]

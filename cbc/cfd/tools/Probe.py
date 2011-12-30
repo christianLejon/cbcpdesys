@@ -1,4 +1,4 @@
-__author__ = "Mikael Mortensen <mikael.mortensen@gmail.com>"
+__author__ = "Mikael Mortensen <mikaem@math.uio.no>"
 __date__ = "2011-12-19"
 __copyright__ = "Copyright (C) 2011 " + __author__
 __license__  = "GNU GPL version 3 or any later version"
@@ -15,7 +15,7 @@ class Probe:
         mesh = V.mesh()
         c = mesh.intersected_cell(Point(*x))
         if c == -1:
-            raise RuntimeError('Probe not on processor')
+            raise RuntimeError('Probe not found on processor')
         
         # If you get here then the processor contains the probe. 
         # Allocate variables that are used repeatedly 
@@ -49,7 +49,9 @@ class Probe:
         squeeze(self.probes).dump(filename)
         
 class Probedict(dict):
-    
+    """Dictionary of probes. The key is the variable we're probing 
+    and the value is a list of probes.
+    """
     def probe(self, q_, n):
         for ui in self.keys():
             for probe in self[ui]:

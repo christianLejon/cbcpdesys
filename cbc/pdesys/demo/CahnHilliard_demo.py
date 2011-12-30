@@ -2,7 +2,7 @@
 to solve the Cahn-Hilliard equation, which is a time-dependent 
 nonlinear PDE """
 
-__author__ = "Mikael Mortensen <Mikael.Mortensen@ffi.no>"
+__author__ = "Mikael Mortensen <mikaem@math.uio.no>"
 __date__ = "2011-06-30"
 __copyright__ = "Copyright (C) 2011 " + __author__
 __license__  = "GNU GPL version 3 or any later version"

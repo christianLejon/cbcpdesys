@@ -1,4 +1,4 @@
-__author__ = "Mikael Mortensen <mikael.mortensen@gmail.com>"
+__author__ = "Mikael Mortensen <mikaem@math.uio.no>"
 __date__ = "2011-12-19"
 __copyright__ = "Copyright (C) 2011 " + __author__
 __license__  = "GNU GPL version 3 or any later version"
