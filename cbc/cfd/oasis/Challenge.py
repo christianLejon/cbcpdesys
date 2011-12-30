@@ -70,7 +70,8 @@ info_red('Memory use of plain dolfin = ' + dolfin_memory_use)
 
 from scipy.interpolate import InterpolatedUnivariateSpline as ius
 from scipy.interpolate import splrep, splev
-from numpy import array, zeros, floor
+from numpy import array, zeros, floor, cos, sin, arange
+from numpy import dot as ndot
 
 AA = [1, -0.23313344, -0.11235758, 0.10141715, 0.06681337, -0.044572343, -0.055327477, 0.040199067, 0.01279207, -0.002555173, -0.006805238, 0.002761498, -0.003147682, 0.003569664, 0.005402948, -0.002816467, 0.000163798, 8.38311E-05, -0.001517142, 0.001394522, 0.00044339, -0.000565792, -6.48123E-05] 
 
@@ -79,13 +80,14 @@ BB = [0, 0.145238823, -0.095805132, -0.117147521, 0.07563348, 0.060636658, -0.04
 counter = 0 
 N = 100 
 
+kk = arange(len(AA))
 def time_dependent_velocity(t): 
   velocity = 0 
-  for k in range(len(AA)): 
-    velocity += AA[k]*cos(2*pi*k*t)
-    velocity += BB[k]*sin(2*pi*k*t)
+  c1 = cos(2.*pi*t*kk)
+  c2 = sin(2.*pi*t*kk)  
+  velocity = ndot(array(AA), c1) + ndot(array(BB), c2)
   return velocity
-
+  
 class InflowData(object):
 
     def __init__(self, mesh, velocity, stationary):
@@ -150,12 +152,12 @@ mesh = Mesh(mesh_filename)
 nu = Constant(0.04)           # Viscosity
 t = 0                         # time
 tstep = 0                     # Timestep
-T = 1.                        # End time
+T = 1.0                        # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
 max_error = 1e-6
-check = 10                    # print out info and save solution every check timestep 
-save_restart_file = 10*check  # Saves two previous timesteps needed for a clean restart
+check = 100                     # print out info and save solution every check timestep 
+save_restart_file = 10000  # Saves two previous timesteps needed for a clean restart
 
 flux = 0
 if testcase == 1: 
@@ -197,7 +199,7 @@ f = Constant((0,)*dim)
 #dt =  0.2*(h / U)
 #n  = int(T / dt + 1.0)
 #dt = Constant(T / n)
-dt = Constant(0.001)
+dt = Constant(0.0001)
 n = int(T / dt(0))
 
 # Create a new folder for each run
@@ -206,7 +208,7 @@ folder = path.join(getcwd(), mesh_filename.split('/')[-1][:-7],
                               'testcase_{0}'.format(testcase),
                               'dt={0:2.4e}'.format(dt(0)),
                               time.ctime().replace(' ', '_'))
-if MPI.process_number()==0:
+if MPI.process_number() == 0:
     makedirs(folder)
 
 #### Set a folder that contains xml.gz files of the solution. 
@@ -342,6 +344,7 @@ while t < (T - tstep*DOLFIN_EPS):
         num_iter = max(iters_on_first_timestep, max_iter)
     else:
         num_iter = max_iter
+        
     while err > max_error and j < num_iter:
         err = 0
         j += 1
@@ -363,7 +366,7 @@ while t < (T - tstep*DOLFIN_EPS):
             A._scale(-1.)
             A.axpy(2./dt_, M, True)
             [bc.apply(A) for bc in bcs['u0']]
-        
+            
         for ui in u_components:
             b[ui][:] = 0.
             b[ui].axpy(-1., P[ui]*x_['p'])
@@ -414,22 +417,22 @@ while t < (T - tstep*DOLFIN_EPS):
         info_green('Time = {0:2.4e}, timestep = {1:6d}, End time = {2:2.4e}'.format(t, tstep, T)) 
         newfolder = path.join(folder, 'timestep='+str(tstep))
         if MPI.process_number()==0:
-            try:
-                makedirs(newfolder)
-            except OSError:
-                pass
+           try:
+               makedirs(newfolder)
+           except OSError:
+               pass
         for ui in sys_comp:
-            newfile = File(path.join(newfolder, ui + '.xml.gz'))
-            newfile << q_[ui]
+           newfile = File(path.join(newfolder, ui + '.xml.gz'))
+           newfile << q_[ui]
         
         if tstep % save_restart_file == 0:
-            for ui in u_components:
-                newfile_1 = File(path.join(newfolder, ui + '_1.xml.gz'))
-                newfile_1 << q_1[ui]
+           for ui in u_components:
+               newfile_1 = File(path.join(newfolder, ui + '_1.xml.gz'))
+               newfile_1 << q_1[ui]
     
     # Save probe values collectively
     probe_dict.probe(q_, tstep-1)
-        
+
 info_red('Additional memory use of solver = {0}'.format(eval(getMyMemoryUsage()) - eval(dolfin_memory_use)))
 info_red('Total memory use = ' + getMyMemoryUsage())
 list_timings()
