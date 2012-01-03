@@ -82,11 +82,9 @@ N = 100
 
 kk = arange(len(AA))
 def time_dependent_velocity(t): 
-  velocity = 0 
   c1 = cos(2.*pi*t*kk)
   c2 = sin(2.*pi*t*kk)  
-  velocity = ndot(array(AA), c1) + ndot(array(BB), c2)
-  return velocity
+  return ndot(array(AA), c1) + ndot(array(BB), c2)
   
 class InflowData(object):
 
@@ -132,32 +130,25 @@ class InflowComp(Expression):
         values[0] = self.data(x, ufc_cell)[self.component]
 
 # Read mesh
-testcase = 1
-refinement = 2
+testcase = 4
+refinement = 0
 stationary = False
 boundary_layers = True
-if boundary_layers:
-    mesh_filename = "/home/kent-and/Challenge/mesh_750k_BL_t.xml.gz"
-    if refinement==1: mesh_filename = "/home/kent-and/Challenge/mesh_2mio_BL_t.xml.gz"
-    if refinement==2: mesh_filename = "/home/kent-and/Challenge/mesh_4mio_BL_t.xml.gz"
-else:
-    mesh_filename = "/home/kent-and/Challenge/mesh_500k.xml.gz"
-    if refinement==1: mesh_filename = "/home/kent-and/Challenge/mesh_1mio.xml.gz"
-    if refinement==2: mesh_filename = "/home/kent-and/Challenge/mesh_2mio.xml.gz"
-    if refinement==3: mesh_filename = "/home/kent-and/Challenge/mesh_4mio.xml.gz"
-    
+mesh_filename = "/home/kent-and/Challenge/mesh_750k_BL_t.xml.gz"
+if refinement==1: mesh_filename = "/home/kent-and/Challenge/mesh_2mio_BL_t.xml.gz"
+if refinement==2: mesh_filename = "/home/kent-and/Challenge/mesh_4mio_BL_t.xml.gz"    
 mesh = Mesh(mesh_filename)
     
 # Set parameters
 nu = Constant(0.04)           # Viscosity
-t = 0                         # time
+t = 0.0                         # time
 tstep = 0                     # Timestep
-T = 1.0                        # End time
+T = 10.0                        # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
 max_error = 1e-6
 check = 100                     # print out info and save solution every check timestep 
-save_restart_file = 10000  # Saves two previous timesteps needed for a clean restart
+save_restart_file = 10000     # Saves two previous timesteps needed for a clean restart
 
 flux = 0
 if testcase == 1: 
@@ -199,7 +190,7 @@ f = Constant((0,)*dim)
 #dt =  0.2*(h / U)
 #n  = int(T / dt + 1.0)
 #dt = Constant(T / n)
-dt = Constant(0.0001)
+dt = Constant(0.001)
 n = int(T / dt(0))
 
 # Create a new folder for each run
@@ -214,6 +205,7 @@ if MPI.process_number() == 0:
 #### Set a folder that contains xml.gz files of the solution. 
 restart_folder = None        
 #restart_folder = '/home/mikaelmo/cbcpdesys/cbc/cfd/oasis/mesh_750k_BL_t/transient/testcase_1/dt=1.0000e-03/Thu_Dec_29_11:12:28_2011/timestep=5'
+#restart_folder = '/home/mikaelmo/cbcpdesys/cbc/cfd/oasis/mesh_750k_BL_t/transient/testcase_4/dt=1.0000e-04/Sat_Dec_31_11:44:10_2011/timestep=10000'
 #### Use for initialization if not None
     
 #####################################################################
