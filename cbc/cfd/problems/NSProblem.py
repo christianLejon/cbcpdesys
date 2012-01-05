@@ -13,6 +13,8 @@ problem_parameters = recursive_update(problem_parameters, {
     'viscosity': None,
     'cfl': 1.0,
     'save_solution': False,
+    'save_restart' : 100,
+    'file_format'  : 'xml.gz',
     'plot_velocity': False,
     'plot_pressure': False,    
     'turbulence_model': 'Laminar',
@@ -23,9 +25,9 @@ class NSProblem(Problem):
     def __init__(self, mesh=None, parameters=None):
         Problem.__init__(self, mesh=mesh, parameters=parameters)
         try:
-            self.output_location = os.environ['CBCRANS']
+            self.output_location = os.environ['CBCCFD']
         except KeyError:
-            info_red('Set the environment variable CBCRANS to control the location of stored results')            
+            info_red('Set the environment variable CBCCFD to control the location of stored results')
             self.output_location = os.getcwd()
         
     def body_force(self):
@@ -45,21 +47,17 @@ class NSProblem(Problem):
                 i = self.total_number_iters
             else:
                 i = self.tstep
-            result_path = os.path.join(self.output_location, 'cbc', 
-                                       'rans', 'results')
-            for pt in (self.__class__.__name__,
-                       self.NS_solver__class__.__name__, 
-                       self.prm['Model']):
-                result_path = self.result_path = os.path.join(result_path, pt)
-                if not os.path.exists(result_path):
-                    os.mkdir(result_path)         
+            result_path = os.path.join(self.output_location, 'results',
+                self.__class__.__name__, self.NS_solver.__class__.__name__,
+                self.prm['turbulence_model'])
+             
+            if not os.path.exists(result_path):
+                os.makedirs(result_path)
 
             if (i - 1) % self.prm["save_solution"] == 0:
-                # Create files for saving
-                for name in self.system_names:
-                    if not name in self.resultfile:
-                        self.resultfile[name] = File(os.path.join(result_path, name + ".pvd"))
-                    self.resultfile[name] << self.q_[name]
+                self.dump(folder=result_path, 
+                          restart= (i - 1) % self.prm['save_restart'] == 0,
+                          file_format=self.prm['file_format'])
                 
         if self.prm['plot_velocity']:
             if isinstance(self.NS_solver.u_, ufl.tensors.ListTensor):

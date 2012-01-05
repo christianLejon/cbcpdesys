@@ -68,7 +68,7 @@ info_red('Memory use of plain dolfin = ' + dolfin_memory_use)
 
 ################### Problem dependent parameters ####################
 
-mesh = UnitSquare(45, 45)
+mesh = UnitSquare(16, 16)
 nu = Constant(0.001)          # Viscosity
 t = 0                         # time
 tstep = 0                     # Timestep
@@ -88,7 +88,7 @@ f = Constant((0,)*dim)
 #####################################################################
 
 # Declare solution Functions and FunctionSpaces
-V = FunctionSpace(mesh, 'CG', 2)
+V = FunctionSpace(mesh, 'CG', 1)
 Q = FunctionSpace(mesh, 'CG', 1)
 Vv = VectorFunctionSpace(mesh, 'CG', V.ufl_element().degree())
 u = TrialFunction(V)
@@ -110,7 +110,7 @@ u_  = as_vector([q_[ui]  for ui in u_components]) # Velocity vector at t
 u_1 = as_vector([q_1[ui] for ui in u_components]) # Velocity vector at t - dt
 u_2 = as_vector([q_2[ui] for ui in u_components]) # Velocity vector at t - 2*dt
 
-q_['p'] = Function(Q)  # pressure at t - dt/2
+q_['p'] = p_ = Function(Q)  # pressure at t - dt/2
 dp_ = Function(Q)      # pressure correction
 
 ###################  Boundary conditions  ###########################

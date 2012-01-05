@@ -55,8 +55,8 @@ and then using the following to create the lhs A:
 from cbc.cfd.oasis import *
 from cbc.cfd.tools.Probe import Probedict, Probes
 
-parameters["linear_algebra_backend"] = "Epetra"
-#parameters["linear_algebra_backend"] = "PETSc"
+#parameters["linear_algebra_backend"] = "Epetra"
+parameters["linear_algebra_backend"] = "PETSc"
 parameters["form_compiler"]["optimize"]     = False   # I somatimes get memory access error with True here (MM)
 parameters["form_compiler"]["cpp_optimize"] = True
 set_log_active(True)
@@ -133,20 +133,23 @@ testcase = 1
 refinement = 0
 stationary = False
 boundary_layers = True
-mesh_filename = "/home/kent-and/Challenge/mesh_750k_BL_t.xml.gz"
-if refinement==1: mesh_filename = "/home/kent-and/Challenge/mesh_2mio_BL_t.xml.gz"
-if refinement==2: mesh_filename = "/home/kent-and/Challenge/mesh_4mio_BL_t.xml.gz"    
+
+mesh_filename = "/home/mikael/Fenics/cbcpdesys/cbc/cfd/data/mesh_750k_BL_t.xml.gz"
+#mesh_filename = "/home/kent-and/Challenge/mesh_750k_BL_t.xml.gz"
+#if refinement==1: mesh_filename = "/home/kent-and/Challenge/mesh_2mio_BL_t.xml.gz"
+#if refinement==2: mesh_filename = "/home/kent-and/Challenge/mesh_4mio_BL_t.xml.gz"    
+
 mesh = Mesh(mesh_filename)
     
 # Set parameters
 nu = Constant(0.04)           # Viscosity
 t = 0.0                         # time
 tstep = 0                     # Timestep
-T = 0.2                        # End time
+T = 0.001                        # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
-iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
+iters_on_first_timestep = 1   # Pressure velocity iterations on first timestep
 max_error = 1e-6
-check = 100                     # print out info and save solution every check timestep 
+check = 1                     # print out info and save solution every check timestep 
 save_restart_file = 1000     # Saves two previous timesteps needed for a clean restart
 
 flux = 0
@@ -189,7 +192,7 @@ f = Constant((0,)*dim)
 #dt =  0.2*(h / U)
 #n  = int(T / dt + 1.0)
 #dt = Constant(T / n)
-dt = Constant(0.002)
+dt = Constant(0.001)
 n = int(T / dt(0))
 
 # Create a new folder for each run
@@ -294,7 +297,7 @@ if V.ufl_element().degree() == Q.ufl_element().degree():
 else:
     R = dict((ui, assemble(q*u.dx(i)*dx)) for i, ui in  enumerate(u_components))
 
-u_sol = KrylovSolver('bicgstab', 'jacobi')
+u_sol = KrylovSolver('bicgstab', 'ilu')
 u_sol.parameters['error_on_nonconvergence'] = False
 u_sol.parameters['nonzero_initial_guess'] = True
 #u_sol.parameters['monitor_convergence'] = True
@@ -302,7 +305,7 @@ u_sol.parameters['relative_tolerance'] = 1e-9
 u_sol.parameters['absolute_tolerance'] = 1e-14
 reset_sparsity = True
 
-du_sol = KrylovSolver('bicgstab', 'jacobi')
+du_sol = KrylovSolver('bicgstab', 'ilu')
 du_sol.parameters['error_on_nonconvergence'] = False
 du_sol.parameters['nonzero_initial_guess'] = True
 du_sol.parameters['preconditioner']['reuse'] = True
@@ -310,7 +313,7 @@ du_sol.parameters['preconditioner']['reuse'] = True
 du_sol.parameters['relative_tolerance'] = 1e-9
 du_sol.parameters['absolute_tolerance'] = 1e-14
 
-p_sol = KrylovSolver('gmres', 'amg')
+p_sol = KrylovSolver('gmres', 'hypre_amg')
 p_sol.parameters['error_on_nonconvergence'] = False
 p_sol.parameters['nonzero_initial_guess'] = True
 p_sol.parameters['preconditioner']['reuse'] = True
@@ -354,23 +357,22 @@ while t < (T - tstep*DOLFIN_EPS):
             A._scale(-1.)            # Negative convection on the rhs 
             A.axpy(1./dt_, M, True)  # Add mass
             A.axpy(-0.5, K, True)    # Add diffusion                
-            
             # Compute rhs for all velocity components
             for ui in u_components:
                 b[ui][:] = A*x_1[ui]
-
             # Reset matrix for lhs
             A._scale(-1.)
             A.axpy(2./dt_, M, True)
             [bc.apply(A) for bc in bcs['u0']]
             
         for ui in u_components:
-            b[ui][:] = 0.
+            bold[ui][:] = b[ui][:]
             b[ui].axpy(-1., P[ui]*x_['p'])
             [bc.apply(b[ui]) for bc in bcs[ui]]
             work[:] = x_[ui][:]
             u_sol.solve(A, x_[ui], b[ui])
             err += norm(work - x_[ui])
+            b[ui][:] = bold[ui][:]
             
         ### Solve pressure ###
         dp_.vector()[:] = x_['p'][:]
@@ -412,28 +414,28 @@ while t < (T - tstep*DOLFIN_EPS):
         info_red('Total computing time on previous {0:d} timesteps = {1:f}'.format(check, time.time() - t1))
         t1 = time.time()
         info_green('Time = {0:2.4e}, timestep = {1:6d}, End time = {2:2.4e}'.format(t, tstep, T)) 
-        newfolder = path.join(folder, 'timestep='+str(tstep))
-        if MPI.process_number()==0:
-           try:
-               makedirs(newfolder)
-           except OSError:
-               pass
-        for ui in sys_comp:
-           newfile = File(path.join(newfolder, ui + '.xml.gz'))
-           newfile << q_[ui]
+        #newfolder = path.join(folder, 'timestep='+str(tstep))
+        #if MPI.process_number()==0:
+           #try:
+               #makedirs(newfolder)
+           #except OSError:
+               #pass
+        #for ui in sys_comp:
+           #newfile = File(path.join(newfolder, ui + '.xml.gz'))
+           #newfile << q_[ui]
         
-        if tstep % save_restart_file == 0:
-           for ui in u_components:
-               newfile_1 = File(path.join(newfolder, ui + '_1.xml.gz'))
-               newfile_1 << q_1[ui]
+        #if tstep % save_restart_file == 0:
+           #for ui in u_components:
+               #newfile_1 = File(path.join(newfolder, ui + '_1.xml.gz'))
+               #newfile_1 << q_1[ui]
     
     # Save probe values collectively
-    probe_dict.probe(q_, tstep-1)
-
+    #probe_dict.probe(q_, tstep-1)
+        
 info_red('Additional memory use of solver = {0}'.format(eval(getMyMemoryUsage()) - eval(dolfin_memory_use)))
 info_red('Total memory use = ' + getMyMemoryUsage())
 list_timings()
 info_red('Total computing time = {0:f}'.format(time.time()- t0))
 #plot(project(u_, Vv))
 # Store probes to files
-probe_dict.dump(path.join(folder, 'probe'))
+#probe_dict.dump(path.join(folder, 'probe'))

@@ -13,7 +13,8 @@ default_problem_parameters = dict(time_integration='Transient',
                                   max_err=1e-7,
                                   iter_first_timestep=1,
                                   T=1.,
-                                  dt=0.01)
+                                  dt=0.01,
+                                  pvd_output_files={})
 
 class Problem:
     
@@ -89,7 +90,9 @@ class Problem:
                 
                 err = max([eval(s) for s in spr.replace('|','').split()] + [err])
         
-        self.update()        
+        self.update()       
+        
+        self.finalize()
 
     def solve_Transient_advance(self, pdesystems, logging):
         """Integrate solution in time.
@@ -167,6 +170,8 @@ class Problem:
             info_green('Time = %s, End time = %s' %(self.t, self.prm['T']))
             
             self.update()
+            
+        self.finalize()
 
     def initialize(self, pdesystem):
         """Initialize the solution in a PDESystem.
@@ -179,9 +184,11 @@ class Problem:
                          'p': Constant(0)}
         
         Another option is to give a path to files stored in dolfin xml
-        format, e.g.
+        format, e.g.,
         
-              self.q0 = "$(HOME)/cbcpdesys/cbc/cfd/problems/results/drivencavity/1/{}.xml.gz"
+              self.q0 = os.path.join(os.getcwd(), "{}.xml.gz")
+              
+        where {} is replaced with the sub_system name (e.g., 'u' or 'up')
 
         """
         if self.q0 == {}: return False
@@ -264,14 +271,30 @@ class Problem:
         mypid = getpid()
         mymemory = getoutput("ps -o rss %s" % mypid).split()[1]
         return mymemory
+        
+    def finalize(self):
+        pass
     
-    def dump(self, folder, restart=False):
-        for pdesystem in self.pdesystems:
+    def dump(self, folder='.', restart=False, file_format='xml.gz' ):
+        
+        if not os.path.exists(folder): # Create folders if they don't exist
+            os.makedirs(folder)
+            
+        for pdesystem in self.pdesystems.itervalues():
             for name in pdesystem.system_names:
-                f = File(os.path.join(folder, '{}_{}.xml.gz'.format(name, self.tstep)))
-                f << pdesystem.q_[name]
-                if restart and self.prm['time_integration'] == 'Transient':
-                    f = File(os.path.join(folder, '{}_1_{}.xml.gz'.format(name, self.tstep)))
+                if file_format=='pvd':                    
+                    if name in self.prm['pvd_output_files']:
+                        file = self.prm['pvd_output_files'][name]
+                    else:
+                        file = File(os.path.join(folder, '{}.pvd'.format(name)))
+                        self.prm['pvd_output_files'][name] = file
+                else:
+                    file = File(os.path.join(folder, '{}_{}.{}'.format(name, self.tstep, file_format)))
+                file << pdesystem.q_[name]
+                
+                if (restart and self.prm['time_integration']=='Transient'
+                    and 'xml' in file_format):
+                    f = File(os.path.join(folder, '{}_1_{}.{}'.format(name, self.tstep, file_format)))
                     f << pdesystem.q_1[name]
                     
 def dump_result(problem, solver, cputime, error, filename = "results/results.log"):

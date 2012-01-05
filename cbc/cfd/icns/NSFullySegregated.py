@@ -104,8 +104,8 @@ class NSFullySegregated(NSSolver):
 
     def Transient_update(self):
         # Update to new time-level
-        for ui in self.system_names[:-1]:
-            dummy = self.pdesubsystems[ui + '_update'].solve()
+        #for ui in self.system_names[:-1]:
+            #dummy = self.pdesubsystems[ui + '_update'].solve()
         NSSolver.Transient_update(self)
         
 ######### PDESubsystems ###################
@@ -266,7 +266,8 @@ class Transient_Pressure_101(PressureBase):
         self.R = [assemble(inner(q, u.dx(i))*dx) for i in range(dim)]
         self.dim = dim
         self.b = Vector(self.x)
-        return inner(grad(q), dt*grad(p))*dx
+        self.dt = dt(0)
+        return inner(grad(q), grad(p))*dx
         
     def solve_Picard_system(self, assemble_A, assemble_b):
         self.prepare()
@@ -276,7 +277,7 @@ class Transient_Pressure_101(PressureBase):
             #self.A.compress()
         self.b[:] = self.A*self.x
         for i in range(self.dim):
-            self.b.axpy(-1., self.R[i]*self.solver_namespace['u_'][i].vector()) # Divergence of u_
+            self.b.axpy(-1./self.dt, self.R[i]*self.solver_namespace['u_'][i].vector()) # Divergence of u_
 
         [bc.apply(self.b) for bc in self.bcs]
         self.rp = residual(self.A, self.x, self.b)
@@ -392,7 +393,7 @@ class Transient_Velocity_101(VelocityBase):
             for ui in self.solver_namespace['u_components']:
                 self.pdes[ui].b[:] = self.pdes[ui].b0[:]
                 self.pdes[ui].b.axpy(1., self.A*self.x_1[ui])
-
+                print norm(self.pdes[ui].b)
             # Reset matrix for lhs A = -Ar + 2/dt*M
             self.A._scale(-1.)
             self.A.axpy(2./self.dt, self.M, True)
@@ -412,8 +413,12 @@ class Transient_Velocity_101(VelocityBase):
         # the pressure part of b that needs reassembling. Remember the
         # preassembled part in bold
         self.bold[:] = self.b[:] 
+        print 'index ', self.index
+        print norm(self.b)
         self.b.axpy(-1., self.P*self.solver_namespace['x_']['p'])
+        print norm(self.b)
         [bc.apply(self.A, self.b) for bc in self.bcs]
+        print norm(self.b)
         self.work[:] = self.x[:]    # start vector for iterative solvers
         # Check out line below to save one matrix vector product
         rv = residual(self.A, self.x, self.b)

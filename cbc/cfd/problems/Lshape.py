@@ -82,16 +82,18 @@ if __name__ == '__main__':
     set_log_active(False)
     problem_parameters['Nx'] = 40
     problem_parameters['Ny'] = 40
-    problem_parameters['T'] = 10.
-    problem_parameters['time_integration']='Steady'
-    problem_parameters['max_iter'] = 10
+    problem_parameters['T'] = 2.
+    problem_parameters['time_integration'] = 'Transient'
+    problem_parameters['max_iter'] = 1
+    problem_parameters['save_solution'] = 5
+    problem_parameters['save_restart'] = 10
     problem_parameters['plot_velocity'] = True
     solver_parameters = recursive_update(solver_parameters, 
     dict(degree=dict(u=2, u0=1, u1=1),
          pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
          linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab', up='lu'), 
          precond=dict(u='jacobi', p='amg', velocity_update='ilu'),
-         iteration_type='Newton')
+         iteration_type='Picard')
          )
     problem = Lshape(problem_parameters)
     #solver = icns.NSFullySegregated(problem, solver_parameters)
