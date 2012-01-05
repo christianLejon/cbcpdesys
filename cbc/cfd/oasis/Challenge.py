@@ -2,7 +2,6 @@ __author__ = "Mikael Mortensen <mikaem@math.uio.no>"
 __date__ = "2011-12-19"
 __copyright__ = "Copyright (C) 2011 " + __author__
 __license__  = "GNU GPL version 3 or any later version"
-
 """
 This is a highly tuned and stripped down Navier-Stokes solver optimized
 for both speed and memory.  
@@ -56,9 +55,9 @@ and then using the following to create the lhs A:
 from cbc.cfd.oasis import *
 from cbc.cfd.tools.Probe import Probedict, Probes
 
-#parameters["linear_algebra_backend"] = "Epetra"
-parameters["linear_algebra_backend"] = "PETSc"
-parameters["form_compiler"]["optimize"]     = True   # I somatimes get memory access error with True here (MM)
+parameters["linear_algebra_backend"] = "Epetra"
+#parameters["linear_algebra_backend"] = "PETSc"
+parameters["form_compiler"]["optimize"]     = False   # I somatimes get memory access error with True here (MM)
 parameters["form_compiler"]["cpp_optimize"] = True
 set_log_active(True)
 
@@ -108,8 +107,8 @@ class InflowData(object):
             
         if self.stationary and counter <= N: 
             counter += 1 
-            self.val = float(self.velocity*self.counter)/self.N
-            print self.val, self.velocity, self.counter, self.N 
+            self.val = float(self.velocity*counter)/self.N
+            #print self.val, self.velocity, counter, self.N 
          
         val = self.val 
         return [-n.x()*val, -n.y()*val, -n.z()*val]
@@ -130,7 +129,7 @@ class InflowComp(Expression):
         values[0] = self.data(x, ufc_cell)[self.component]
 
 # Read mesh
-testcase = 4
+testcase = 1
 refinement = 0
 stationary = False
 boundary_layers = True
@@ -143,12 +142,12 @@ mesh = Mesh(mesh_filename)
 nu = Constant(0.04)           # Viscosity
 t = 0.0                         # time
 tstep = 0                     # Timestep
-T = 10.0                        # End time
+T = 0.2                        # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
 max_error = 1e-6
 check = 100                     # print out info and save solution every check timestep 
-save_restart_file = 10000     # Saves two previous timesteps needed for a clean restart
+save_restart_file = 1000     # Saves two previous timesteps needed for a clean restart
 
 flux = 0
 if testcase == 1: 
@@ -190,7 +189,7 @@ f = Constant((0,)*dim)
 #dt =  0.2*(h / U)
 #n  = int(T / dt + 1.0)
 #dt = Constant(T / n)
-dt = Constant(0.001)
+dt = Constant(0.002)
 n = int(T / dt(0))
 
 # Create a new folder for each run
@@ -265,7 +264,7 @@ probes = [array((-1.75, -2.55, -0.32)),
           array((-0.38, -0.35, 0.89)),
           array((-1.17, -0.87, 0.45))]
 
-# Collect all probes in a common dictionary
+## Collect all probes in a common dictionary
 probe_dict = Probedict((ui, Probes(probes, VV[ui], n)) for ui in sys_comp)
 
 #####################################################################
@@ -273,7 +272,7 @@ probe_dict = Probedict((ui, Probes(probes, VV[ui], n)) for ui in sys_comp)
 # Preassemble some constant in time matrices
 M = assemble(inner(u, v)*dx)                    # Mass matrix
 K = assemble(nu*inner(grad(u), grad(v))*dx)     # Diffusion matrix
-Ap = assemble(inner(grad(q), dt*grad(p))*dx)    # Pressure Laplacian
+Ap = assemble(inner(grad(q), grad(p))*dx)    # Pressure Laplacian
 A = Matrix()                                    # Coefficient matrix (needs reassembling)
 
 # Apply boundary conditions on M and Ap that are used directly in solve
@@ -295,23 +294,29 @@ if V.ufl_element().degree() == Q.ufl_element().degree():
 else:
     R = dict((ui, assemble(q*u.dx(i)*dx)) for i, ui in  enumerate(u_components))
 
-u_sol = KrylovSolver('bicgstab', 'hypre_euclid')
+u_sol = KrylovSolver('bicgstab', 'jacobi')
 u_sol.parameters['error_on_nonconvergence'] = False
 u_sol.parameters['nonzero_initial_guess'] = True
 #u_sol.parameters['monitor_convergence'] = True
+u_sol.parameters['relative_tolerance'] = 1e-9
+u_sol.parameters['absolute_tolerance'] = 1e-14
 reset_sparsity = True
 
-du_sol = KrylovSolver('bicgstab', 'hypre_euclid')
+du_sol = KrylovSolver('bicgstab', 'jacobi')
 du_sol.parameters['error_on_nonconvergence'] = False
 du_sol.parameters['nonzero_initial_guess'] = True
 du_sol.parameters['preconditioner']['reuse'] = True
 #du_sol.parameters['monitor_convergence'] = True
+du_sol.parameters['relative_tolerance'] = 1e-9
+du_sol.parameters['absolute_tolerance'] = 1e-14
 
-p_sol = KrylovSolver('gmres', 'hypre_amg')
+p_sol = KrylovSolver('gmres', 'amg')
 p_sol.parameters['error_on_nonconvergence'] = False
 p_sol.parameters['nonzero_initial_guess'] = True
 p_sol.parameters['preconditioner']['reuse'] = True
 #p_sol.parameters['monitor_convergence'] = True
+p_sol.parameters['relative_tolerance'] = 1e-9
+p_sol.parameters['absolute_tolerance'] = 1e-14
 
 x_  = dict((ui, q_ [ui].vector()) for ui in sys_comp)     # Solution vectors t
 x_1 = dict((ui, q_1[ui].vector()) for ui in u_components) # Solution vectors t - dt
@@ -371,7 +376,7 @@ while t < (T - tstep*DOLFIN_EPS):
         dp_.vector()[:] = x_['p'][:]
         b['p'][:] = Ap*x_['p']
         for ui in u_components:
-            b['p'].axpy(-1., R[ui]*x_[ui]) # Divergence of u_
+            b['p'].axpy(-1./dt_, R[ui]*x_[ui]) # Divergence of u_
         [bc.apply(b['p']) for bc in bcs['p']]
         rp = residual(Ap, x_['p'], b['p'])
         p_sol.solve(Ap, x_['p'], b['p'])
@@ -395,11 +400,11 @@ while t < (T - tstep*DOLFIN_EPS):
         x_1[ui][:] = x_ [ui][:]
 
     ################ Hack!! Because PETSc bicgstab with jacobi errors on the first tstep and exits in parallel ##
-    if tstep == 1:
-        u_sol = KrylovSolver('bicgstab', 'jacobi')
-        u_sol.parameters['error_on_nonconvergence'] = False
-        u_sol.parameters['nonzero_initial_guess'] = True
-        #u_sol.parameters['monitor_convergence'] = True
+    #if tstep == 1:
+    #    u_sol = KrylovSolver('bicgstab', 'jacobi')
+    #    u_sol.parameters['error_on_nonconvergence'] = False
+    #    u_sol.parameters['nonzero_initial_guess'] = True
+    #    #u_sol.parameters['monitor_convergence'] = True
     #################################################################################################
         
     # Print some information and save intermediate solution
@@ -432,4 +437,3 @@ info_red('Total computing time = {0:f}'.format(time.time()- t0))
 #plot(project(u_, Vv))
 # Store probes to files
 probe_dict.dump(path.join(folder, 'probe'))
-    

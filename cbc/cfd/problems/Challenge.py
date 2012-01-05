@@ -6,8 +6,10 @@ __license__  = "GNU GPL version 3 or any later version"
 from NSProblem import *
 from scipy.interpolate import InterpolatedUnivariateSpline as ius
 from scipy.interpolate import splrep, splev
-from numpy import array, zeros, floor, ceil
+from numpy import array, zeros, floor, cos, sin, arange
+from numpy import dot as ndot
 from aneurysm import MCAtime, MCAval
+from os import getpid, path, makedirs, getcwd
 
 A = [1, -0.23313344, -0.11235758, 0.10141715, 0.06681337, -0.044572343, -0.055327477, 0.040199067, 0.01279207, -0.002555173, -0.006805238, 0.002761498, -0.003147682, 0.003569664, 0.005402948, -0.002816467, 0.000163798, 8.38311E-05, -0.001517142, 0.001394522, 0.00044339, -0.000565792, -6.48123E-05] 
 
@@ -16,12 +18,11 @@ B = [0, 0.145238823, -0.095805132, -0.117147521, 0.07563348, 0.060636658, -0.046
 counter = 0 
 N = 100 
 
+kk = arange(len(A))
 def time_dependent_velocity(t): 
-  velocity = 0 
-  for k in range(len(A)): 
-    velocity += A[k]*cos(2*pi*k*t)
-    velocity += B[k]*sin(2*pi*k*t)
-  return velocity
+  c1 = cos(2.*pi*t*kk)
+  c2 = sin(2.*pi*t*kk)  
+  return ndot(array(A), c1) + ndot(array(B), c2)
 
 class InflowData(object):
 
@@ -48,8 +49,8 @@ class InflowData(object):
             if self.problem.t > self.t: 
                 self.t = self.problem.t 
                 counter += 1 
-                self.val = float(self.velocity*self.counter)/self.N
-                print self.val, self.velocity, self.counter, self.N 
+                self.val = float(self.velocity*counter)/self.N
+                print self.val, self.velocity, counter, self.N 
          
         val = self.val 
         return [-n.x()*val, -n.y()*val, -n.z()*val]
@@ -74,7 +75,15 @@ class Challenge(NSProblem):
     def __init__(self, parameters):
         NSProblem.__init__(self, parameters=parameters)
 
-        self.mesh = Mesh("/home/kent-and/Challenge/mesh_500k.xml.gz")
+        self.mesh_filename = "/home/kent-and/Challenge/mesh_750k_BL_t.xml.gz"
+        if self.prm['refinement']==1: 
+            self.mesh_filename = "/home/kent-and/Challenge/mesh_2mio_BL_t.xml.gz"
+        if self.prm['refinement']==2: 
+            self.mesh_filename = "/home/kent-and/Challenge/mesh_4mio_BL_t.xml.gz" 
+
+        self.mesh = Mesh(self.mesh_filename)
+
+        self.mesh_filename = self.mesh_filename.split('/')[-1][:-7]
 
         self.testcase = self.prm["test_case"] 
 
@@ -92,9 +101,14 @@ class Challenge(NSProblem):
 
         self.boundaries = self.create_boundaries()
 
-        self.prm['dt'] = self.prm['T']/ceil(self.prm['T']/0.2/MPI.min(self.mesh.hmin()))
+        self.folder = path.join(getcwd(), self.mesh_filename, 'testcase_'+ str(self.prm['test_case'])+'_dt=' + str(self.prm['dt']) + '_refinement_' + str(self.prm['refinement']) )
+        
+        if MPI.process_number()==0:
+            if not path.exists(self.folder):
+                makedirs(self.folder)
 
-        print self.prm['dt']
+        #self.prm['dt'] = self.prm['T']/ceil(self.prm['T']/0.2/MPI.min(self.mesh.hmin()))
+        
         
         # To initialize solution set the dictionary q0: 
         #self.q0 = Initdict(u = ('0', '0', '0'), p = ('0')) # Or not, zero is default anyway
@@ -123,7 +137,7 @@ class Challenge(NSProblem):
 	self.velocity = self.flux / self.A1 
 
         # Characteristic velocity (U) in the domain (used to determine timestep)
-        self.U = self.velocity*16  
+        self.U = self.velocity*5  
         h  = MPI.min(self.mesh.hmin())
         print "Characteristic velocity set to", self.U
         print "mesh size          ", h
@@ -161,9 +175,21 @@ class Challenge(NSProblem):
         #    self.inflow['u'+str(i)].assign(u_mean*self.normal[i])
 
     def update(self):
-        if self.tstep % 10 == 0:
+        if self.tstep % 100 == 0:
             info_red('Memory usage = ' + self.getMyMemoryUsage())
 
+            newfolder = path.join(self.folder, 'timestep='+str(self.tstep))
+            if MPI.process_number()==0:
+                try:
+                    makedirs(newfolder)
+                except OSError:
+                    pass
+            for ui in self.pdesystems['Navier-Stokes'].system_names:
+                newfile = File(path.join(newfolder, ui + '.xml.gz'))
+                newfile << self.pdesystems['Navier-Stokes'].q_[ui]
+                newfile2 = File(path.join(newfolder, ui + '_1.xml.gz'))
+                newfile2 << self.pdesystems['Navier-Stokes'].q_1[ui]
+        
     def functional(self):
 
          u = self.pdesystems['Navier-Stokes'].u_
@@ -194,13 +220,16 @@ class Challenge(NSProblem):
 if __name__ == '__main__':
     from cbc.cfd.icns import NSFullySegregated, NSSegregated, solver_parameters
     import time
-    parameters["linear_algebra_backend"] = "PETSc"
+    #parameters["linear_algebra_backend"] = "PETSc"
+    parameters["linear_algebra_backend"] = "Epetra"
     set_log_active(True)
     problem_parameters['viscosity'] = 0.04
-    problem_parameters['T'] = 0.01
-    problem_parameters['dt'] = 0.01
+    problem_parameters['T'] = 1.
     problem_parameters['iter_first_timestep'] = 2
-    problem_parameters['test_case'] = 1
+    problem_parameters['dt'] = 0.0001
+    problem_parameters['test_case'] = 2
+    problem_parameters['refinement'] = 0
+
     solver_parameters = recursive_update(solver_parameters, 
     dict(degree=dict(u=1,u0=1,u1=1,u2=1),
          pdesubsystem=dict(u=101, p=101, velocity_update=101), 

@@ -4,12 +4,11 @@ from cbc.cfd.tools.Probe import Probes, Probedict
 import os
 
 testcase = '1' 
-meshfile = 'mesh_750k_BL_t'
-timestep = '200'
+timestep = '100'
 refinement = 0
-dt = '1.0000e-03'
+dt = '2.0000e-03'
 time = 'transient'
-fileid = 'Fri_Dec_30_10:44:08_2011'
+fileid = 'Thu_Jan__5_10:14:34_2012'
 xmlfile = "/home/mikaelmo/cbcpdesys/cbc/cfd/oasis/{0}/{1}/testcase_{2}/dt={3}/{4}/timestep={5}/{6}.xml.gz"
 
 mesh_filename = "/home/kent-and/Challenge/mesh_750k_BL_t.xml.gz"
