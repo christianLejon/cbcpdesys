@@ -68,7 +68,7 @@ info_red('Memory use of plain dolfin = ' + dolfin_memory_use)
 
 ################### Problem dependent parameters ####################
 
-mesh = UnitSquare(16, 16)
+mesh = UnitSquare(50, 50)
 nu = Constant(0.001)          # Viscosity
 t = 0                         # time
 tstep = 0                     # Timestep
@@ -78,7 +78,7 @@ max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
 max_error = 1e-6
 #dt = Constant(0.012254901960784314)
-dt = Constant(T/ceil(T/0.2/mesh.hmin())) # timestep
+dt = Constant(0.25*T/ceil(T/0.2/mesh.hmin())) # timestep
 check = 1                     # print out info every check timestep 
 
 # Specify body force

@@ -277,7 +277,7 @@ while t < (T - tstep*DOLFIN_EPS):
         
         # Compute rhs for all velocity components
         for ui in u_components:
-            b[ui][:].axpy(1., A*x_1[ui])
+            b[ui][:] = A*x_1[ui]
             if ui == 'u1':
                 fv = assemble(inner(v, rho0*f[ui])*dx)
                 b[ui].axpy(1., fv)
@@ -288,12 +288,12 @@ while t < (T - tstep*DOLFIN_EPS):
         [bc.apply(A) for bc in bcs['u0']]
         
         for ui in u_components:
-            bold[ui][:] = b[ui][:] 
+            #bold[ui][:] = b[ui][:] 
             b[ui].axpy(-1., P[ui]*x_['p'])
             [bc.apply(b[ui]) for bc in bcs[ui]]
             work[:] = x_[ui][:]
             u_sol.solve(A, x_[ui], b[ui])
-            b[ui][:] = bold[ui][:]  # preassemble part
+            #b[ui][:] = bold[ui][:]  # preassemble part
             error[ui] = norm(work - x_[ui])
             err += error[ui]             
             
