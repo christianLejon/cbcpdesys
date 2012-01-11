@@ -57,7 +57,7 @@ from cbc.cfd.tools.Probe import Probedict, Probes
 
 #parameters["linear_algebra_backend"] = "Epetra"
 parameters["linear_algebra_backend"] = "PETSc"
-parameters["form_compiler"]["optimize"]     = False   # I somatimes get memory access error with True here (MM)
+parameters["form_compiler"]["optimize"]     = False   # I sometimes get memory access error with True here (MM)
 parameters["form_compiler"]["cpp_optimize"] = True
 set_log_active(True)
 
@@ -77,7 +77,7 @@ AA = [1, -0.23313344, -0.11235758, 0.10141715, 0.06681337, -0.044572343, -0.0553
 BB = [0, 0.145238823, -0.095805132, -0.117147521, 0.07563348, 0.060636658, -0.046028338, -0.031658495, 0.015095811, 0.01114202, 0.001937877, -0.003619434, 0.000382924, -0.005482582, 0.003510867, 0.003397822, -0.000521362, 0.000866551, -0.001248326, -0.00076668, 0.001208502, 0.000163361, 0.000388013]
 
 counter = 0 
-N = 100 
+N = 10
 
 kk = arange(len(AA))
 def time_dependent_velocity(t): 
@@ -105,10 +105,10 @@ class InflowData(object):
         if not self.stationary: 
             self.val = self.velocity*time_dependent_velocity(self.t)
             
-        if self.stationary and counter <= N: 
-            counter += 1 
-            self.val = float(self.velocity*counter)/self.N
-            #print self.val, self.velocity, counter, self.N 
+        #if self.stationary and counter <= N: 
+        #    counter += 1 
+        #    self.val = float(self.velocity*counter)/self.N
+        #    #print self.val, self.velocity, counter, self.N 
          
         val = self.val 
         return [-n.x()*val, -n.y()*val, -n.z()*val]
@@ -129,27 +129,24 @@ class InflowComp(Expression):
         values[0] = self.data(x, ufc_cell)[self.component]
 
 # Read mesh
-testcase = 1
-refinement = 0
-stationary = False
-boundary_layers = True
+testcase = 4
+refinement = 2
+stationary = True
 
-mesh_filename = "/home/mikael/Fenics/cbcpdesys/cbc/cfd/data/mesh_750k_BL_t.xml.gz"
-#mesh_filename = "/home/kent-and/Challenge/mesh_750k_BL_t.xml.gz"
-#if refinement==1: mesh_filename = "/home/kent-and/Challenge/mesh_2mio_BL_t.xml.gz"
-#if refinement==2: mesh_filename = "/home/kent-and/Challenge/mesh_4mio_BL_t.xml.gz"    
-
+mesh_filename = "/home/kent-and/Challenge/mesh_750k_BL_t.xml.gz"
+if refinement==1: mesh_filename = "/home/kent-and/Challenge/mesh_2mio_BL_t.xml.gz"
+if refinement==2: mesh_filename = "/home/kent-and/Challenge/mesh_4mio_BL_t.xml.gz"    
 mesh = Mesh(mesh_filename)
     
 # Set parameters
 nu = Constant(0.04)           # Viscosity
 t = 0.0                         # time
 tstep = 0                     # Timestep
-T = 0.001                        # End time
+T = 2.                        # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 1   # Pressure velocity iterations on first timestep
 max_error = 1e-6
-check = 1                     # print out info and save solution every check timestep 
+check = 100                     # print out info and save solution every check timestep 
 save_restart_file = 1000     # Saves two previous timesteps needed for a clean restart
 
 flux = 0
@@ -167,6 +164,7 @@ V0 = assemble(one*dx, mesh=mesh)
 A0 = assemble(one*ds(0), mesh=mesh)
 A1 = assemble(one*ds(1), mesh=mesh)
 A2 = assemble(one*ds(2), mesh=mesh)
+normal = FacetNormal(mesh)
 
 print "Volume of the geometry is (dx)   ", V0 
 print "Areal  of the no-slip is (ds(0)  ", A0 
@@ -192,7 +190,7 @@ f = Constant((0,)*dim)
 #dt =  0.2*(h / U)
 #n  = int(T / dt + 1.0)
 #dt = Constant(T / n)
-dt = Constant(0.001)
+dt = Constant(0.00005)
 n = int(T / dt(0))
 
 # Create a new folder for each run
@@ -205,8 +203,8 @@ if MPI.process_number() == 0:
     makedirs(folder)
 
 #### Set a folder that contains xml.gz files of the solution. 
-restart_folder = None        
-#restart_folder = '/home/mikaelmo/cbcpdesys/cbc/cfd/oasis/mesh_750k_BL_t/transient/testcase_1/dt=1.0000e-03/Thu_Dec_29_11:12:28_2011/timestep=5'
+#restart_folder = None        
+restart_folder = '/home/mikaelmo/cbcpdesys/cbc/cfd/oasis/mesh_4mio_BL_t/stationary/testcase_4/dt=5.0000e-04/Tue_Jan_10_15:40:30_2012/timestep=100'
 #restart_folder = '/home/mikaelmo/cbcpdesys/cbc/cfd/oasis/mesh_750k_BL_t/transient/testcase_4/dt=1.0000e-04/Sat_Dec_31_11:44:10_2011/timestep=10000'
 #### Use for initialization if not None
     
@@ -252,9 +250,9 @@ bcs = dict((ui, []) for ui in sys_comp)
 
 bcw = DirichletBC(V, 0., 0)
 inflow = InflowData(mesh, velocity, stationary)
-bcs['u0'] = [DirichletBC(V, InflowComp(inflow, 0), 1), bcw]
-bcs['u1'] = [DirichletBC(V, InflowComp(inflow, 1), 1), bcw]
-bcs['u2'] = [DirichletBC(V, InflowComp(inflow, 2), 1), bcw]
+bcs['u0'] = [bcw, DirichletBC(V, InflowComp(inflow, 0), 1)]
+bcs['u1'] = [bcw, DirichletBC(V, InflowComp(inflow, 1), 1)]
+bcs['u2'] = [bcw, DirichletBC(V, InflowComp(inflow, 2), 1)]
 bcs['p']  = [DirichletBC(Q, 0., 2)]
 
 # Normalize pressure or not?
@@ -297,29 +295,29 @@ if V.ufl_element().degree() == Q.ufl_element().degree():
 else:
     R = dict((ui, assemble(q*u.dx(i)*dx)) for i, ui in  enumerate(u_components))
 
-u_sol = KrylovSolver('bicgstab', 'ilu')
+u_sol = KrylovSolver('gmres', 'jacobi')
 u_sol.parameters['error_on_nonconvergence'] = False
 u_sol.parameters['nonzero_initial_guess'] = True
 #u_sol.parameters['monitor_convergence'] = True
-u_sol.parameters['relative_tolerance'] = 1e-9
-u_sol.parameters['absolute_tolerance'] = 1e-14
+u_sol.parameters['relative_tolerance'] = 1e-7
+u_sol.parameters['absolute_tolerance'] = 1e-10
 reset_sparsity = True
 
-du_sol = KrylovSolver('bicgstab', 'ilu')
+du_sol = KrylovSolver('gmres', 'jacobi')
 du_sol.parameters['error_on_nonconvergence'] = False
 du_sol.parameters['nonzero_initial_guess'] = True
 du_sol.parameters['preconditioner']['reuse'] = True
 #du_sol.parameters['monitor_convergence'] = True
-du_sol.parameters['relative_tolerance'] = 1e-9
-du_sol.parameters['absolute_tolerance'] = 1e-14
+du_sol.parameters['relative_tolerance'] = 1e-7
+du_sol.parameters['absolute_tolerance'] = 1e-10
 
 p_sol = KrylovSolver('gmres', 'hypre_amg')
 p_sol.parameters['error_on_nonconvergence'] = False
 p_sol.parameters['nonzero_initial_guess'] = True
 p_sol.parameters['preconditioner']['reuse'] = True
 #p_sol.parameters['monitor_convergence'] = True
-p_sol.parameters['relative_tolerance'] = 1e-9
-p_sol.parameters['absolute_tolerance'] = 1e-14
+p_sol.parameters['relative_tolerance'] = 1e-7
+p_sol.parameters['absolute_tolerance'] = 1e-10
 
 x_  = dict((ui, q_ [ui].vector()) for ui in sys_comp)     # Solution vectors t
 x_1 = dict((ui, q_1[ui].vector()) for ui in u_components) # Solution vectors t - dt
@@ -402,11 +400,11 @@ while t < (T - tstep*DOLFIN_EPS):
         x_1[ui][:] = x_ [ui][:]
 
     ################ Hack!! Because PETSc bicgstab with jacobi errors on the first tstep and exits in parallel ##
-    #if tstep == 1:
-    #    u_sol = KrylovSolver('bicgstab', 'jacobi')
-    #    u_sol.parameters['error_on_nonconvergence'] = False
-    #    u_sol.parameters['nonzero_initial_guess'] = True
-    #    #u_sol.parameters['monitor_convergence'] = True
+    if tstep == 0:
+       u_sol = KrylovSolver('bicgstab', 'jacobi')
+       u_sol.parameters['error_on_nonconvergence'] = False
+       u_sol.parameters['nonzero_initial_guess'] = True
+       #u_sol.parameters['monitor_convergence'] = True
     #################################################################################################
         
     # Print some information and save intermediate solution
@@ -414,23 +412,28 @@ while t < (T - tstep*DOLFIN_EPS):
         info_red('Total computing time on previous {0:d} timesteps = {1:f}'.format(check, time.time() - t1))
         t1 = time.time()
         info_green('Time = {0:2.4e}, timestep = {1:6d}, End time = {2:2.4e}'.format(t, tstep, T)) 
-        #newfolder = path.join(folder, 'timestep='+str(tstep))
-        #if MPI.process_number()==0:
-           #try:
-               #makedirs(newfolder)
-           #except OSError:
-               #pass
-        #for ui in sys_comp:
-           #newfile = File(path.join(newfolder, ui + '.xml.gz'))
-           #newfile << q_[ui]
+        newfolder = path.join(folder, 'timestep='+str(tstep))
+        u1 = assemble(dot(u_, normal)*ds(1), mesh=mesh)
+        u2 = assemble(dot(u_, normal)*ds(2), mesh=mesh)
+        if MPI.process_number()==0:
+           print 'flux [cm/s] = ', u1/A1, u2/A2, u1, u2
+           try:
+               makedirs(newfolder)
+           except OSError:
+               pass
+        for ui in sys_comp:
+           newfile = File(path.join(newfolder, ui + '.xml.gz'))
+           newfile << q_[ui]
         
-        #if tstep % save_restart_file == 0:
-           #for ui in u_components:
-               #newfile_1 = File(path.join(newfolder, ui + '_1.xml.gz'))
-               #newfile_1 << q_1[ui]
+        if tstep % save_restart_file == 0:
+           for ui in u_components:
+               newfile_1 = File(path.join(newfolder, ui + '_1.xml.gz'))
+               newfile_1 << q_1[ui]
     
     # Save probe values collectively
-    #probe_dict.probe(q_, tstep-1)
+    for ui in sys_comp:
+        q_[ui].gather()
+    probe_dict.probe(q_)
         
 info_red('Additional memory use of solver = {0}'.format(eval(getMyMemoryUsage()) - eval(dolfin_memory_use)))
 info_red('Total memory use = ' + getMyMemoryUsage())
@@ -438,4 +441,5 @@ list_timings()
 info_red('Total computing time = {0:f}'.format(time.time()- t0))
 #plot(project(u_, Vv))
 # Store probes to files
-#probe_dict.dump(path.join(folder, 'probe'))
+probe_dict.dump(path.join(folder, 'probe'))
+

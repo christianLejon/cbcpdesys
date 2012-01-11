@@ -3,12 +3,13 @@ from cbc.pdesys import *
 from cbc.cfd.tools.Probe import Probes, Probedict
 import os
 
-testcase = '1' 
-timestep = '100'
-refinement = 0
-dt = '2.0000e-03'
-time = 'transient'
-fileid = 'Thu_Jan__5_10:14:34_2012'
+testcase = '4' 
+timestep = '6600'
+refinement = 2
+dt = '5.0000e-05'
+#time = 'transient'
+time = 'stationary'
+fileid = 'Tue_Jan_10_17:25:14_2012'
 xmlfile = "/home/mikaelmo/cbcpdesys/cbc/cfd/oasis/{0}/{1}/testcase_{2}/dt={3}/{4}/timestep={5}/{6}.xml.gz"
 
 mesh_filename = "/home/kent-and/Challenge/mesh_750k_BL_t.xml.gz"
@@ -18,8 +19,8 @@ meshfile = mesh_filename.split('/')[-1][:-7]
 
 mesh = Mesh(mesh_filename)
 V = FunctionSpace(mesh, 'CG', 1)
-sys_comp = ['u0', 'u1', 'u2', 'p']
-#sys_comp = ['p']
+#sys_comp = ['u0', 'u1', 'u2', 'p']
+sys_comp = ['p']
 cl = loadtxt('cl.dat')
 probes = []
 for i in range(cl.shape[0]):
@@ -28,7 +29,9 @@ for i in range(cl.shape[0]):
 # Set up and eval all probes 
 probe_dict = Probedict((ui, Probes(probes, V, 1)) for ui in sys_comp)
 q_ = dict((ui, Function(V, xmlfile.format(meshfile, time, testcase, dt, fileid, timestep, ui))) for ui in sys_comp)
-probe_dict.probe(q_, 0)
+for ui in sys_comp:
+    q_[ui].gather()
+probe_dict.probe(q_)
 
 # Run through all the probes and collect the values in one single array that should be plotted against cl[:, 1]
 # Because the probes live on different processors we need to reduce it to one single processor before dumping

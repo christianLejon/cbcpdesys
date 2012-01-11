@@ -104,8 +104,8 @@ class NSFullySegregated(NSSolver):
 
     def Transient_update(self):
         # Update to new time-level
-        #for ui in self.system_names[:-1]:
-            #dummy = self.pdesubsystems[ui + '_update'].solve()
+        for ui in self.system_names[:-1]:
+            dummy = self.pdesubsystems[ui + '_update'].solve()
         NSSolver.Transient_update(self)
         
 ######### PDESubsystems ###################
@@ -413,12 +413,8 @@ class Transient_Velocity_101(VelocityBase):
         # the pressure part of b that needs reassembling. Remember the
         # preassembled part in bold
         self.bold[:] = self.b[:] 
-        print 'index ', self.index
-        print norm(self.b)
         self.b.axpy(-1., self.P*self.solver_namespace['x_']['p'])
-        print norm(self.b)
         [bc.apply(self.A, self.b) for bc in self.bcs]
-        print norm(self.b)
         self.work[:] = self.x[:]    # start vector for iterative solvers
         # Check out line below to save one matrix vector product
         rv = residual(self.A, self.x, self.b)

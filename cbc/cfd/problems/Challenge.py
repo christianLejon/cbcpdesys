@@ -45,12 +45,6 @@ class InflowData(object):
         if self.problem.t > self.t and not self.problem.stationary: 
             self.t = self.problem.t 
             self.val = self.velocity*time_dependent_velocity(self.t)
-        if self.problem.stationary and counter <= N: 
-            if self.problem.t > self.t: 
-                self.t = self.problem.t 
-                counter += 1 
-                self.val = float(self.velocity*counter)/self.N
-                print self.val, self.velocity, counter, self.N 
          
         val = self.val 
         return [-n.x()*val, -n.y()*val, -n.z()*val]
@@ -76,12 +70,12 @@ class Challenge(NSProblem):
         NSProblem.__init__(self, parameters=parameters)
 
         #self.mesh = Mesh("/home/kent-and/Challenge/mesh_500k.xml.gz")
-        self.mesh_filename = "/home/mikael/Fenics/cbcpdesys/cbc/cfd/data/mesh_750k_BL_t.xml.gz"
-        #self.mesh_filename = "/home/kent-and/Challenge/mesh_750k_BL_t.xml.gz"
-        #if self.prm['refinement']==1: 
-            #self.mesh_filename = "/home/kent-and/Challenge/mesh_2mio_BL_t.xml.gz"
-        #if self.prm['refinement']==2: 
-            #self.mesh_filename = "/home/kent-and/Challenge/mesh_4mio_BL_t.xml.gz" 
+        #self.mesh_filename = "/home/mikael/Fenics/cbcpdesys/cbc/cfd/data/mesh_750k_BL_t.xml.gz"
+        self.mesh_filename = "/home/kent-and/Challenge/mesh_750k_BL_t.xml.gz"
+        if self.prm['refinement']==1: 
+            self.mesh_filename = "/home/kent-and/Challenge/mesh_2mio_BL_t.xml.gz"
+        if self.prm['refinement']==2: 
+            self.mesh_filename = "/home/kent-and/Challenge/mesh_4mio_BL_t.xml.gz" 
         self.mesh = Mesh(self.mesh_filename)
 
         self.mesh_filename = self.mesh_filename.split('/')[-1][:-7]
@@ -103,7 +97,7 @@ class Challenge(NSProblem):
         self.boundaries = self.create_boundaries()
 
         #self.prm['dt'] = self.prm['T']/ceil(self.prm['T']/0.2/MPI.min(self.mesh.hmin()))
-        self.folder = path.join(getcwd(), self.mesh_filename, 'testcase_'+ str(self.prm['test_case'])+'_dt=' + str(self.prm['dt']) + '_refinement_' + str(self.prm['refinement']) )
+        self.folder = path.join(getcwd(), self.mesh_filename, 'testcase_'+ str(self.prm['test_case'])+'_dt=' + str(self.prm['dt']) + '_' + time.ctime().replace(' ', '_') )
         
         if MPI.process_number()==0:
             if not path.exists(self.folder):
@@ -163,7 +157,7 @@ class Challenge(NSProblem):
         inlet     = MeshSubDomain(1, 'VelocityInlet', self.inflow)
         pressure1 = MeshSubDomain(2, 'ConstantPressure', {'p': self.p_out1})
         
-        return [inlet, walls, pressure1]
+        return [walls, inlet, pressure1]
         
     def prepare(self):
         """Called at start of a new timestep."""
@@ -174,6 +168,17 @@ class Challenge(NSProblem):
         #    self.inflow['u'+str(i)].assign(u_mean*self.normal[i])
 
     def update(self):
+        if self.tstep == 0:
+            # Hack because for some reason the jacobi solver fails at the first timestep and exits (it shold not because error_on_nonconvergence = False)
+            if not self.pdesystems['Navier-Stokes'].pdesubsystems['u0'].prm['precond'] == 'jacobi':
+                self.pdesystems['Navier-Stokes'].pdesubsystems['u0'].prm['precond'] = 'jacobi'
+                self.pdesystems['Navier-Stokes'].pdesubsystems['u0'].linear_solver = \
+                self.pdesystems['Navier-Stokes'].pdesubsystems['u0'].get_solver()
+                self.pdesystems['Navier-Stokes'].pdesubsystems['u1'].linear_solver = \
+                self.pdesystems['Navier-Stokes'].pdesubsystems['u0'].linear_solver
+                self.pdesystems['Navier-Stokes'].pdesubsystems['u2'].linear_solver = \
+                self.pdesystems['Navier-Stokes'].pdesubsystems['u0'].linear_solver
+
         if self.tstep % 100 == 0:
             info_red('Memory usage = ' + self.getMyMemoryUsage())
 
@@ -223,17 +228,18 @@ if __name__ == '__main__':
     #parameters["linear_algebra_backend"] = "Epetra"
     set_log_active(True)
     problem_parameters['viscosity'] = 0.04
-    problem_parameters['T'] = 0.001
-    problem_parameters['dt'] = 0.001
-    problem_parameters['iter_first_timestep'] = 1
+    problem_parameters['T'] = 2.
+    problem_parameters['dt'] = 0.0001
+    problem_parameters['iter_first_timestep'] = 2
     problem_parameters['test_case'] = 1
     problem_parameters['refinement'] = 0
+    problem_parameters["time_integration"] = 'Transient'
 
     solver_parameters = recursive_update(solver_parameters, 
-    dict(degree=dict(u=1,u0=1,u1=1,u2=1),
-         pdesubsystem=dict(u=101, p=101, velocity_update=101), 
-         linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
-         precond=dict(u='ilu', p='hypre_amg', velocity_update='ilu'))
+    dict(degree=dict(u=1,u0=2,u1=2,u2=2),
+         pdesubsystem=dict(u=1, p=1, velocity_update=1), 
+         linear_solver=dict(u='gmres', p='gmres', velocity_update='gmres'), 
+         precond=dict(u='jacobi', p='hypre_amg', velocity_update='jacobi'))
          )
     
     problem = Challenge(problem_parameters)
@@ -241,8 +247,8 @@ if __name__ == '__main__':
     solver = NSFullySegregated(problem, solver_parameters)
     for name in solver.system_names:
         solver.pdesubsystems[name].prm['monitor_convergence'] = False
-        solver.pdesubsystems[name].prm['relative_tolerance'] = 1e-9
-        solver.pdesubsystems[name].prm['absolute_tolerance'] = 1e-14
+        solver.pdesubsystems[name].prm['relative_tolerance'] = 1e-8
+        solver.pdesubsystems[name].prm['absolute_tolerance'] = 1e-12
     #solver.pdesubsystems['u0_update'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['u1_update'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['u2_update'].prm['monitor_convergence'] = True
@@ -259,3 +265,4 @@ if __name__ == '__main__':
     print list_timings()
 
     dump_result(problem, solver, t1, 0)
+
