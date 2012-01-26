@@ -7,7 +7,7 @@ This module contains functionality for Lagrangian tracking of particles
 """
 from dolfin import Point, Cell, cells, Rectangle, FunctionSpace, VectorFunctionSpace, interpolate, Expression, parameters
 import ufc
-from numpy import linspace, pi, zeros, array, ndarray, squeeze, load, sin, cos, arcsin, arctan, dot as ndot
+from numpy import linspace, pi, zeros, array, ndarray, squeeze, load, sin, cos, arcsin, arctan, resize, dot as ndot
 from pylab import scatter, show
 from copy import copy, deepcopy
 import time
@@ -32,7 +32,7 @@ class SingleParticle:
         for i in dest:
             comm.Send(self.position, dest=i)
             comm.send(self.prm, dest=i)
-
+            
     def recv(self, source):
         """Receive info of a new particle sent from another process"""
         if not isinstance(source, (int, list)):
@@ -69,15 +69,16 @@ class LP:
         self.all_processes = range(self.num_processes)
         self.other_processes = range(self.num_processes)
         self.other_processes.remove(self.myrank)
-        self.my_escaped_particles = zeros(self.num_processes, dtype='I')
+        self.my_escaped_particles = zeros(1, dtype='I')
         self.tot_escaped_particles = zeros(self.num_processes, dtype='I')
         self.particle0 = SingleParticle(zeros(self.mesh.geometry().dim()), None)
         self.verbose = False
-        self.parallel_time = 0
-        self.parallel_time0 = 0
+        if self.myrank == 0:
+            self.all_particles = zeros(0, 'I')
         
-    def add_particles(self, list_of_particles):
-        for particle in list_of_particles: # particle or array
+    def add_particles(self, list_of_particles, insert_new_particle=True):
+                    
+        for i, particle in enumerate(list_of_particles): # particle or array
             c = self.locate(particle)
             if not c == -1:
                 if isinstance(particle, ndarray):
@@ -105,7 +106,7 @@ class LP:
                         found = True
                         break
                 # Do a completely new search if not found by now
-                if not found:  
+                if not found:
                     c = self.locate(point)
                     if c == -1: # If particle is no longer on processor then it needs to be relocated on one of the other_processes
                         escaped_particles.append(i)
@@ -114,22 +115,15 @@ class LP:
 
         # With MPI the particles may travel between processors.
         # Capture these traveling particles here and find new homes
-        t0 = time.time()
         escaped_particles.reverse()
-        list_of_escaped_particles = []
+        list_of_escaped_particles = [] 
         for i in escaped_particles:
             p0 = self.particles.pop(i)
             list_of_escaped_particles.append(p0)
-        self.my_escaped_particles[myrank] = len(list_of_escaped_particles)        
-        # Create a list of how many particles escapes from each processor
-        self.parallel_time0 += time.time() - t0
+        self.my_escaped_particles[0] = len(list_of_escaped_particles)        
+        # Create a list of how many particles escapes from each processor                
+        comm.Allgather(self.my_escaped_particles, self.tot_escaped_particles)
         
-        #for proc in self.other_processes:
-            #comm.send(self.my_escaped_particles[myrank], dest=proc)
-            #self.tot_escaped_particles[proc] = comm.recv(source=proc)
-        self.tot_escaped_particles = comm.allreduce(self.my_escaped_particles)
-            
-        self.parallel_time += time.time() - t0
         # Print for debugging etc.
         if self.verbose:
             print 'Escaped ', myrank, list_of_escaped_particles
@@ -150,8 +144,7 @@ class LP:
                 received.append(deepcopy(self.particle0))
                 
         # Relocate particles
-        self.add_particles(received)
-        
+        self.add_particles(received)        
         
         # Get particle velocities and move
         for particle in self.particles:
@@ -232,6 +225,15 @@ def line(x0, y0, dx, dy, L, N=10):
     for xx, yy in zip(x, y):
         points.append(array([xx, yy]))
     return points
+
+def random_circle(x0, radius, N=10):
+    from numpy.random import rand
+    r0 = rand(N)*radius
+    theta = rand(N)*2*pi
+    points = []
+    for xx, yy in zip(r0, theta):
+        points.append(array([x0[0] + xx*cos(yy), x0[1] + xx*sin(yy)]))
+    return points
     
 def main():
     mesh = Rectangle(0, 0, 100, 100, 50, 50)
@@ -241,12 +243,13 @@ def main():
     #u = interpolate(Expression(('1.', '0.')), Vv)
     u.gather() # Required for parallel
              
-    x = zalesak(center=(50, 75), N=100)    
+    #x = zalesak(center=(50, 75), N=100)    
     #x = line(x0=39.5, y0=40, dx=1, dy=1, L=20, N=4)    
     #x = [array([0.39, 0.4]), array([0.6, 0.61]), array([0.49, 0.5])]
+    x = random_circle((50, 50), 50, N=1000)
     lp = LP(V)
     lp.add_particles(x)
-    dt = 0.5
+    dt = 1.
     t = 0
     lp.scatter()
     t0 = time.time()
@@ -261,8 +264,7 @@ def main():
         
     print 'Computing time = ', time.time() - t0
         
-    print "mpi time ", lp.parallel_time
-    print "mpi time0 ", lp.parallel_time0
+    print "particles on proc ", len(lp.particles)
 
     show()
     return lp, u
