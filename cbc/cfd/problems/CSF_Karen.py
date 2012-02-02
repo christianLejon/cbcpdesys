@@ -51,13 +51,13 @@ if __name__ == '__main__':
     parameters["linear_algebra_backend"] = "PETSc"
     set_log_active(True)
     problem_parameters['viscosity'] = 0.001
-    problem_parameters['T'] = 1.
+    problem_parameters['T'] = 0.1
     problem_parameters['dt'] = 0.01
     problem_parameters['iter_first_timestep'] = 2
     solver_parameters = recursive_update(solver_parameters, 
     dict(degree=dict(u=1,u0=1,u1=1,u2=1),
          pdesubsystem=dict(u=101, p=101, velocity_update=101), 
-         linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
+         linear_solver=dict(u='gmres', p='gmres', velocity_update='gmres'), 
          precond=dict(u='jacobi', p='hypre_amg', velocity_update='jacobi'))
          )
     
@@ -67,10 +67,10 @@ if __name__ == '__main__':
     problem.solve()
     t1 = time.time() - t0
 
-    #V = VectorFunctionSpace(problem.mesh, 'CG', 1)
-    #u_ = project(solver.u_, V)
-    #file1 = File('u.pvd')
-    #file1 << u_
+    V = VectorFunctionSpace(problem.mesh, 'CG', 1)
+    u_ = project(solver.u_, V)
+    file1 = File('u.pvd')
+    file1 << u_
 
     print list_timings()
 

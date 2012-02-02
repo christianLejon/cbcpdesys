@@ -361,7 +361,7 @@ def main():
     print comm.Get_rank(), ' time ', time.time() - t0
     dt = 1.
     t = 0
-    lp.scatter()
+    #lp.scatter()
     t0 = time.time()
     while t <= 628:
         t = t + dt

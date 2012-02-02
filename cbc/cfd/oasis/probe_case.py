@@ -3,13 +3,13 @@ from cbc.pdesys import *
 from cbc.cfd.tools.Probe import Probes, Probedict
 import os
 
-testcase = '4' 
-timestep = '6600'
-refinement = 2
-dt = '5.0000e-05'
+testcase = '1' 
+timestep = '10000'
+refinement = 0
+dt = '5.0000e-04'
 #time = 'transient'
 time = 'stationary'
-fileid = 'Tue_Jan_10_17:25:14_2012'
+fileid = 'Wed_Jan__4_20:29:47_2012'
 xmlfile = "/home/mikaelmo/cbcpdesys/cbc/cfd/oasis/{0}/{1}/testcase_{2}/dt={3}/{4}/timestep={5}/{6}.xml.gz"
 
 mesh_filename = "/home/kent-and/Challenge/mesh_750k_BL_t.xml.gz"

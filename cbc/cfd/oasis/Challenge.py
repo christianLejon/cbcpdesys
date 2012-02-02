@@ -129,8 +129,8 @@ class InflowComp(Expression):
         values[0] = self.data(x, ufc_cell)[self.component]
 
 # Read mesh
-testcase = 4
-refinement = 2
+testcase = 3
+refinement = 0
 stationary = True
 
 mesh_filename = "/home/kent-and/Challenge/mesh_750k_BL_t.xml.gz"
@@ -142,9 +142,9 @@ mesh = Mesh(mesh_filename)
 nu = Constant(0.04)           # Viscosity
 t = 0.0                         # time
 tstep = 0                     # Timestep
-T = 2.                        # End time
+T = 1.                        # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
-iters_on_first_timestep = 1   # Pressure velocity iterations on first timestep
+iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
 max_error = 1e-6
 check = 100                     # print out info and save solution every check timestep 
 save_restart_file = 1000     # Saves two previous timesteps needed for a clean restart
@@ -190,7 +190,7 @@ f = Constant((0,)*dim)
 #dt =  0.2*(h / U)
 #n  = int(T / dt + 1.0)
 #dt = Constant(T / n)
-dt = Constant(0.00005)
+dt = Constant(0.0001)
 n = int(T / dt(0))
 
 # Create a new folder for each run
@@ -203,8 +203,8 @@ if MPI.process_number() == 0:
     makedirs(folder)
 
 #### Set a folder that contains xml.gz files of the solution. 
-#restart_folder = None        
-restart_folder = '/home/mikaelmo/cbcpdesys/cbc/cfd/oasis/mesh_4mio_BL_t/stationary/testcase_4/dt=5.0000e-04/Tue_Jan_10_15:40:30_2012/timestep=100'
+restart_folder = None        
+#restart_folder = '/home/mikaelmo/cbcpdesys/cbc/cfd/oasis/mesh_4mio_BL_t/stationary/testcase_4/dt=5.0000e-04/Tue_Jan_10_15:40:30_2012/timestep=100'
 #restart_folder = '/home/mikaelmo/cbcpdesys/cbc/cfd/oasis/mesh_750k_BL_t/transient/testcase_4/dt=1.0000e-04/Sat_Dec_31_11:44:10_2011/timestep=10000'
 #### Use for initialization if not None
     
