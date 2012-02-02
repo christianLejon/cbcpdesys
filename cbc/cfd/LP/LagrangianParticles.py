@@ -113,7 +113,7 @@ class LagrangianParticles:
         # Allocate a dictionary to hold all particles
         self.cellparticles = CellParticleMap()
         
-        # Allocate some MPI-stuff
+        # Allocate some MPI stuff
         self.num_processes = comm.Get_size()
         self.myrank = comm.Get_rank()
         self.all_processes = range(self.num_processes)
@@ -180,6 +180,7 @@ class LagrangianParticles:
                     comm.Send(p0, dest=(self.myrank+1) % self.num_processes, tag=101)        
                                 
     def step(self, u, dt):
+        """Move particles one timestep using velocity u and timestep dt."""
         cwp = self.cellparticles 
         myrank = self.myrank
         # Get particle velocities and move
@@ -250,9 +251,9 @@ class LagrangianParticles:
         
     def total_number_of_particles(self):
         num_p = self.cellparticles.total_number_of_particles()
-        print "particles on proc ", self.myrank, num_p    
+        if self.verbose: print "particles on proc ", self.myrank, num_p    
         tot_p = comm.reduce(num_p, root=0)    
-        if self.myrank == 0:
+        if self.myrank == 0 and self.verbose:
             print 'Total num particles ', tot_p
         
     def locate(self, x):
@@ -269,7 +270,7 @@ class LagrangianParticles:
         cwp = self.cellparticles
         all_particles = zeros(self.num_processes, dtype='I')
         my_particles = cwp.total_number_of_particles()
-        comm.Gather(array([my_particles], 'I'), all_particles, root=0)         
+        comm.Gather(array([my_particles], 'I'), all_particles, root=0)
         if self.myrank > 0: # Send all particles from processes > 0 to 0
             for cell in cwp.itervalues():
                 for p in cell.particles:
@@ -288,7 +289,7 @@ def zalesak(center=(0, 0), radius=15, width=5, sloth_length=25, N=50):
     """
     theta = arcsin(width/2./radius)
     l0 = radius*cos(theta)
-    disk_length = width + 2.*sloth_length + 2.*radius*(pi-theta)
+    disk_length = width + 2.*sloth_length + 2.*radius*(pi - theta)
     all_points = linspace(0, disk_length, N, endpoint=False)
     y0 = center[1] + sloth_length - l0
     x0 = center[0]

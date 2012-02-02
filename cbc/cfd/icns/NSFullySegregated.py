@@ -263,7 +263,11 @@ class Transient_Pressure_101(PressureBase):
     """ Optimized version of Transient_Pressure_1."""     
     def form(self, u, p, q, dt, dim, **kwargs): 
         # Preassemble matrices used to compute rhs
-        self.R = [assemble(inner(q, u.dx(i))*dx) for i in range(dim)]
+        if (self.V.ufl_element().degree() == 
+            self.solver_namespace['pdesubsystems']['u0'].V.ufl_element().degree()):
+            self.R = [self.solver_namespace['pdesubsystems']['u'+str(i)].P for i in range(dim)]
+        else:
+            self.R = [assemble(inner(q, u.dx(i))*dx) for i in range(dim)]            
         self.dim = dim
         self.b = Vector(self.x)
         self.dt = dt(0)
@@ -393,7 +397,6 @@ class Transient_Velocity_101(VelocityBase):
             for ui in self.solver_namespace['u_components']:
                 self.pdes[ui].b[:] = self.pdes[ui].b0[:]
                 self.pdes[ui].b.axpy(1., self.A*self.x_1[ui])
-                print norm(self.pdes[ui].b)
             # Reset matrix for lhs A = -Ar + 2/dt*M
             self.A._scale(-1.)
             self.A.axpy(2./self.dt, self.M, True)

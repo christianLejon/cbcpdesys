@@ -29,7 +29,7 @@ class drivencavity(NSProblem):
         # Set viscosity
         self.prm['viscosity'] = 1./self.prm['Re']
         # Set timestep as NSbench
-        self.prm['dt'] = self.prm['T']/ceil(self.prm['T']/0.2/self.mesh.hmin())
+        self.prm['dt'] = 0.25*self.prm['T']/ceil(self.prm['T']/0.2/self.mesh.hmin())
         # Boundaries        
         walls = FlowSubDomain(stationary_walls, bc_type='Wall')
         top   = FlowSubDomain(lid, func=lid_velocity, bc_type='Wall')
@@ -69,7 +69,10 @@ class drivencavity(NSProblem):
         return vmin
         
     def update(self):
-        pass
+        if hasattr(self, 'lp'):
+            self.lp.step(self.pdesystems['Navier-Stokes'].u_, self.prm['dt'])
+            if self.tstep % 500:
+                self.lp.scatter()
         #if self.tstep % 100 == 0:
             #info_red('Memory usage = ' + self.getMyMemoryUsage())
 
@@ -80,9 +83,24 @@ class drivencavity(NSProblem):
     def __str__(self):
         return "Driven cavity"
 
+def line(x0, y0, dx, dy, N=10):
+    """Create points evenly distributed on a line"""
+    L = sqrt(dx**2 + dy**2)
+    dL = linspace(0, L, N)
+    theta = arctan(dy/dx)
+    x = x0 + dL*cos(theta)
+    y = y0 + dL*sin(theta)
+    points = []
+    for xx, yy in zip(x, y):
+        points.append(array([xx, yy]))
+    return points
+        
 if __name__ == '__main__':
     import cbc.cfd.icns as icns
     from cbc.cfd.icns import solver_parameters
+    from cbc.cfd.LP import LagrangianParticles
+    from numpy import linspace, pi, zeros, where, array, ndarray, squeeze, load, sin, cos, arcsin, arctan
+    from pylab import show
     import time
     import sys
     set_log_active(True)
@@ -110,14 +128,13 @@ if __name__ == '__main__':
         max_iter=1 # Number of pressure/velocity iterations on given timestep
         ))
     problem = drivencavity(problem_parameters)
-    solver = icns.NSFullySegregated(problem, solver_parameters)        
-    #solver = icns.NSSegregated(problem, solver_parameters)  
-    #solver = icns.NSCoupled(problem, solver_parameters) 
-    #solver.pdesubsystems['u'].prm['monitor_convergence'] = True
-    #solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
-    #solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
-    #solver.pdesubsystems['p'].prm['monitor_convergence'] = True
-    #solver.pdesubsystems['u0_update'].prm['monitor_convergence'] = True
+    solver = icns.NSFullySegregated(problem, solver_parameters)
+    #solver = icns.NSCoupled(problem, solver_parameters)
+    #x = line(x0=0.5, y0=0.5, dx=0.5, dy=0., N=10)
+    #lp = LagrangianParticles(solver.V['u'])
+    #lp.add_particles(x)
+    #problem.lp = lp
+    
     t0 = time.time()
     problem.solve(logging=True)
     t1 = time.time()-t0
@@ -138,5 +155,5 @@ if __name__ == '__main__':
     
     psi_error = abs(psi-problem.reference(0))
     
-    dump_result(problem, solver, t1, psi_error)
+    #dump_result(problem, solver, t1, psi_error)
     

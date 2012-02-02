@@ -68,7 +68,7 @@ info_red('Memory use of plain dolfin = ' + dolfin_memory_use)
 
 ################### Problem dependent parameters ####################
 
-mesh = UnitSquare(50, 50)
+mesh = UnitSquare(16, 16)
 nu = Constant(0.001)          # Viscosity
 t = 0                         # time
 tstep = 0                     # Timestep
@@ -175,13 +175,13 @@ else:
 #p_sol.parameters['reuse_factorization'] = True
 list_timings()
 
-u_sol = KrylovSolver('bicgstab', 'hypre_euclid')
+u_sol = KrylovSolver('bicgstab', 'jacobi')
 u_sol.parameters['error_on_nonconvergence'] = False
 u_sol.parameters['nonzero_initial_guess'] = True
 #u_sol.parameters['monitor_convergence'] = True
 reset_sparsity = True
 
-du_sol = KrylovSolver('bicgstab', 'hypre_euclid')
+du_sol = KrylovSolver('bicgstab', 'jacobi')
 du_sol.parameters['error_on_nonconvergence'] = False
 du_sol.parameters['nonzero_initial_guess'] = True
 du_sol.parameters['preconditioner']['reuse'] = True
@@ -274,10 +274,10 @@ while t < (T - tstep*DOLFIN_EPS):
     if tstep % check == 0:
         info_green('Time = {0:2.4e}, timestep = {1:6d}, End time = {2:2.4e}'.format(t, tstep, T)) 
 
+info_red('Total computing time = {0:f}'.format(time.time()- t0))
 info_red('Additional memory use of solver = {0}'.format(eval(getMyMemoryUsage()) - eval(dolfin_memory_use)))
 info_red('Total memory use = ' + getMyMemoryUsage())
 list_timings()
-#plot(project(u_, Vv))    
-info_red('Total computing time = {0:f}'.format(time.time()- t0))
+plot(project(u_, Vv))    
 
 
