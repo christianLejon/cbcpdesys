@@ -4,7 +4,16 @@ __copyright__ = "Copyright (C) 2012 " + __author__
 __license__  = "GNU GPL version 3 or any later version"
 
 from NSProblem import *
-                        
+from csf_formula4 import smooth_flow, create_spline, splev
+
+a = 2.5     
+b = 10.0 
+c = 0.7
+dt = 0.001
+m = 2 
+smooth_func = smooth_flow(a, b, c, dt, m)
+spline_func = create_spline(smooth_func, m, c, dt)
+
 class CSF(NSProblem):
     
     def __init__(self, parameters):
@@ -17,7 +26,7 @@ class CSF(NSProblem):
     def create_boundaries(self):
         # Pressures are specified on top and bottom, values can be modified in prepare
         self.p_top = Constant(0)
-        self.p_bottom = Constant(1)
+        self.p_bottom = Constant(0)
         self.mf = FacetFunction("uint", self.mesh) # Facets
         self.mf.set_all(0)
 
@@ -40,20 +49,31 @@ class CSF(NSProblem):
         
     def prepare(self):
         """Called at start of a new timestep. Set new pressure BCs at new time."""
-        #self.p_top.assign(1)
-        #self.p_bottom.assign(0)
+        self.p_top.assign(splev(self.t, spline_func))
+        self.p_bottom.assign(0)
         info_green('Pressure Top    = {0:2.5f}'.format(self.p_top(0)))
         info_green('Pressure Bottom = {0:2.5f}'.format(self.p_bottom(0)))
+        
+    def update(self):
+        NSProblem.update(self)
+        q_ = self.pdesystems['Navier-Stokes'].q_
+        u0max = MPI.max(q_['u0'].vector().max())
+        u1max = MPI.max(q_['u1'].vector().max())
+        u2max = MPI.max(q_['u2'].vector().max())
+        if MPI.process_number()==0:
+            print 'Maximum velocity = ', u0max, u1max, u2max    
 
 if __name__ == '__main__':
     from cbc.cfd.icns import NSFullySegregated, NSSegregated, solver_parameters
     import time
     parameters["linear_algebra_backend"] = "PETSc"
     set_log_active(True)
-    problem_parameters['viscosity'] = 0.001
-    problem_parameters['T'] = 0.1
-    problem_parameters['dt'] = 0.01
+    problem_parameters['viscosity'] = 0.007
+    problem_parameters['T'] = 1.
+    problem_parameters['dt'] = 0.001
     problem_parameters['iter_first_timestep'] = 2
+    problem_parameters['save_solution'] = 10
+    problem_parameters['file_format'] = 'pvd' # 'xml.gz'
     solver_parameters = recursive_update(solver_parameters, 
     dict(degree=dict(u=1,u0=1,u1=1,u2=1),
          pdesubsystem=dict(u=101, p=101, velocity_update=101), 

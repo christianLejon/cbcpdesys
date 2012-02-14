@@ -48,8 +48,8 @@ class NSProblem(Problem):
             else:
                 i = self.tstep
             result_path = os.path.join(self.output_location, 'results',
-                self.__class__.__name__, self.NS_solver.__class__.__name__,
-                self.prm['turbulence_model'])
+                  self.__class__.__name__, self.NS_solver.__class__.__name__,
+                  self.prm['turbulence_model'])
              
             if not os.path.exists(result_path):
                 os.makedirs(result_path)

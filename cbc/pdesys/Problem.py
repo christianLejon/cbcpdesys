@@ -286,15 +286,15 @@ class Problem:
                     if name in self.prm['pvd_output_files']:
                         file = self.prm['pvd_output_files'][name]
                     else:
-                        file = File(os.path.join(folder, '{}.pvd'.format(name)))
+                        file = File(os.path.join(folder, '{0}.pvd'.format(name)))
                         self.prm['pvd_output_files'][name] = file
                 else:
-                    file = File(os.path.join(folder, '{}_{}.{}'.format(name, self.tstep, file_format)))
+                    file = File(os.path.join(folder, '{0}_{1}.{2}'.format(name, self.tstep, file_format)))
                 file << pdesystem.q_[name]
                 
                 if (restart and self.prm['time_integration']=='Transient'
                     and 'xml' in file_format):
-                    f = File(os.path.join(folder, '{}_1_{}.{}'.format(name, self.tstep, file_format)))
+                    f = File(os.path.join(folder, '{0}_1_{1}.{2}'.format(name, self.tstep, file_format)))
                     f << pdesystem.q_1[name]
                     
 def dump_result(problem, solver, cputime, error, filename = "results/results.log"):
