@@ -23,11 +23,12 @@ problem_parameters = recursive_update(problem_parameters, {
 class NSProblem(Problem):
     
     def __init__(self, mesh=None, parameters=None):
-        Problem.__init__(self, mesh=mesh, parameters=parameters)
+        Problem.__init__(self, mesh=mesh, parameters=parameters)        
         try:
-            self.output_location = os.environ['CBCCFD']
+            self.cbccfd = os.environ['CBCCFD']
+            self.output_location = self.cbccfd
         except KeyError:
-            info_red('Set the environment variable CBCCFD to control the location of stored results')
+            info_red('Set the environment variable CBCCFD to the location of /cbcpdesys/cbc/cfd')
             self.output_location = os.getcwd()
         
     def body_force(self):

@@ -45,13 +45,13 @@ class channel_flow(Expression):
             if key == 'Fij' or key == 'Rij': # requires treatment for anti-symmetry
                 for q in self.q0[key]:
                     if i == 1 or i == 2 or i == 5 or i == 6:
-                        values[i] = -numpy_sign(1. - (x[1] + y0)/(2.*y0)*2.)*q(y)[0]
+                        values[i] = -numpy_sign(1. - (x[1] + y0)/(2.*y0)*2.)*q(y)
                     else:
-                        values[i] = q(y)[0]
+                        values[i] = q(y)
                     i += 1                
             else:
                 for q in self.q0[key]:
-                    values[i] = q(y)[0]
+                    values[i] = q(y)
                     i += 1
                     
 # Subclass diffusor to allow a quite complicating initialization routine that
@@ -66,7 +66,7 @@ class diffusor(NSdiffusor):
         Use this spline to initialize the solution throughout the diffusor.
         q0 is also used to set the DirichletBC's on the VelocityInlet.
         """
-        f = open('../data/channel_' + self.prm['turbulence_model'] + '_' + 
+        f = open('../../data/channel_' + self.prm['turbulence_model'] + '_' + 
                  str(self.prm['Re_tau']) + '.ius','r')
         inspline = cPickle.load(f)
         f.close()
@@ -91,8 +91,8 @@ if __name__=='__main__':
     problem_parameters['utau'] = utau = 0.05
     problem_parameters['plot_velocity'] = True
     problem_parameters['pressure_bc'] = False
-    problem_parameters['Nx'] = 2
-    problem_parameters['Ny'] = 2
+    problem_parameters['Nx'] = 10
+    problem_parameters['Ny'] = 100
     problem = diffusor(problem_parameters)
     problem.prm['viscosity'] = utau/Re_tau
     problem_parameters['turbulence_model'] = 'OriginalV2F'
@@ -114,5 +114,5 @@ if __name__=='__main__':
     print 'time = ', time()-t0
     print summary()
     plot(NS_solver.u_)
-    interactive()
+    #interactive()
 

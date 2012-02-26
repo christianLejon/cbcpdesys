@@ -33,7 +33,7 @@ def StreamFunction(u, bcs, use_strong_bc = False):
     q   = TestFunction(V)
     psi = TrialFunction(V)
     a   = dot(grad(q), grad(psi))*dx 
-    L   = dot(q, (u[1].dx(0) - u[0].dx(1)))*dx
+    L   = dot(q, u[1].dx(0) - u[0].dx(1))*dx
     n   = FacetNormal(mesh)
     
     if(use_strong_bc): 
@@ -42,7 +42,7 @@ def StreamFunction(u, bcs, use_strong_bc = False):
     else:
         bcu=[]        
         L = L + q*(n[1]*u[0] - n[0]*u[1])*ds
-
+        
     # Compute solution
     psi = Function(V)
     A = assemble(a)

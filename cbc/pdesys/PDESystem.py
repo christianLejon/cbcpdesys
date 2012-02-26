@@ -81,7 +81,7 @@ class PDESystem:
         self.names = []                                      # All components
         self.prm = parameters
 
-        if isinstance(problem, Mesh):
+        if isinstance(problem, dolfin.cpp.mesh.Mesh):
             self.problem = None
             self.mesh = problem
         else:

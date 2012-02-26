@@ -9,7 +9,7 @@ This module contains functionality for Lagrangian tracking of particles
 from dolfin import Point, Cell, cells, Rectangle, FunctionSpace, VectorFunctionSpace, interpolate, Expression, parameters
 import ufc
 from numpy import linspace, pi, zeros, where, array, ndarray, squeeze, load, sin, cos, arcsin, arctan, resize, dot as ndot
-from pylab import scatter, show
+from pylab import scatter, show, quiver
 from copy import copy, deepcopy
 import time
 from mpi4py import MPI as nMPI
@@ -17,6 +17,7 @@ from mpi4py import MPI as nMPI
 comm = nMPI.COMM_WORLD
 parameters["form_compiler"]["optimize"]     = True
 parameters["form_compiler"]["cpp_optimize"] = True
+parameters["form_compiler"].add('no-evaluate_basis_derivatives', False)
 
 class celldict(dict):
     
@@ -32,11 +33,13 @@ class celldict(dict):
 class CellParticleMap(dict):
     
     def __add__(self, ins):
-        if isinstance(ins, tuple) and len(ins) == 3:
-            if ins[1] in self:
+        if isinstance(ins, tuple) and len(ins) in (3, 4):
+            if ins[1] in self: # if the cell is already in the dict
                 self[ins[1]] += ins[2]
             else:
-                self[ins[1]] = CellWithParticles(*ins)
+                self[ins[1]] = CellWithParticles(ins[0], ins[1], ins[2])
+            if len(ins) == 4:
+                self[ins[1]].particles[-1].prm.update(ins[3])
         else:
             raise TypeError("Wrong numer of arguments to CellParticleMap")
         return self
@@ -103,13 +106,15 @@ class LagrangianParticles:
         # Allocate some variables used to look up the velocity
         self.ufc_cell = ufc.cell()         # Empty cell
         self.element = V.dolfin_element()
+        self.dim = self.mesh.topology().dim()
         self.num_tensor_entries = 1
         for i in range(self.element.value_rank()):
             self.num_tensor_entries *= self.element.value_dimension(i)
         self.coefficients = zeros(self.element.space_dimension())
         self.basis_matrix = zeros((self.element.space_dimension(), 
-                                   self.num_tensor_entries))
-                                   
+                                   self.num_tensor_entries))                                   
+        self.basis_matrix_du = zeros((self.element.space_dimension(), 
+                                      self.num_tensor_entries*self.dim))
         # Allocate a dictionary to hold all particles
         self.cellparticles = CellParticleMap()
         
@@ -123,20 +128,31 @@ class LagrangianParticles:
         self.tot_escaped_particles = zeros(self.num_processes, dtype='I')
         self.particle0 = Particle(zeros(self.mesh.geometry().dim()))
         self.verbose = False
+        self.nn = zeros(2*self.dim)
             
-    def add_particles(self, list_of_particles):
+    def add_particles(self, list_of_particles, prm=None):
         """Add particles and search for their home on all processors. 
         list_of_particles must be identical on all processors before 
         calling this function.
+        prm is an optinal dictionary of additional info
+        The prm dictionary must have values that are lists of the 
+        same length as list_of_particles.
         """
         cwp = self.cellparticles        
         my_found = zeros(len(list_of_particles), 'I')
         all_found = zeros(len(list_of_particles), 'I')
+        if not prm==None:
+            particle_prm = dict((key, 0) for key in prm.keys())
         for i, particle in enumerate(list_of_particles): # particle or array
             c = self.locate(particle)
             if not c == -1:
                 my_found[i] = 1
-                cwp += self.mesh, c, particle
+                if prm == None:
+                    cwp += self.mesh, c, particle
+                else:
+                    for key in prm.keys():
+                        particle_prm[key] = prm[key][i]
+                    cwp += self.mesh, c, particle, particle_prm
         
         comm.Reduce(my_found, all_found, root=0)
         if self.myrank == 0:
@@ -190,6 +206,18 @@ class LagrangianParticles:
                 x = particle.position
                 self.element.evaluate_basis_all(self.basis_matrix, x, cell)
                 du = ndot(self.coefficients, self.basis_matrix)
+                if 'normal' in particle.prm:
+                    self.element.evaluate_basis_derivatives_all(1, self.basis_matrix_du, x, cell)
+                    dudx = ndot(self.coefficients, self.basis_matrix_du)
+                    n = particle.prm['normal']
+                    self.nn[:self.dim] = n[:]
+                    self.nn[self.dim:] = n[:]
+                    dujdxk_njnk = ndot(dudx, self.nn)
+                    dn = []
+                    for i in range(self.dim):
+                        dn.append(ndot(dudx[i::self.dim], n))
+                    n[:] = n[:] + dt*(-array(dn)[:] + dujdxk_njnk*n[:])
+                    n[:] = n[:]/sqrt(ndot(n, n))
                 particle.prm['velocity'] = du # Just for fun remember the velocity. Could use this for higher order schemes
                 x[:] = x[:] + dt*du[:]
                 
@@ -255,6 +283,7 @@ class LagrangianParticles:
         tot_p = comm.reduce(num_p, root=0)    
         if self.myrank == 0 and self.verbose:
             print 'Total num particles ', tot_p
+        return tot_p            
         
     def locate(self, x):
         if isinstance(x, Point):
@@ -265,7 +294,7 @@ class LagrangianParticles:
             point = Point(*x.position)
         return self.mesh.intersected_cell(point)
         
-    def scatter(self):
+    def scatter(self, normal=False):
         """Put all particles on processor 0 for scatter plotting"""
         cwp = self.cellparticles
         all_particles = zeros(self.num_processes, dtype='I')
@@ -277,14 +306,22 @@ class LagrangianParticles:
                     p.send(0)
         else:               # Receive on proc 0
             recv = [copy(p.position) for cell in cwp.itervalues() for p in cell.particles]
+            if normal: 
+                recn = [copy(p.prm['normal']) for cell in cwp.itervalues() for p in cell.particles]
             for i in self.other_processes:
                 for j in range(all_particles[i]):
                     self.particle0.recv(i)
                     recv.append(copy(self.particle0.position))
+                    if normal:
+                        recn.append(copy(self.particle0.prm['normal']))
+                        
             xx = array(recv)
             scatter(xx[:, 0], xx[:, 1])
-            
-def zalesak(center=(0, 0), radius=15, width=5, sloth_length=25, N=50):
+            if normal:
+                xn = array(recn)
+                quiver(xx[:, 0], xx[:, 1], xn[:, 0], xn[:, 1])
+
+def zalesak(center=(0, 0), radius=15, width=5, sloth_length=25, N=50, normal=False):
     """Create points evenly distributed on Zalesak's disk 
     """
     theta = arcsin(width/2./radius)
@@ -296,25 +333,36 @@ def zalesak(center=(0, 0), radius=15, width=5, sloth_length=25, N=50):
     x = zeros(N)
     y = zeros(N)
     points = []
+    if normal: nn = []
     for i, point in enumerate(all_points):
         if point <= width/2.:
             y[i] = y0
             x[i] = x0 + point
+            nm = array([0., -1.])
         elif point <= width/2. + sloth_length:
             y[i] = y0 - (point - width/2.)
             x[i] = x0 + width/2.
+            nm = array([-1., 0.])
         elif point <= disk_length - width/2. - sloth_length:
             phi = theta + (point - sloth_length - width/2.)/radius
             y[i] = radius*(1 - cos(phi)) + y0 - sloth_length
-            x[i] = radius*sin(phi) + x0 
+            x[i] = radius*sin(phi) + x0
+            nm = array([x[i]-center[0], y[i]-center[1]])/sqrt((x[i]-center[0])**2 + (y[i]-center[1])**2)
         elif point <= disk_length - width/2.:
             y[i] = y0 - (disk_length - point - width/2.)
             x[i] = x0 - width/2.
+            nm = array([1., 0.])
         else:
             y[i] = y0
             x[i] = x0 - (disk_length - point)
+            nm = array([0., -1.])
         points.append(array([x[i], y[i]]))
-    return points
+        if normal:
+            nn.append(nm)
+    if normal:
+        return points, nn
+    else:
+        return points
     
 def line(x0, y0, dx, dy, L, N=10):
     """Create points evenly distributed on a line"""
@@ -334,7 +382,7 @@ def random_circle(x0, radius, N=10):
     points = []
     for xx, yy in zip(r0, theta):
         points.append(array([x0[0] + xx*cos(yy), x0[1] + xx*sin(yy)]))
-    return points
+    return points 
     
 def main():
     mesh = Rectangle(0, 0, 100, 100, 50, 50)
@@ -345,35 +393,37 @@ def main():
     u.gather() # Required for parallel
 
     x = []
+    nn = []
     if comm.Get_rank() == 0:        
         #pass
-        x = zalesak(center=(50, 75), N=100)    
+        x, nn = zalesak(center=(50, 75), N=100, normal=True)    
         #x = line(x0=39.5, y0=40, dx=1, dy=1, L=20, N=4)    
         #x = [array([0.39, 0.4]), array([0.6, 0.61]), array([0.49, 0.5])]
         #x = random_circle((50, 50), 50, N=1000)
         
     x = comm.bcast(x, root=0) # with a random function one must compute points on 0 and bcast to get the same values on all procs
+    nn = comm.bcast(nn, root=0) # with a random function one must compute points on 0 and bcast to get the same values on all procs
         
     lp = LagrangianParticles(V)
-    t0 = time.time()    
-    lp.add_particles(x)
+    t0 = time()    
+    lp.add_particles(x, {'normal': nn})
     #lp.add_particles_ring(x)
-    print comm.Get_rank(), ' time ', time.time() - t0
+    print comm.Get_rank(), ' time ', time() - t0
     dt = 1.
     t = 0
-    #lp.scatter()
-    t0 = time.time()
-    while t <= 628:
+    lp.scatter(normal=True)
+    t0 = time()
+    while t < 628.:
         t = t + dt
         lp.step(u, dt)  
-        if t % 157 == 0:
+        if t % 157. == 0:
             if lp.myrank == 0: 
                 print 'Plotting at ', t
-            lp.scatter()    
+            lp.scatter(normal=True)    
             lp.total_number_of_particles()
             
     lp.total_number_of_particles()
-    print 'Computing time ', time.time() - t0
+    print 'Computing time ', time() - t0
     show()            
         
     return lp, u

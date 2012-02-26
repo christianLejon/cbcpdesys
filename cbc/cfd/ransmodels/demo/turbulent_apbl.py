@@ -46,11 +46,11 @@ class channel_flow(Expression):
                     if i == 1 or i == 2 or i == 5 or i == 6:
                         values[i] = -numpy_sign(1. - (x[1] - y0)/(2. - y0)*2.)*q(y)[0]
                     else:
-                        values[i] = q(y)[0]
+                        values[i] = q(y)
                     i += 1                
             else:
                 for q in self.q0[key]:
-                    values[i] = q(y)[0]
+                    values[i] = q(y)
                     i += 1
           
 NSapbl = apbl
@@ -62,7 +62,7 @@ class apbl(NSapbl):
         Use this spline to initialize the solution throughout the apbl.
         q0 is also used to set the DirichletBC's on the VelocityInlet.
         """
-        f = open('../data/channel_' + self.prm['turbulence_model'] + '_' + 
+        f = open('../../data/channel_' + self.prm['turbulence_model'] + '_' + 
                  str(self.prm['Re_tau']) + '.ius','r')
         inspline = cPickle.load(f)
         f.close()
@@ -109,9 +109,9 @@ if __name__ == '__main__':
     
     ## solve the problem ##    
     t0 = time()
-    problem_parameters['max_iter'] = 0
+    problem_parameters['max_iter'] = 100
     problem.solve()
     print 'time = ', time()-t0
-    print summary()
+    list_timings()
     plot(NS_solver.u_)
-    interactive()
+    #interactive()

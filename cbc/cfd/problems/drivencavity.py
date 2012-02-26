@@ -128,8 +128,8 @@ if __name__ == '__main__':
         max_iter=1 # Number of pressure/velocity iterations on given timestep
         ))
     problem = drivencavity(problem_parameters)
-    solver = icns.NSFullySegregated(problem, solver_parameters)
-    #solver = icns.NSCoupled(problem, solver_parameters)
+    #solver = icns.NSFullySegregated(problem, solver_parameters)
+    solver = icns.NSCoupled(problem, solver_parameters)
     #x = line(x0=0.5, y0=0.5, dx=0.5, dy=0., N=10)
     #lp = LagrangianParticles(solver.V['u'])
     #lp.add_particles(x)

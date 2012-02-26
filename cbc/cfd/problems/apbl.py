@@ -48,7 +48,7 @@ class apbl(NSProblem):
         NSProblem.__init__(self, parameters=parameters)        
         self.prm['viscosity'] = 1./self.prm['Re']
         self.L = 30.
-        f = open('../data/Re395/statistics_streamwise.txt')
+        f = open(os.path.join(self.cbccfd, 'data/Re395/statistics_streamwise.txt'))
         a = loadtxt(f, comments='%')
         sz = a.shape
         a2 = zeros((sz[0] + 2, 2))

@@ -38,7 +38,7 @@ def tospline(problem):
     that have a VelocityInlet."""
     NS_solver = problem.pdesystems['Navier-Stokes']
     Turb_solver = problem.pdesystems['Turbulence model']
-    f = open('../data/channel_' + problem.prm['turbulence_model'] + '_' + 
+    f = open('../../data/channel_' + problem.prm['turbulence_model'] + '_' + 
                 str(problem.prm['Re_tau']) + '.ius','w')
     N = 1000
     xy = zeros(N)
@@ -101,4 +101,5 @@ if __name__=='__main__':
     print 'time = ', time()-t0
     print list_timings()
     plot(NS_solver.u_)
+    tospline(problem)
 
