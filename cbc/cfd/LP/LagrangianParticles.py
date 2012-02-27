@@ -128,7 +128,6 @@ class LagrangianParticles:
         self.tot_escaped_particles = zeros(self.num_processes, dtype='I')
         self.particle0 = Particle(zeros(self.mesh.geometry().dim()))
         self.verbose = False
-        self.nn = zeros(2*self.dim)
             
     def add_particles(self, list_of_particles, prm=None):
         """Add particles and search for their home on all processors. 
@@ -210,13 +209,9 @@ class LagrangianParticles:
                     self.element.evaluate_basis_derivatives_all(1, self.basis_matrix_du, x, cell)
                     dudx = ndot(self.coefficients, self.basis_matrix_du)
                     n = particle.prm['normal']
-                    self.nn[:self.dim] = n[:]
-                    self.nn[self.dim:] = n[:]
-                    dujdxk_njnk = ndot(dudx, self.nn)
-                    dn = []
-                    for i in range(self.dim):
-                        dn.append(ndot(dudx[i::self.dim], n))
-                    n[:] = n[:] + dt*(-array(dn)[:] + dujdxk_njnk*n[:])
+                    dujdxk_njnk = sum(ndot(dudx.reshape((self.dim, self.dim)), n))
+                    duidxj_nj = ndot(n, dudx.reshape(self.dim, self.dim))
+                    n[:] = n[:] + dt*(-duidxj_nj[:] + dujdxk_njnk*n[:])
                     n[:] = n[:]/sqrt(ndot(n, n))
                 particle.prm['velocity'] = du # Just for fun remember the velocity. Could use this for higher order schemes
                 x[:] = x[:] + dt*du[:]
@@ -392,8 +387,10 @@ def main():
     #u = interpolate(Expression(('1.', '0.')), Vv)
     u.gather() # Required for parallel
 
+    # Initialize particles
+    # Note, with a random function one must compute points on 0 and bcast to get the same values on all procs
     x = []
-    nn = []
+    nn = []    
     if comm.Get_rank() == 0:        
         #pass
         x, nn = zalesak(center=(50, 75), N=100, normal=True)    
@@ -401,15 +398,14 @@ def main():
         #x = [array([0.39, 0.4]), array([0.6, 0.61]), array([0.49, 0.5])]
         #x = random_circle((50, 50), 50, N=1000)
         
-    x = comm.bcast(x, root=0) # with a random function one must compute points on 0 and bcast to get the same values on all procs
-    nn = comm.bcast(nn, root=0) # with a random function one must compute points on 0 and bcast to get the same values on all procs
-        
+    x = comm.bcast(x, root=0) 
+    nn = comm.bcast(nn, root=0) 
     lp = LagrangianParticles(V)
     t0 = time()    
     lp.add_particles(x, {'normal': nn})
     #lp.add_particles_ring(x)
     print comm.Get_rank(), ' time ', time() - t0
-    dt = 1.
+    dt = 0.25
     t = 0
     lp.scatter(normal=True)
     t0 = time()
