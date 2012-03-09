@@ -40,7 +40,7 @@ class channel(NSProblem):
         NSProblem.__init__(self, parameters=parameters)
         self.mesh = self.gen_mesh()
         self.prm['viscosity'] = 1./self.prm['Re']
-        self.prm['dt'] = self.timestep()
+        #self.prm['dt'] = self.timestep()
         self.boundaries = self.create_boundaries()
         
         # The GRPC solver, which uses pressure correction, requires the correct pressure to be set initially
@@ -53,8 +53,8 @@ class channel(NSProblem):
         self.L = problem_parameters['L']
         m = Rectangle(0., -1., self.L, 1., self.prm['Nx'], self.prm['Ny'])
         # Create stretched mesh in y-direction
-        x = m.coordinates()        
-        x[:, 1] = arctan(pi*(x[:, 1]))/arctan(pi) 
+        #x = m.coordinates()        
+        #x[:, 1] = arctan(pi*(x[:, 1]))/arctan(pi) 
         #x[:, 1] = 0.5*x[:, 1]
         return m        
         
@@ -139,6 +139,10 @@ class channel(NSProblem):
     def error(self):
         return self.functional(self.NS_solver.u_) - self.reference()
         
+    def update(self):
+        NSProblem.update(self)
+        info_green(self.error())
+        
     def __info__(self):
         return 'Periodic channel flow'
 
@@ -148,17 +152,20 @@ if __name__ == '__main__':
     from cbc.cfd.icns import solver_parameters  # parameters to NS solver
     set_log_active(True)
     problem_parameters['time_integration'] = 'Transient'
-    problem_parameters['T'] = 0.5
-    problem_parameters['Re'] = 8.
+    problem_parameters['Nx'] = 16
+    problem_parameters['Ny'] = 16
+    problem_parameters['T'] = 10.
+    problem_parameters['Re'] = 10.
     problem_parameters['max_iter'] = 1
     problem_parameters['max_err'] = 1e-10
-    problem_parameters['plot_velocity'] = False # plot velocity at end of timestep
-    problem_parameters['periodic'] = True      # Use or not periodic boundary conditions
-    
+    problem_parameters['plot_velocity'] = True # plot velocity at end of timestep
+    problem_parameters['periodic'] = False      # Use or not periodic boundary conditions
+    problem_parameters['L'] = 5.
+    problem_parameters['dt'] = 1e-2
     solver_parameters = recursive_update(solver_parameters, 
-    dict(degree=dict(u=2),
-         pdesubsystem=dict(u=30, p=30, velocity_update=0, up=1), max_iter=5,         # GRPC
-         linear_solver=dict(u='lu', p='lu', velocity_update='bicgstab'), 
+    dict(degree=dict(u=2, u0=2, u1=2),
+         pdesubsystem=dict(u=1, p=1, velocity_update=1, up=1), max_iter=1,         # GRPC 30
+         linear_solver=dict(u='lu', p='lu', velocity_update='lu'), 
          precond=dict(u='jacobi', p='amg', velocity_update='jacobi'))
     )
     
@@ -167,8 +174,8 @@ if __name__ == '__main__':
     
     # Choose Navier-Stokes solver
     #NS_solver = icns.NSFullySegregated(NS_problem, solver_parameters)
-    NS_solver = icns.NSSegregated(NS_problem, solver_parameters)
-    #NS_solver = icns.NSCoupled(NS_problem, solver_parameters)
+    #NS_solver = icns.NSSegregated(NS_problem, solver_parameters)
+    NS_solver = icns.NSCoupled(NS_problem, solver_parameters)
     
     # Solve the problem
     NS_problem.solve()

@@ -39,20 +39,17 @@ class NSSegregated(NSSolver):
         Create boundary conditions for velocity and pressure
         based on boundaries in list bcs.
         """
-        bcu = {'u': [], 'p': [], 'component': []}
+        bcu = {'u': [], 'p': []}
         V1 = FunctionSpace(self.mesh, self.prm['family']['u'], self.prm['degree']['u'])
         for bc in bcs:
             if bc.type() in ('VelocityInlet', 'Wall'):
                 if hasattr(bc, 'func'): # Use func if provided
                     add_BC(bcu['u'], self.V['u'], bc, bc.func['u'])
-                    # Only used for A, so value is not interesting
-                    add_BC(bcu['component'], V1, bc, Constant(0))  
                 else:
                     if bc.type() == 'Wall':
                         # Default is zero on walls for all quantities
                         func = Constant((1e-12, )*self.mesh.geometry().dim())
                         add_BC(bcu['u'], self.V['u'], bc, func)
-                        add_BC(bcu['component'], V1, bc, Constant(0))
                     elif bc.type() == 'VelocityInlet':
                         raise TypeError('expected func for VelocityInlet')
                 if bc.type() == 'VelocityInlet':
@@ -60,7 +57,6 @@ class NSSegregated(NSSolver):
             elif bc.type() in ('ConstantPressure'):
                 """ This bc is weakly enforced for u """
                 bcu['u'].append(bc)
-                bcu['component'].append(bc)
                 add_BC(bcu['p'], self.V['p'], bc, bc.func['p'])
             elif bc.type() in ('Outlet', 'Symmetry'):
                 bcu['u'].append(bc)
@@ -68,7 +64,6 @@ class NSSegregated(NSSolver):
             elif bc.type() == 'Periodic':
                 add_BC(bcu['u'], self.V['u'], bc, None)
                 add_BC(bcu['p'], self.V['p'], bc, None)
-                add_BC(bcu['component'], V1, bc, None)                
             else:
                 info("No assigned boundary condition for %s -- skipping..." \
                      %(bc.__class__.__name__))

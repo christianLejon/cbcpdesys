@@ -30,6 +30,8 @@ class NSFullySegregated(NSSolver):
         self.u = self.qt['u0']
         self.v = self.vt['u0']
         self.q = self.vt['p']
+        self.dp = Function(self.V['p'])
+        self.dpx = self.dp.vector()        
         
         # Create vector views
         self.u_ = as_vector([self.q_[ui] for ui in self.u_components])
@@ -54,7 +56,7 @@ class NSFullySegregated(NSSolver):
                               normalize=self.normalize['p'])
         
         # Initialize pressure through this presolve (should improve accuracy of first step)
-        #self.pdesubsystems['p'].solve()
+        self.pdesubsystems['p'].solve()
         if self.prm['time_integration'] == 'Transient':
             uu_subsystem = 'VelocityUpdate_' + \
                            str(self.prm['pdesubsystem']['velocity_update'])
@@ -167,9 +169,8 @@ class PressureBase(PDESubSystem):
         PDESubSystem.__init__(self, solver_namespace, unknown, bcs=bcs, 
                                     normalize=normalize, **kwargs)
         
+        self.dpx = self.solver_namespace['dpx']
         # Create function to hold the pressure correction
-        self.solver_namespace['dp'] = Function(self.V)
-        self.solver_namespace['dpx'] = self.dpx = self.solver_namespace['dp'].vector()        
         self.prm['iteration_type'] = 'Picard'
         self.prm['reassemble_lhs'] = False # Constant coefficient matrix
         
@@ -185,13 +186,16 @@ class PressureBase(PDESubSystem):
         
         self.a, self.L = lhs(self.F), rhs(self.F)
 
-    def add_exterior(self, p, p_, q, n, dt, u_, nu, **kwargs):        
+    def add_exterior(self, p, p_, dp, q, n, dt, u_, nu, **kwargs):        
         L = []
         for bc in self.bcs:
             if bc.type() == 'Outlet':
                 L.append(-inner(q*n, grad(p))*ds(bc.bid))
                 self.exterior_facet_domains = bc.mf 
-                
+            #if bc.type() == 'ConstantPressure':
+                #info_green('Adding weak gradient of pressure correction')
+                #L.append(inner(q*n, grad(dp))*ds(bc.bid))
+                #self.exterior_facet_domains = bc.mf                 
         if len(L) > 0:
             return reduce(operator.add, L)
         else:

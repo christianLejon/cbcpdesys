@@ -8,7 +8,7 @@ This module contains functionality for Lagrangian tracking of particles
 #from cbc.pdesys import *
 from dolfin import Point, Cell, cells, Rectangle, FunctionSpace, VectorFunctionSpace, interpolate, Expression, parameters
 import ufc
-from numpy import linspace, pi, zeros, where, array, ndarray, squeeze, load, sin, cos, arcsin, arctan, resize, dot as ndot
+from numpy import linspace, pi, zeros, ones, where, array, ndarray, squeeze, load, sin, cos, arcsin, sqrt, arctan, resize, dot as ndot
 from pylab import scatter, show, quiver
 from copy import copy, deepcopy
 import time
@@ -133,14 +133,14 @@ class LagrangianParticles:
         """Add particles and search for their home on all processors. 
         list_of_particles must be identical on all processors before 
         calling this function.
-        prm is an optinal dictionary of additional info
+        prm is an optional dictionary of additional info
         The prm dictionary must have values that are lists of the 
         same length as list_of_particles.
         """
         cwp = self.cellparticles        
         my_found = zeros(len(list_of_particles), 'I')
         all_found = zeros(len(list_of_particles), 'I')
-        if not prm==None:
+        if not prm == None:
             particle_prm = dict((key, 0) for key in prm.keys())
         for i, particle in enumerate(list_of_particles): # particle or array
             c = self.locate(particle)
@@ -209,10 +209,14 @@ class LagrangianParticles:
                     self.element.evaluate_basis_derivatives_all(1, self.basis_matrix_du, x, cell)
                     dudx = ndot(self.coefficients, self.basis_matrix_du)
                     n = particle.prm['normal']
-                    dujdxk_njnk = sum(ndot(dudx.reshape((self.dim, self.dim)), n))
+                    dujdxk_njnk = ndot(ndot(dudx.reshape((self.dim, self.dim)), n), n)
                     duidxj_nj = ndot(n, dudx.reshape(self.dim, self.dim))
                     n[:] = n[:] + dt*(-duidxj_nj[:] + dujdxk_njnk*n[:])
                     n[:] = n[:]/sqrt(ndot(n, n))
+                if 'phi_mag' in particle.prm:
+                    phim = particle.prm['phi_mag']
+                    phim[0] = phim[0] - dt*2.*phim[0]*dujdxk_njnk
+                    
                 particle.prm['velocity'] = du # Just for fun remember the velocity. Could use this for higher order schemes
                 x[:] = x[:] + dt*du[:]
                 
@@ -303,27 +307,29 @@ class LagrangianParticles:
             recv = [copy(p.position) for cell in cwp.itervalues() for p in cell.particles]
             if normal: 
                 recn = [copy(p.prm['normal']) for cell in cwp.itervalues() for p in cell.particles]
+                recn2 = [copy(p.prm['phi_mag']) for cell in cwp.itervalues() for p in cell.particles]
             for i in self.other_processes:
                 for j in range(all_particles[i]):
                     self.particle0.recv(i)
                     recv.append(copy(self.particle0.position))
                     if normal:
                         recn.append(copy(self.particle0.prm['normal']))
-                        
+                        recn2.append(copy(self.particle0.prm['phi_mag']))
             xx = array(recv)
             scatter(xx[:, 0], xx[:, 1])
             if normal:
                 xn = array(recn)
-                quiver(xx[:, 0], xx[:, 1], xn[:, 0], xn[:, 1])
+                xn2 = array(recn2)
+                quiver(xx[:, 0], xx[:, 1], xn[:, 0]*xn2[:, 0], xn[:, 1]*xn2[:, 0])
 
-def zalesak(center=(0, 0), radius=15, width=5, sloth_length=25, N=50, normal=False):
+def zalesak(center=(0, 0), radius=15, width=5, slot_length=25, N=50, normal=False):
     """Create points evenly distributed on Zalesak's disk 
     """
     theta = arcsin(width/2./radius)
     l0 = radius*cos(theta)
-    disk_length = width + 2.*sloth_length + 2.*radius*(pi - theta)
+    disk_length = width + 2.*slot_length + 2.*radius*(pi - theta)
     all_points = linspace(0, disk_length, N, endpoint=False)
-    y0 = center[1] + sloth_length - l0
+    y0 = center[1] + slot_length - l0
     x0 = center[0]
     x = zeros(N)
     y = zeros(N)
@@ -334,13 +340,14 @@ def zalesak(center=(0, 0), radius=15, width=5, sloth_length=25, N=50, normal=Fal
             y[i] = y0
             x[i] = x0 + point
             nm = array([0., -1.])
-        elif point <= width/2. + sloth_length:
+        elif point <= width/2. + slot_length:
             y[i] = y0 - (point - width/2.)
             x[i] = x0 + width/2.
             nm = array([-1., 0.])
-        elif point <= disk_length - width/2. - sloth_length:
-            phi = theta + (point - sloth_length - width/2.)/radius
-            y[i] = radius*(1 - cos(phi)) + y0 - sloth_length
+        elif point <= disk_length - width/2. - slot_length:
+            phi = theta + (point - slot_length - width/2.)/radius
+            #y[i] = radius*(1 - cos(phi)) + y0 - slot_length
+            y[i] = center[1] - radius*cos(phi)
             x[i] = radius*sin(phi) + x0
             nm = array([x[i]-center[0], y[i]-center[1]])/sqrt((x[i]-center[0])**2 + (y[i]-center[1])**2)
         elif point <= disk_length - width/2.:
@@ -382,8 +389,11 @@ def random_circle(x0, radius, N=10):
 def main():
     mesh = Rectangle(0, 0, 100, 100, 50, 50)
     V = VectorFunctionSpace(mesh, 'CG', 2)
-    u = interpolate(Expression(('pi/314.*(50.-x[1])', 
-                                'pi/314.*(x[0]-50.)')), V)
+    
+    #u = interpolate(Expression(('pi/314.*(50.-x[1])', 
+                                #'pi/314.*(x[0]-50.)')), V)
+    u = interpolate(Expression(('pi/314.*(50.-x[1])*sqrt((x[0]-50.)*(x[0]-50.)+(x[1]-50.)*(x[1]-50.))', 
+                                'pi/314.*(x[0]-50.)*sqrt((x[0]-50.)*(x[0]-50.)+(x[1]-50.)*(x[1]-50.))')), V)
     #u = interpolate(Expression(('1.', '0.')), Vv)
     u.gather() # Required for parallel
 
@@ -402,14 +412,15 @@ def main():
     nn = comm.bcast(nn, root=0) 
     lp = LagrangianParticles(V)
     t0 = time()    
-    lp.add_particles(x, {'normal': nn})
+    phi_mag = ones((len(x), 1))*0.5
+    lp.add_particles(x, {'normal': nn, 'phi_mag': list(phi_mag)})
     #lp.add_particles_ring(x)
     print comm.Get_rank(), ' time ', time() - t0
-    dt = 0.25
+    dt = 0.1
     t = 0
     lp.scatter(normal=True)
     t0 = time()
-    while t < 628.:
+    while t < 2.:
         t = t + dt
         lp.step(u, dt)  
         if t % 157. == 0:
@@ -418,6 +429,7 @@ def main():
             lp.scatter(normal=True)    
             lp.total_number_of_particles()
             
+    lp.scatter(normal=True)    
     lp.total_number_of_particles()
     print 'Computing time ', time() - t0
     show()            

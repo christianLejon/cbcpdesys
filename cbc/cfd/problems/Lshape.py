@@ -85,19 +85,22 @@ if __name__ == '__main__':
     problem_parameters['T'] = 2.
     problem_parameters['time_integration'] = 'Transient'
     problem_parameters['max_iter'] = 1
-    problem_parameters['save_solution'] = 5
-    problem_parameters['save_restart'] = 10
+    problem_parameters['Re'] = 200.
+    #problem_parameters['save_solution'] = 5
+    #problem_parameters['save_restart'] = 10
     problem_parameters['plot_velocity'] = True
     solver_parameters = recursive_update(solver_parameters, 
-    dict(degree=dict(u=2, u0=1, u1=1),
-         pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
+    dict(degree=dict(u=1, u0=1, u1=1),
+         pdesubsystem=dict(u=1, p=1, velocity_update=1, up=1), 
          linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab', up='lu'), 
          precond=dict(u='jacobi', p='amg', velocity_update='ilu'),
-         iteration_type='Picard')
+         iteration_type='Picard', max_iter=1, max_err=1e-6,
+         stabilization_prm=0.01)
          )
     problem = Lshape(problem_parameters)
-    #solver = icns.NSFullySegregated(problem, solver_parameters)
-    solver = icns.NSCoupled(problem, solver_parameters)    
+    solver = icns.NSFullySegregated(problem, solver_parameters)
+    #solver = icns.NSCoupled(problem, solver_parameters)  
+    #solver = icns.NSSegregated(problem, solver_parameters)
     t0 = time.time()
     problem.solve()
     t1 = time.time() - t0
