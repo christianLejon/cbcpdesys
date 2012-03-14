@@ -6,10 +6,10 @@ __license__  = "GNU GPL version 3 or any later version"
 This module contains functionality for Lagrangian tracking of particles 
 """
 #from cbc.pdesys import *
-from dolfin import Point, Cell, cells, Rectangle, FunctionSpace, VectorFunctionSpace, interpolate, Expression, parameters
+from dolfin import Point, Cell, cells, project, grad, Rectangle, UnitSquare, FunctionSpace, VectorFunctionSpace, TensorFunctionSpace, interpolate, Expression, parameters
 import ufc
-from numpy import linspace, pi, zeros, ones, where, array, ndarray, squeeze, load, sin, cos, arcsin, sqrt, arctan, resize, dot as ndot
-from pylab import scatter, show, quiver
+from numpy import linspace, pi, squeeze, eye, outer, zeros, ones, where, array, ndarray, squeeze, load, sin, cos, arcsin, sqrt, arctan, resize, dot as ndot
+from pylab import figure, scatter, show, quiver
 from copy import copy, deepcopy
 import time
 from mpi4py import MPI as nMPI
@@ -96,8 +96,9 @@ class Particle:
             comm.Recv(self.position, source=i)
             self.prm = comm.recv(source=i)
 
-class LagrangianParticles:
-    """Base class for all particles"""
+class LagrangianParticlesPosition:
+    """Lagrangian tracking of massless particles in a velocity field
+    from the VectorFunctionSpace V."""
     def __init__(self, V):
         self.V = V
         self.mesh = V.mesh()
@@ -113,8 +114,7 @@ class LagrangianParticles:
         self.coefficients = zeros(self.element.space_dimension())
         self.basis_matrix = zeros((self.element.space_dimension(), 
                                    self.num_tensor_entries))                                   
-        self.basis_matrix_du = zeros((self.element.space_dimension(), 
-                                      self.num_tensor_entries*self.dim))
+        
         # Allocate a dictionary to hold all particles
         self.cellparticles = CellParticleMap()
         
@@ -133,7 +133,7 @@ class LagrangianParticles:
         """Add particles and search for their home on all processors. 
         list_of_particles must be identical on all processors before 
         calling this function.
-        prm is an optional dictionary of additional info
+        prm is an optional dictionary of additional info.
         The prm dictionary must have values that are lists of the 
         same length as list_of_particles.
         """
@@ -194,33 +194,21 @@ class LagrangianParticles:
                 if self.myrank < self.num_processes:
                     comm.Send(p0, dest=(self.myrank+1) % self.num_processes, tag=101)        
                                 
-    def step(self, u, dt):
+    def step(self, u, dt, duidxj=False):
         """Move particles one timestep using velocity u and timestep dt."""
-        cwp = self.cellparticles 
-        myrank = self.myrank
-        # Get particle velocities and move
-        for cell in cwp.itervalues():
+        for cell in self.cellparticles.itervalues():
             u.restrict(self.coefficients, self.element, cell, self.ufc_cell)
             for particle in cell.particles:
                 x = particle.position
                 self.element.evaluate_basis_all(self.basis_matrix, x, cell)
-                du = ndot(self.coefficients, self.basis_matrix)
-                if 'normal' in particle.prm:
-                    self.element.evaluate_basis_derivatives_all(1, self.basis_matrix_du, x, cell)
-                    dudx = ndot(self.coefficients, self.basis_matrix_du)
-                    n = particle.prm['normal']
-                    dujdxk_njnk = ndot(ndot(dudx.reshape((self.dim, self.dim)), n), n)
-                    duidxj_nj = ndot(n, dudx.reshape(self.dim, self.dim))
-                    n[:] = n[:] + dt*(-duidxj_nj[:] + dujdxk_njnk*n[:])
-                    n[:] = n[:]/sqrt(ndot(n, n))
-                if 'phi_mag' in particle.prm:
-                    phim = particle.prm['phi_mag']
-                    phim[0] = phim[0] - dt*2.*phim[0]*dujdxk_njnk
-                    
-                particle.prm['velocity'] = du # Just for fun remember the velocity. Could use this for higher order schemes
-                x[:] = x[:] + dt*du[:]
+                x[:] = x[:] + dt*ndot(self.coefficients, self.basis_matrix)[:]
                 
+        self.relocate()
+                
+    def relocate(self):
         # Relocate particles on cells and processors                
+        cwp = self.cellparticles 
+        myrank = self.myrank                
         new_cell_map = celldict()
         for cell in cwp.itervalues():
             for i, particle in enumerate(cell.particles):
@@ -245,7 +233,7 @@ class LagrangianParticles:
             newcells.reverse()
             for (newcell, i) in newcells:
                 particle = cwp.pop(oldcell, i)
-                if newcell == -1:# With MPI the particles may travel between processors. Capture these traveling particles here                
+                if newcell == -1:# With MPI the particles may travel between processors. Capture these traveling particles here
                     list_of_escaped_particles.append(particle)
                 else:
                     cwp += self.mesh, newcell, particle
@@ -293,7 +281,7 @@ class LagrangianParticles:
             point = Point(*x.position)
         return self.mesh.intersected_cell(point)
         
-    def scatter(self, normal=False):
+    def scatter(self, normal=False, factor=1., skip=1, normalize_type='phi_mag'):
         """Put all particles on processor 0 for scatter plotting"""
         cwp = self.cellparticles
         all_particles = zeros(self.num_processes, dtype='I')
@@ -307,21 +295,212 @@ class LagrangianParticles:
             recv = [copy(p.position) for cell in cwp.itervalues() for p in cell.particles]
             if normal: 
                 recn = [copy(p.prm['normal']) for cell in cwp.itervalues() for p in cell.particles]
-                recn2 = [copy(p.prm['phi_mag']) for cell in cwp.itervalues() for p in cell.particles]
+                if normalize_type == 'phi_mag':
+                    rscp = [copy(p.prm['phi_mag']) for cell in cwp.itervalues() for p in cell.particles]
+                else:
+                    rscp = [copy(p.prm[normalize_type].trace()) for cell in cwp.itervalues() for p in cell.particles]
+                
             for i in self.other_processes:
                 for j in range(all_particles[i]):
                     self.particle0.recv(i)
                     recv.append(copy(self.particle0.position))
                     if normal:
                         recn.append(copy(self.particle0.prm['normal']))
-                        recn2.append(copy(self.particle0.prm['phi_mag']))
+                        if normalize_type=='phi_mag':
+                            rscp.append(copy(self.particle0.prm[normalize_type]))
+                        elif normalize_type == 'dndx':
+                            rscp.append(copy(self.particle0.prm[normalize_type].trace()))
+                            
             xx = array(recv)
-            scatter(xx[:, 0], xx[:, 1])
+            scatter(xx[::skip, 0], xx[::skip, 1])
             if normal:
                 xn = array(recn)
-                xn2 = array(recn2)
-                quiver(xx[:, 0], xx[:, 1], xn[:, 0]*xn2[:, 0], xn[:, 1]*xn2[:, 0])
+                xn2 = squeeze(array(rscp))
+                quiver(xx[::skip, 0], xx[::skip, 1], xn[::skip, 0], xn[::skip, 1], xn2[::skip], scale=factor)
 
+class OrientedParticles(LagrangianParticlesPosition):
+    """
+    Oriented particles solve Lagrangian equations for position and 
+    a normal vector. The normal vector points from one fluid into 
+    another. For example, for hydrodynamic waves the surface defines
+    the interface between water and air. The position of the particles
+    then give the location of the surface wave, whereas the normal 
+    vector points into the air phase.
+    """
+    def __init__(self, V, S=None):
+        """Oriented particles require the velocity gradient. The velocity
+        gradient can be computed from the velocity Function residing in
+        VectorFunctionSpace V, or it can be used directly through a Function
+        in the TensorFunctionSpace S."""
+        LagrangianParticlesPosition.__init__(self, V)
+        if S:
+            self.S = S
+            self.Selement = S.dolfin_element()
+            self.Snum_tensor_entries = 1
+            for i in range(self.Selement.value_rank()):
+                self.Snum_tensor_entries *= self.Selement.value_dimension(i)
+            self.Scoefficients = zeros(self.Selement.space_dimension())
+            self.Sbasis_matrix = zeros((self.Selement.space_dimension(), 
+                                        self.Snum_tensor_entries))                                   
+            self.Sbasis_matrix_du = zeros((self.Selement.space_dimension(), 
+                                        self.Snum_tensor_entries*self.dim))
+        
+    def add_particles(self, list_of_particles, prm=None, add_phi_mag=True):
+        if len(list_of_particles) == 0: return
+        if prm == None and isinstance(list_of_particles[0], ndarray):
+            raise TypeError("Oriented particles must have position and normal vector as initial conditions")
+        if add_phi_mag and isinstance(list_of_particles[0], ndarray):
+            prm['phi_mag'] = ones((len(list_of_particles), 1))*0.5
+        LagrangianParticlesPosition.add_particles(self, list_of_particles, prm)
+        
+    def step(self, u, dt, duidxj=False):
+        """Move particles one timestep using velocity u and timestep dt.
+        The velocity strain can be provided through tensor duidxj. If duidxj
+        is not provided it will be computed from u."""
+        cwp = self.cellparticles 
+        myrank = self.myrank
+        # Get particle velocities and move
+        for cell in cwp.itervalues():
+            u.restrict(self.coefficients, self.element, cell, self.ufc_cell)
+            if duidxj:
+                duidxj.restrict(self.Scoefficients, self.Selement, cell, self.ufc_cell)
+            for particle in cell.particles:
+                x = particle.position
+                self.element.evaluate_basis_all(self.basis_matrix, x, cell)
+                du = ndot(self.coefficients, self.basis_matrix)
+                if duidxj:
+                    self.Selement.evaluate_basis_all(self.Sbasis_matrix, x, cell)
+                    dudx = ndot(self.Scoefficients, self.Sbasis_matrix).reshape((self.dim, self.dim)).transpose()
+                else:
+                    self.element.evaluate_basis_derivatives_all(1, self.basis_matrix_du, x, cell)
+                    dudx = ndot(self.coefficients, self.basis_matrix_du).reshape((self.dim, self.dim)).transpose()
+                n = particle.prm['normal']
+                dujdxk_njnk = ndot(ndot(dudx, n), n)
+                duidxj_nj = ndot(dudx, n)
+                # Move particle position
+                x[:] = x[:] + dt*du[:]
+                # Evolve normal
+                n[:] = n[:] + dt*(-duidxj_nj[:] + dujdxk_njnk*n[:])
+                n[:] = n[:]/sqrt(ndot(n, n))
+                # Evolve phi_mag
+                phim = particle.prm['phi_mag']
+                phim[0] = phim[0] - dt*2.*phim[0]*dujdxk_njnk
+  
+        self.relocate()
+
+    def scatter(self, factor=1., skip=1):
+        """Put all particles on processor 0 for scatter plotting"""
+        cwp = self.cellparticles
+        all_particles = zeros(self.num_processes, dtype='I')
+        my_particles = cwp.total_number_of_particles()
+        comm.Gather(array([my_particles], 'I'), all_particles, root=0)
+        if self.myrank > 0: # Send all particles from processes > 0 to 0
+            for cell in cwp.itervalues():
+                for p in cell.particles:
+                    p.send(0)
+        else:               # Receive on proc 0
+            recv = [copy(p.position) for cell in cwp.itervalues() for p in cell.particles]
+            recn = [copy(p.prm['normal']) for cell in cwp.itervalues() for p in cell.particles]
+            rscp = [copy(p.prm['phi_mag']) for cell in cwp.itervalues() for p in cell.particles]
+                    
+            for i in self.other_processes:
+                for j in range(all_particles[i]):
+                    self.particle0.recv(i)
+                    recv.append(copy(self.particle0.position))
+                    recn.append(copy(self.particle0.prm['normal']))
+                    rscp.append(copy(self.particle0.prm['phi_mag']))
+                            
+            xx = array(recv)
+            scatter(xx[::skip, 0], xx[::skip, 1])
+            xn = array(recn)
+            rscp = squeeze(array(rscp))[::skip]
+            quiver(xx[::skip, 0], xx[::skip, 1], xn[::skip, 0], xn[::skip, 1], rscp, scale=factor)
+
+class OrientedParticlesWithShape(OrientedParticles):
+    """
+    Oriented particles with shape solve Lagrangian equations for 
+    position, a normal vector and the gradient of the normal vector.
+    """
+    def __init__(self, V, S):
+        OrientedParticles.__init__(self, V, S)
+
+    def step(self, u, dt, duidxj):
+        """Move particles one timestep using velocity u and timestep dt."""
+        cwp = self.cellparticles 
+        myrank = self.myrank
+        # Get particle velocities and move
+        for cell in cwp.itervalues():
+            u.restrict(self.coefficients, self.element, cell, self.ufc_cell)
+            duidxj.restrict(self.Scoefficients, self.Selement, cell, self.ufc_cell)
+            for particle in cell.particles:
+                x = particle.position
+                self.element.evaluate_basis_all(self.basis_matrix, x, cell)
+                du = ndot(self.coefficients, self.basis_matrix)
+                self.Selement.evaluate_basis_all(self.Sbasis_matrix, x, cell)
+                dudx = ndot(self.Scoefficients, self.Sbasis_matrix).reshape((self.dim, self.dim)).transpose()
+                self.Selement.evaluate_basis_derivatives_all(1, self.Sbasis_matrix_du, x, cell)
+                d2udxidxj = ndot(self.Scoefficients, self.Sbasis_matrix_du).reshape((self.dim, self.dim, self.dim)).transpose()
+                n = particle.prm['normal']
+                dndx = particle.prm['dndx']
+                dujdxk_njnk = ndot(ndot(dudx, n), n)
+                duidxj_nj = ndot(dudx, n)
+                d2ujdxis_nj = ndot(d2udxidxj, n)
+                d2ujdxks_njnkni = outer(ndot(d2ujdxis_nj, n), n)
+                dujdxi_dnjdxs = ndot(dudx, dndx.transpose()).transpose()
+                dujdxk_dnjdxs_nkni = outer(ndot(dujdxi_dnjdxs, n), n)
+                dujdxk_nj_dnkdxs_ni = outer(ndot(dndx, duidxj_nj), n)
+                dujdxk_njnk_dnidxs =  ndot(duidxj_nj, n)*dndx                
+                dujdxs_dnidxj = ndot(dudx, dndx)
+                # Move particle
+                x[:] = x[:] + dt*du[:]
+                # Move normal
+                n[:] = n[:] + dt*(-duidxj_nj[:] + dujdxk_njnk*n[:])
+                n[:] = n[:]/sqrt(ndot(n, n))
+                # Move gradient
+                dndx[:, :] = dndx[:, :] + dt*(d2ujdxks_njnkni[:, :] + dujdxk_dnjdxs_nkni[:, :] + dujdxk_nj_dnkdxs_ni[:, :] + dujdxk_njnk_dnidxs[:, :] 
+                                                - d2ujdxis_nj[:, :] - dujdxi_dnjdxs[:, :] - dujdxs_dnidxj[:, :])
+                if 'phi_mag' in particle.prm:
+                    phim = particle.prm['phi_mag']
+                    phim[0] = phim[0] - dt*2.*phim[0]*dujdxk_njnk
+                
+        self.relocate()
+
+    def scatter(self, factor=1., skip=1):
+        """Put all particles on processor 0 for scatter plotting"""
+        cwp = self.cellparticles
+        all_particles = zeros(self.num_processes, dtype='I')
+        my_particles = cwp.total_number_of_particles()
+        comm.Gather(array([my_particles], 'I'), all_particles, root=0)
+        if self.myrank > 0: # Send all particles from processes > 0 to 0
+            for cell in cwp.itervalues():
+                for p in cell.particles:
+                    p.send(0)
+        else:               # Receive on proc 0
+            recv = [copy(p.position) for cell in cwp.itervalues() for p in cell.particles]
+            recn = [copy(p.prm['normal']) for cell in cwp.itervalues() for p in cell.particles]
+            rscp = [copy(p.prm['dndx'].trace()) for cell in cwp.itervalues() for p in cell.particles]
+                
+            for i in self.other_processes:
+                for j in range(all_particles[i]):
+                    self.particle0.recv(i)
+                    recv.append(copy(self.particle0.position))
+                    recn.append(copy(self.particle0.prm['normal']))
+                    rscp.append(copy(self.particle0.prm['dndx'].trace()))
+                            
+            xx = array(recv)
+            scatter(xx[::skip, 0], xx[::skip, 1])
+            xn = array(recn)
+            rscp = squeeze(array(rscp))[::skip]
+            quiver(xx[::skip, 0], xx[::skip, 1], xn[::skip, 0], xn[::skip, 1], rscp, scale=factor)
+
+def LagrangianParticles(V, S=None, normal=False, dndx=False):
+    if dndx:
+        return OrientedParticlesWithShape(V, S)
+    elif normal: 
+        return OrientedParticles(V, S)
+    else:
+        return LagrangianParticlesPosition(V)
+           
 def zalesak(center=(0, 0), radius=15, width=5, slot_length=25, N=50, normal=False):
     """Create points evenly distributed on Zalesak's disk 
     """
@@ -385,72 +564,121 @@ def random_circle(x0, radius, N=10):
     for xx, yy in zip(r0, theta):
         points.append(array([x0[0] + xx*cos(yy), x0[1] + xx*sin(yy)]))
     return points 
+
+def circle(x0, radius=0.15, N=100, normal=False, dndx=False):
+    theta = linspace(0, 2.*pi, N, endpoint=False)
+    points = []
+    if normal: 
+        nn = []
+    if dndx:
+        dn = []
+    for t in theta:
+        points.append(array([x0[0] + radius*cos(t), x0[1] + radius*sin(t)]))
+        if normal:
+            n = array([cos(t), sin(t)])
+            nn.append(n)
+        if dndx:            
+            dn.append(1./radius*(eye(2)-outer(n, n)))
+    if normal and dndx:
+        return points, nn, dn
+    elif normal and not dndx:
+        return points, nn
+    else:
+        return points
     
-def main():
-    mesh = Rectangle(0, 0, 100, 100, 50, 50)
+#def main():
+if __name__=='__main__':    
+    #mesh = Rectangle(0, 0, 100, 100, 50, 50)
+    mesh = UnitSquare(100, 100)
     V = VectorFunctionSpace(mesh, 'CG', 2)
     
     #u = interpolate(Expression(('pi/314.*(50.-x[1])', 
                                 #'pi/314.*(x[0]-50.)')), V)
-    u = interpolate(Expression(('pi/314.*(50.-x[1])*sqrt((x[0]-50.)*(x[0]-50.)+(x[1]-50.)*(x[1]-50.))', 
-                                'pi/314.*(x[0]-50.)*sqrt((x[0]-50.)*(x[0]-50.)+(x[1]-50.)*(x[1]-50.))')), V)
+    #u = interpolate(Expression(('pi/314.*(50.-x[1])*sqrt((x[0]-50.)*(x[0]-50.)+(x[1]-50.)*(x[1]-50.))', 
+                                #'pi/314.*(x[0]-50.)*sqrt((x[0]-50.)*(x[0]-50.)+(x[1]-50.)*(x[1]-50.))')), V)
+    u = interpolate(Expression(('-2.*sin(pi*x[1])*cos(pi*x[1])*sin(pi*x[0])*sin(pi*x[0])', 
+                                '2.*sin(pi*x[0])*cos(pi*x[0])*sin(pi*x[1])*sin(pi*x[1])')), V)
+    #u = interpolate(Expression(('x[0]*x[0]+0.5*x[1]*x[0]', 'x[1]*x[1]+1.5*x[0]*x[1]')), V)    
+    S = TensorFunctionSpace(mesh, 'CG', 2)
+    duidxj = project(grad(u), S)
+                                  
     #u = interpolate(Expression(('1.', '0.')), Vv)
     u.gather() # Required for parallel
+    duidxj.gather()
 
     # Initialize particles
     # Note, with a random function one must compute points on 0 and bcast to get the same values on all procs
     x = []
     nn = []    
+    dn = []
     if comm.Get_rank() == 0:        
         #pass
-        x, nn = zalesak(center=(50, 75), N=100, normal=True)    
+        #x, nn = zalesak(center=(50, 75), N=100, normal=True)    
+        #x, nn = circle((0.5, 0.75), N=500, normal=True)
+        x, nn, dn = circle((0.5, 0.75), N=1000, normal=True, dndx=True)
         #x = line(x0=39.5, y0=40, dx=1, dy=1, L=20, N=4)    
         #x = [array([0.39, 0.4]), array([0.6, 0.61]), array([0.49, 0.5])]
         #x = random_circle((50, 50), 50, N=1000)
         
     x = comm.bcast(x, root=0) 
-    nn = comm.bcast(nn, root=0) 
-    lp = LagrangianParticles(V)
-    t0 = time()    
-    phi_mag = ones((len(x), 1))*0.5
-    lp.add_particles(x, {'normal': nn, 'phi_mag': list(phi_mag)})
-    #lp.add_particles_ring(x)
-    print comm.Get_rank(), ' time ', time() - t0
-    dt = 0.1
+    nn = comm.bcast(nn, root=0)
+    dn = comm.bcast(dn, root=0)
+    #lp = LagrangianParticlesPosition(V)
+    #lp = OrientedParticles(V, S)
+    #lp = OrientedParticlesWithShape(V, S)    
+    lp = LagrangianParticles(V, S, dndx=True)
+    
+    t0 = time.time()    
+    #lp.add_particles(x, prm={'normal': nn})
+    lp.add_particles(x, prm={'normal': nn, 'dndx': dn})    
+    #xx = array([0.25, 0.75])
+    #c = mesh.intersected_cell(Point(xx[0], xx[1]))
+    #cell = Cell(mesh, c)
+    #duidxj.restrict(lp.Scoefficients, lp.Selement, cell, lp.ufc_cell)
+    #lp.Selement.evaluate_basis_all(lp.Sbasis_matrix, xx, cell)
+    #dudx = ndot(lp.Scoefficients, lp.Sbasis_matrix).reshape((lp.dim, lp.dim))
+    #lp.Selement.evaluate_basis_derivatives_all(1, lp.Sbasis_matrix_du, xx, cell)
+    #d2udxidxj = ndot(lp.Scoefficients, lp.Sbasis_matrix_du).reshape((lp.dim, lp.dim, lp.dim)).transpose()
+
+    ##lp.add_particles_ring(x)
+    ##print comm.Get_rank(), ' time ', time.time() - t0
+    dt = 0.005
     t = 0
-    lp.scatter(normal=True)
-    t0 = time()
-    while t < 2.:
+    lp.scatter()
+    t0 = time.time()
+    tstep = 0
+    while t < 1.5:
         t = t + dt
-        lp.step(u, dt)  
-        if t % 157. == 0:
+        tstep += 1
+        lp.step(u, dt, duidxj=duidxj)  
+        if tstep % 50 == 0:
             if lp.myrank == 0: 
                 print 'Plotting at ', t
-            lp.scatter(normal=True)    
-            lp.total_number_of_particles()
+            figure()
+            lp.scatter(factor=10., skip=1)    
             
-    lp.scatter(normal=True)    
-    lp.total_number_of_particles()
-    print 'Computing time ', time() - t0
-    show()            
-        
-    return lp, u
+    figure()
+    lp.scatter(skip=1, factor=10.)    
+    print 'Computing time ', time.time() - t0
+    print 'Total number of particles = ', lp.total_number_of_particles()
+    show()    
+    #return lp, u
 
-def profiler():
-    import cProfile
-    import pstats
-    cProfile.run('main()', 'mainprofile')
-    p = pstats.Stats('mainprofile')
-    p.sort_stats('time').print_stats(50)
+#def profiler():
+    #import cProfile
+    #import pstats
+    #cProfile.run('main()', 'mainprofile')
+    #p = pstats.Stats('mainprofile')
+    #p.sort_stats('time').print_stats(50)
     
-if __name__=='__main__':
-    #profiler()
-    from dolfin import *
-    lp, u = main()
-    mf = MeshFunction('uint', lp.mesh, 2)
-    mf.set_all(0)
-    for cell in lp.cellparticles.iterkeys():
-        mf[cell] += 1
+#if __name__=='__main__':
+    ##profiler()
+    #lp, u = main()
+    #show()            
+
+    #mf = MeshFunction('uint', lp.mesh, 2)
+    #mf.set_all(0)
+    #for cell in lp.cellparticles.iterkeys():
+        #mf[cell] += 1
         
-    plot(mf)
-    
+    #plot(mf)

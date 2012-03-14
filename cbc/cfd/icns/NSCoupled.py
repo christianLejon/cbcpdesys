@@ -130,7 +130,7 @@ class CoupledBase(PDESubSystem):
             - inner(q, div(u))*dx - inner(v, f)*dx
         return F
         
-    def stabilization(self, u_, u, p, q, nu, nut_, eps, n, convection_form, 
+    def stabilization(self, u_, u_1, u, p, q, nu, nut_, eps, n, convection_form, 
                       **kwargs):
         """Add stabilization to Navier Stokes solver."""
         if type(nu) is Constant:

@@ -6,7 +6,7 @@ __license__  = "GNU GPL version 3 or any later version"
 import ufl
 import copy
 from dolfin import *
-from numpy import maximum, minimum, array, zeros
+from numpy import maximum, minimum, array, zeros, isnan
 from collections import defaultdict
 from time import time
 import operator
@@ -152,6 +152,10 @@ class PDESubSystemBase:
         x_star = self.work  # more informative name
         x_star[:] = self.x[:]    # start vector for iterative solvers
         self.setup_solver(assemble_A, assemble_b)
+        print 'A ', isnan(self.A.array()).any(), self.A.norm('l1'), self.A.norm('linf'), self.A.norm('frobenius') 
+        print 'b ', any(isnan(self.b.array()))
+        print 'x ', any(isnan(x_star.array()))
+        self.xstar=x_star
         self.linear_solver.solve(self.A, x_star, self.b)
         if self.normalize: self.normalize(x_star)
         omega = self.prm['omega']
