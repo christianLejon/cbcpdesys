@@ -72,7 +72,7 @@ mesh = UnitSquare(100, 100)
 nu = Constant(0.001)          # Viscosity
 t = 0                         # time
 tstep = 0                     # Timestep
-T = 0.5                       # End time
+T = 0.1                       # End time
 #T = 2*dt(0)
 max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
@@ -88,7 +88,7 @@ f = Constant((0,)*dim)
 #####################################################################
 
 # Declare solution Functions and FunctionSpaces
-V = FunctionSpace(mesh, 'CG', 1)
+V = FunctionSpace(mesh, 'CG', 2)
 Q = FunctionSpace(mesh, 'CG', 1)
 Vv = VectorFunctionSpace(mesh, 'CG', V.ufl_element().degree())
 u = TrialFunction(V)
@@ -132,7 +132,6 @@ bcs['u1'] = [bc01, bc0]
 
 # Normalize pressure or not?
 #normalize = False
-normalize = dolfin_normalize(Q)
 
 #####################################################################
 
@@ -279,6 +278,7 @@ print 'Additional memory use of processor = {0}'.format(eval(getMyMemoryUsage())
 mymem = eval(getMyMemoryUsage())-eval(dolfin_memory_use)
 info_red('Total memory use of solver = ' + str(comm.reduce(mymem, root=0)))
 list_timings()
-plot(project(u_, Vv))    
+#plot(project(u_, Vv)) 
+plot(p_, interactive=True)
 
 

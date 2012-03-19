@@ -92,7 +92,7 @@ save_restart_file = 100       # Saves two previous timesteps needed for a clean 
     
 # Specify body force
 dim = mesh.geometry().dim()
-f = Constant((0,)*dim)
+#f = Constant((0,)*dim)
 
 # Set the timestep
 #dt =  0.2*(h / U)
@@ -134,16 +134,18 @@ restart_folder = None
 V = FunctionSpace(mesh, 'CG', 1)
 Q = FunctionSpace(mesh, 'CG', 1)
 Vv = VectorFunctionSpace(mesh, 'CG', V.ufl_element().degree())
+R = FunctionSpace(mesh, 'R', 0)
+QR = Q * R
 u = TrialFunction(V)
 v = TestFunction(V)
-p = TrialFunction(Q)
-q = TestFunction(Q)
+p, c = TrialFunctions(QR)
+q, d = TestFunctions(QR)
 
 if dim == 2:
     u_components = ['u0', 'u1']
 else:
     u_components = ['u0', 'u1', 'u2']
-sys_comp =  u_components + ['p']
+sys_comp =  u_components + ['pc']
 
 # Use dictionaries to hold all Functions and FunctionSpaces
 VV = dict((ui, V) for ui in u_components); VV['p'] = Q
@@ -161,8 +163,11 @@ else:
 u_  = as_vector([q_[ui]  for ui in u_components]) # Velocity vector at t
 u_1 = as_vector([q_1[ui] for ui in u_components]) # Velocity vector at t - dt
 u_2 = as_vector([q_2[ui] for ui in u_components]) # Velocity vector at t - 2*dt
-p_ = q_['p']                # pressure at t - dt/2
-dp_ = Function(Q)           # pressure correction
+pc_ = Function(QR)
+q_['pc'] = pc_
+q_['p'], q_['c'] = p_, c_ = pc_.split()
+dpc_ = Function(QR)      # pressure correction
+dp_, dc_ = dpc_.split()
 
 ###################  Boundary conditions  ###########################
 
@@ -192,13 +197,9 @@ A1 = assemble(one*ds(1), mesh=mesh, exterior_facet_domains=mf)
 A2 = assemble(one*ds(2), mesh=mesh, exterior_facet_domains=mf)
 A3 = assemble(one*ds(3), mesh=mesh, exterior_facet_domains=mf)
     
-p_top = Constant(0)
-p_bottom = Constant(0)
 bcs['u0'] = [DirichletBC(V, Constant(0), walls)]
 bcs['u1'] = [DirichletBC(V, Constant(0), walls)]
 bcs['u2'] = [DirichletBC(V, Constant(0), walls)]
-bcs['p']  = [DirichletBC(Q, p_top, top),
-             DirichletBC(Q, p_bottom, bottom)]
 
 # Normalize pressure or not?
 normalize = False
@@ -208,12 +209,12 @@ normalize = False
 # Preassemble some constant in time matrices
 M = assemble(inner(u, v)*dx)                    # Mass matrix
 K = assemble(nu*inner(grad(u), grad(v))*dx)     # Diffusion matrix
-Ap = assemble(inner(grad(q), grad(p))*dx)    # Pressure Laplacian
+Ap = assemble(inner(grad(q), dt*grad(p))*dx + inner(d, p)*ds(3) + inner(c, q)*ds(3))    # Pressure Laplacian
 A = Matrix()                                    # Coefficient matrix (needs reassembling)
+Ap.compress()
 
 # Apply boundary conditions on M and Ap that are used directly in solve
 [bc.apply(M)  for bc in bcs['u0']]
-[bc.apply(Ap) for bc in bcs['p']]
 
 # Adams Bashforth projection of velocity at t - dt/2
 U_ = 1.5*u_1 - 0.5*u_2
@@ -225,10 +226,7 @@ a  = 0.5*inner(v, dot(U_, nabla_grad(u)))*dx
 P = dict((ui, assemble(v*p.dx(i)*dx)) for i, ui in enumerate(u_components))
 
 # Preassemble velocity divergence matrix
-if V.ufl_element().degree() == Q.ufl_element().degree():
-    R = P
-else:
-    R = dict((ui, assemble(q*u.dx(i)*dx)) for i, ui in  enumerate(u_components))
+Rx = dict((ui, assemble(q*u.dx(i)*dx)) for i, ui in  enumerate(u_components))
 
 u_sol = KrylovSolver('gmres', 'jacobi')
 u_sol.parameters['error_on_nonconvergence'] = False
@@ -272,7 +270,8 @@ while t < (T - tstep*DOLFIN_EPS):
     total_iters += 1
     
     ### prepare ###
-    p_top.assign(splev(t, spline_func))
+    dpdy = (0., splev(t, spline_func)/10., 0.)
+    b0 = dict((ui, assemble(v*dpdy[i]*dx)) for i, ui in enumerate(u_components))    
     ### prepare ###
     
     if tstep == 1:
@@ -294,7 +293,8 @@ while t < (T - tstep*DOLFIN_EPS):
             A.axpy(-0.5, K, True)    # Add diffusion                
             # Compute rhs for all velocity components
             for ui in u_components:
-                b[ui][:] = A*x_1[ui]
+                b[ui][:] = b0[ui][:]
+                b[ui].axpy(1., A*x_1[ui])
             # Reset matrix for lhs
             A._scale(-1.)
             A.axpy(2./dt_, M, True)
@@ -302,7 +302,7 @@ while t < (T - tstep*DOLFIN_EPS):
             
         for ui in u_components:
             bold[ui][:] = b[ui][:]
-            b[ui].axpy(-1., P[ui]*x_['p'])
+            b[ui].axpy(-1., P[ui]*x_['pc'])
             [bc.apply(b[ui]) for bc in bcs[ui]]
             work[:] = x_[ui][:]
             u_sol.solve(A, x_[ui], b[ui])
@@ -310,15 +310,14 @@ while t < (T - tstep*DOLFIN_EPS):
             b[ui][:] = bold[ui][:]
             
         ### Solve pressure ###
-        dp_.vector()[:] = x_['p'][:]
-        b['p'][:] = Ap*x_['p']
+        dpc_.vector()[:] = x_['pc'][:]
+        b['pc'][:] = Ap*x_['pc']
         for ui in u_components:
-            b['p'].axpy(-1./dt_, R[ui]*x_[ui]) # Divergence of u_
-        [bc.apply(b['p']) for bc in bcs['p']]
-        rp = residual(Ap, x_['p'], b['p'])
-        p_sol.solve(Ap, x_['p'], b['p'])
+            b['pc'].axpy(-1./dt_, Rx[ui]*x_[ui]) # Divergence of u_
+        rp = residual(Ap, x_['pc'], b['pc'])
+        p_sol.solve(Ap, x_['pc'], b['pc'])
         if normalize: normalize(x_['p'])
-        dp_.vector()[:] = x_['p'][:] - dp_.vector()[:]
+        dpc_.vector()[:] = x_['pc'][:] - dpc_.vector()[:]
         if tstep % check == 0:
             if num_iter > 1:
                 if j == 1: info_blue('                 error u  error p')
@@ -328,7 +327,7 @@ while t < (T - tstep*DOLFIN_EPS):
     ### Update velocity ###
     for ui in u_components:
         b[ui][:] = M*x_[ui][:]        
-        b[ui].axpy(-dt_, P[ui]*dp_.vector())
+        b[ui].axpy(-dt_, P[ui]*dpc_.vector())
         [bc.apply(b[ui]) for bc in bcs[ui]]        
         du_sol.solve(M, x_[ui], b[ui])
 
@@ -337,12 +336,6 @@ while t < (T - tstep*DOLFIN_EPS):
         x_2[ui][:] = x_1[ui][:]
         x_1[ui][:] = x_ [ui][:]
 
-    ################ Hack!! Because PETSc bicgstab with jacobi errors on the first tstep and exits in parallel ##
-    if tstep == 0:
-       u_sol = KrylovSolver('bicgstab', 'jacobi')
-       u_sol.parameters['error_on_nonconvergence'] = False
-       u_sol.parameters['nonzero_initial_guess'] = True
-       #u_sol.parameters['monitor_convergence'] = True
     #################################################################################################
         
     # Print some information and save intermediate solution

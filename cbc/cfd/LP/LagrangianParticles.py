@@ -281,7 +281,7 @@ class LagrangianParticlesPosition:
             point = Point(*x.position)
         return self.mesh.intersected_cell(point)
         
-    def scatter(self, normal=False, factor=1., skip=1, normalize_type='phi_mag'):
+    def scatter(self, skip=1):
         """Put all particles on processor 0 for scatter plotting"""
         cwp = self.cellparticles
         all_particles = zeros(self.num_processes, dtype='I')
@@ -293,30 +293,12 @@ class LagrangianParticlesPosition:
                     p.send(0)
         else:               # Receive on proc 0
             recv = [copy(p.position) for cell in cwp.itervalues() for p in cell.particles]
-            if normal: 
-                recn = [copy(p.prm['normal']) for cell in cwp.itervalues() for p in cell.particles]
-                if normalize_type == 'phi_mag':
-                    rscp = [copy(p.prm['phi_mag']) for cell in cwp.itervalues() for p in cell.particles]
-                else:
-                    rscp = [copy(p.prm[normalize_type].trace()) for cell in cwp.itervalues() for p in cell.particles]
-                
             for i in self.other_processes:
                 for j in range(all_particles[i]):
                     self.particle0.recv(i)
                     recv.append(copy(self.particle0.position))
-                    if normal:
-                        recn.append(copy(self.particle0.prm['normal']))
-                        if normalize_type=='phi_mag':
-                            rscp.append(copy(self.particle0.prm[normalize_type]))
-                        elif normalize_type == 'dndx':
-                            rscp.append(copy(self.particle0.prm[normalize_type].trace()))
-                            
             xx = array(recv)
             scatter(xx[::skip, 0], xx[::skip, 1])
-            if normal:
-                xn = array(recn)
-                xn2 = squeeze(array(rscp))
-                quiver(xx[::skip, 0], xx[::skip, 1], xn[::skip, 0], xn[::skip, 1], xn2[::skip], scale=factor)
 
 class OrientedParticles(LagrangianParticlesPosition):
     """
@@ -325,7 +307,7 @@ class OrientedParticles(LagrangianParticlesPosition):
     another. For example, for hydrodynamic waves the surface defines
     the interface between water and air. The position of the particles
     then give the location of the surface wave, whereas the normal 
-    vector points into the air phase.
+    vectors point into the air phase.
     """
     def __init__(self, V, S=None):
         """Oriented particles require the velocity gradient. The velocity
