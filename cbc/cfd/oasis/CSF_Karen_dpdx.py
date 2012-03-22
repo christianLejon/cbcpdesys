@@ -56,7 +56,7 @@ from cbc.cfd.oasis import *
 
 #parameters["linear_algebra_backend"] = "Epetra"
 parameters["linear_algebra_backend"] = "PETSc"
-parameters["form_compiler"]["optimize"]     = True   # I sometimes get memory access error with True here (MM)
+parameters["form_compiler"]["optimize"]     = False   # I sometimes get memory access error with True here (MM)
 parameters["form_compiler"]["cpp_optimize"] = True
 set_log_active(True)
 
@@ -77,13 +77,16 @@ smooth_func = smooth_flow(a, b, c, dt, m)
 spline_func = create_spline(smooth_func, m, c, dt)
 
 mesh = Mesh("/home/mikaelmo/cbcpdesys/cbc/cfd/data/straight_nerves_refined.xml")
+#mesh = UnitCube(40, 40, 100)
+#x = mesh.coordinates()
+#x[:, 2] = 10.*(x[:, 2] - 0.5)
 normal = FacetNormal(mesh)
     
 # Set parameters
 nu = Constant(0.007)           # Viscosity
 t = 0.0                         # time
 tstep = 0                     # Timestep
-T = 1.                        # End time
+T = 0.0001                        # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
 max_error = 1e-6
@@ -98,7 +101,7 @@ dim = mesh.geometry().dim()
 #dt =  0.2*(h / U)
 #n  = int(T / dt + 1.0)
 #dt = Constant(T / n)
-dt = Constant(0.001)
+dt = Constant(0.0001)
 n = int(T / dt(0))
 
 # Give a folder for storing the results
@@ -129,7 +132,6 @@ restart_folder = None
 #### Use for initialization if not None
     
 #####################################################################
-
 # Declare solution Functions and FunctionSpaces
 V = FunctionSpace(mesh, 'CG', 1)
 Q = FunctionSpace(mesh, 'CG', 1)
@@ -148,7 +150,7 @@ else:
 sys_comp =  u_components + ['pc']
 
 # Use dictionaries to hold all Functions and FunctionSpaces
-VV = dict((ui, V) for ui in u_components); VV['p'] = Q
+VV = dict((ui, V) for ui in u_components); VV['pc'] = QR
 
 # Start from previous solution if restart_folder is given
 if restart_folder:
@@ -163,8 +165,7 @@ else:
 u_  = as_vector([q_[ui]  for ui in u_components]) # Velocity vector at t
 u_1 = as_vector([q_1[ui] for ui in u_components]) # Velocity vector at t - dt
 u_2 = as_vector([q_2[ui] for ui in u_components]) # Velocity vector at t - 2*dt
-pc_ = Function(QR)
-q_['pc'] = pc_
+pc_ = q_['pc']
 q_['p'], q_['c'] = p_, c_ = pc_.split()
 dpc_ = Function(QR)      # pressure correction
 dp_, dc_ = dpc_.split()
@@ -201,17 +202,14 @@ bcs['u0'] = [DirichletBC(V, Constant(0), walls)]
 bcs['u1'] = [DirichletBC(V, Constant(0), walls)]
 bcs['u2'] = [DirichletBC(V, Constant(0), walls)]
 
-# Normalize pressure or not?
-normalize = False
-
 #####################################################################
 
 # Preassemble some constant in time matrices
 M = assemble(inner(u, v)*dx)                    # Mass matrix
 K = assemble(nu*inner(grad(u), grad(v))*dx)     # Diffusion matrix
-Ap = assemble(inner(grad(q), dt*grad(p))*dx + inner(d, p)*ds(3) + inner(c, q)*ds(3))    # Pressure Laplacian
+Ap = assemble(inner(grad(q), dt*grad(p))*dx + (inner(d, p) + inner(q, c)) * dx)    # Pressure Laplacian
 A = Matrix()                                    # Coefficient matrix (needs reassembling)
-Ap.compress()
+#Ap.compress()
 
 # Apply boundary conditions on M and Ap that are used directly in solve
 [bc.apply(M)  for bc in bcs['u0']]
@@ -228,27 +226,27 @@ P = dict((ui, assemble(v*p.dx(i)*dx)) for i, ui in enumerate(u_components))
 # Preassemble velocity divergence matrix
 Rx = dict((ui, assemble(q*u.dx(i)*dx)) for i, ui in  enumerate(u_components))
 
-u_sol = KrylovSolver('gmres', 'jacobi')
+u_sol = KrylovSolver('bicgstab', 'hypre_euclid')
 u_sol.parameters['error_on_nonconvergence'] = False
 u_sol.parameters['nonzero_initial_guess'] = True
-#u_sol.parameters['monitor_convergence'] = True
+u_sol.parameters['monitor_convergence'] = True
 u_sol.parameters['relative_tolerance'] = 1e-7
 u_sol.parameters['absolute_tolerance'] = 1e-10
 reset_sparsity = True
 
-du_sol = KrylovSolver('gmres', 'jacobi')
+du_sol = KrylovSolver('bicgstab', 'hypre_euclid')
 du_sol.parameters['error_on_nonconvergence'] = False
 du_sol.parameters['nonzero_initial_guess'] = True
 du_sol.parameters['preconditioner']['reuse'] = True
-#du_sol.parameters['monitor_convergence'] = True
+du_sol.parameters['monitor_convergence'] = True
 du_sol.parameters['relative_tolerance'] = 1e-7
 du_sol.parameters['absolute_tolerance'] = 1e-10
 
-p_sol = KrylovSolver('gmres', 'hypre_amg')
+p_sol = KrylovSolver('bicgstab', 'hypre_euclid')
 p_sol.parameters['error_on_nonconvergence'] = False
 p_sol.parameters['nonzero_initial_guess'] = True
 p_sol.parameters['preconditioner']['reuse'] = True
-#p_sol.parameters['monitor_convergence'] = True
+p_sol.parameters['monitor_convergence'] = True
 p_sol.parameters['relative_tolerance'] = 1e-7
 p_sol.parameters['absolute_tolerance'] = 1e-10
 
@@ -271,7 +269,7 @@ while t < (T - tstep*DOLFIN_EPS):
     
     ### prepare ###
     dpdy = (0., splev(t, spline_func)/10., 0.)
-    b0 = dict((ui, assemble(v*dpdy[i]*dx)) for i, ui in enumerate(u_components))    
+    #b0 = dict((ui, assemble(v*Constant(dpdy[i])*dx)) for i, ui in enumerate(u_components))    
     ### prepare ###
     
     if tstep == 1:
@@ -292,8 +290,8 @@ while t < (T - tstep*DOLFIN_EPS):
             A.axpy(1./dt_, M, True)  # Add mass
             A.axpy(-0.5, K, True)    # Add diffusion                
             # Compute rhs for all velocity components
-            for ui in u_components:
-                b[ui][:] = b0[ui][:]
+            for i, ui in enumerate(u_components):
+                b[ui] = assemble(v*Constant(dpdy[i])*dx)
                 b[ui].axpy(1., A*x_1[ui])
             # Reset matrix for lhs
             A._scale(-1.)
@@ -316,7 +314,6 @@ while t < (T - tstep*DOLFIN_EPS):
             b['pc'].axpy(-1./dt_, Rx[ui]*x_[ui]) # Divergence of u_
         rp = residual(Ap, x_['pc'], b['pc'])
         p_sol.solve(Ap, x_['pc'], b['pc'])
-        if normalize: normalize(x_['p'])
         dpc_.vector()[:] = x_['pc'][:] - dpc_.vector()[:]
         if tstep % check == 0:
             if num_iter > 1:

@@ -57,8 +57,8 @@ and then using the following to create the lhs A:
 from cbc.cfd.oasis import *
 from numpy import array
 
-parameters["linear_algebra_backend"] = "Epetra"
-#parameters["linear_algebra_backend"] = "PETSc"
+#parameters["linear_algebra_backend"] = "Epetra"
+parameters["linear_algebra_backend"] = "PETSc"
 parameters["form_compiler"]["optimize"]     = False
 parameters["form_compiler"]["cpp_optimize"] = True
 set_log_active(True)
@@ -118,7 +118,7 @@ q_['pc'] = pc_
 q_['p'], q_['c'] = p_, c_ = pc_.split()
 dpc_ = Function(QR)      # pressure correction
 dp_, dc_ = dpc_.split()
-
+ 
 ###################  Boundary conditions  ###########################
 
 bcs = dict((ui, []) for ui in sys_comp)
@@ -151,8 +151,8 @@ Ap = assemble(inner(grad(q), dt*grad(p))*dx + inner(d, p)*dx + inner(c, q)*dx)  
 #Ap.setrow(Q.dim()-1, array(bb[0], 'I'), bb[1])
 #Ap.apply('insert')
 
-Ap.compress()
-Ap.apply("add")
+#Ap.compress()
+#Ap.apply("add")
 A = Matrix()                                    # Coefficient matrix (needs reassembling)
 
 # Apply boundary conditions on M and Ap that are used directly in solve
@@ -187,15 +187,16 @@ list_timings()
 u_sol = KrylovSolver('gmres', 'jacobi')
 u_sol.parameters['error_on_nonconvergence'] = False
 u_sol.parameters['nonzero_initial_guess'] = True
-#u_sol.parameters['monitor_convergence'] = True
+u_sol.parameters['monitor_convergence'] = True
 reset_sparsity = True
 
-du_sol = KrylovSolver('gmres', 'jacobi')
+du_sol = KrylovSolver('bicgstab', 'hypre_euclid')
 du_sol.parameters['error_on_nonconvergence'] = False
 du_sol.parameters['nonzero_initial_guess'] = True
 du_sol.parameters['preconditioner']['reuse'] = True
+du_sol.parameters['monitor_convergence'] = True
 
-p_sol = KrylovSolver('bicgstab', 'hypre_euclid')
+p_sol = KrylovSolver('bicgstab', 'ilu')
 p_sol.parameters['error_on_nonconvergence'] = False
 p_sol.parameters['nonzero_initial_guess'] = True
 p_sol.parameters['preconditioner']['reuse'] = True
@@ -248,6 +249,8 @@ while t < (T - tstep*DOLFIN_EPS):
             b[ui].axpy(-1., P[ui]*x_['pc'])
             [bc.apply(b[ui]) for bc in bcs[ui]]
             work[:] = x_[ui][:]
+            if MPI.process_number() == 0:
+                print 'Solving tentative velocity ', ui
             u_sol.solve(A, x_[ui], b[ui])
             b[ui][:] = bold[ui][:]  # preassemble part
             err += norm(work - x_[ui])
@@ -259,6 +262,8 @@ while t < (T - tstep*DOLFIN_EPS):
             b['pc'].axpy(-1., Rx[ui]*x_[ui]) # Divergence of u_
         [bc.apply(b['pc']) for bc in bcs['pc']]
         rp = residual(Ap, x_['pc'], b['pc'])
+        if MPI.process_number() == 0:
+            print 'Solving pressure'
         p_sol.solve(Ap, x_['pc'], b['pc'])
         #solve(Ap, x_['pc'], b['pc'])
         dpc_.vector()[:] = x_['pc'][:] - dpc_.vector()[:]
@@ -272,6 +277,8 @@ while t < (T - tstep*DOLFIN_EPS):
         b[ui][:] = M*x_[ui][:]
         b[ui].axpy(-dt_, P[ui]*dpc_.vector())
         [bc.apply(b[ui]) for bc in bcs[ui]]
+        if MPI.process_number() == 0:
+            print 'Solving velocity ', ui
         du_sol.solve(M, x_[ui], b[ui])
 
     # Update to a new timestep
@@ -289,6 +296,6 @@ mymem = eval(getMyMemoryUsage())-eval(dolfin_memory_use)
 info_red('Total memory use of solver = ' + str(comm.reduce(mymem, root=0)))
 list_timings()
 #plot(project(u_, Vv)) 
-plot(p_, interactive=True)
+#plot(p_, interactive=True)
 
 

@@ -56,7 +56,7 @@ from cbc.cfd.oasis import *
 
 #parameters["linear_algebra_backend"] = "Epetra"
 parameters["linear_algebra_backend"] = "PETSc"
-parameters["form_compiler"]["optimize"]     = True   # I sometimes get memory access error with True here (MM)
+parameters["form_compiler"]["optimize"]     = False   # I sometimes get memory access error with True here (MM)
 parameters["form_compiler"]["cpp_optimize"] = True
 set_log_active(True)
 
@@ -76,7 +76,8 @@ m = 2
 smooth_func = smooth_flow(a, b, c, dt, m)
 spline_func = create_spline(smooth_func, m, c, dt)
 
-mesh = Mesh("/home/mikaelmo/cbcpdesys/cbc/cfd/data/straight_nerves_refined.xml")
+#mesh = Mesh("/home/mikaelmo/cbcpdesys/cbc/cfd/data/straight_nerves_refined.xml")
+mesh = Mesh("/home/mikaelmo/cbcpdesys/cbc/cfd/data/csf_block80_refined.xml")
 normal = FacetNormal(mesh)
     
 # Set parameters
@@ -87,8 +88,8 @@ T = 1.                        # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
 max_error = 1e-6
-check = 10                    # print out info and save solution every check timestep 
-save_restart_file = 100       # Saves two previous timesteps needed for a clean restart
+check = 100                    # print out info and save solution every check timestep 
+save_restart_file = 1000       # Saves two previous timesteps needed for a clean restart
     
 # Specify body force
 dim = mesh.geometry().dim()
@@ -98,7 +99,7 @@ f = Constant((0,)*dim)
 #dt =  0.2*(h / U)
 #n  = int(T / dt + 1.0)
 #dt = Constant(T / n)
-dt = Constant(0.001)
+dt = Constant(1.e-4)
 n = int(T / dt(0))
 
 # Give a folder for storing the results
@@ -119,7 +120,7 @@ else:
         folder = path.join(folder, '1')
     else:
         previous = listdir(folder)
-        folder = path.join(folder, str(max(map(eval, previous)) + 1) )
+        folder = path.join(folder, str(max(map(eval, previous)) + 1))
     if MPI.process_number() == 0:
         makedirs(folder)
     
@@ -230,19 +231,19 @@ if V.ufl_element().degree() == Q.ufl_element().degree():
 else:
     R = dict((ui, assemble(q*u.dx(i)*dx)) for i, ui in  enumerate(u_components))
 
-u_sol = KrylovSolver('gmres', 'jacobi')
+u_sol = KrylovSolver('bicgstab', 'jacobi')
 u_sol.parameters['error_on_nonconvergence'] = False
 u_sol.parameters['nonzero_initial_guess'] = True
-#u_sol.parameters['monitor_convergence'] = True
+u_sol.parameters['monitor_convergence'] = True
 u_sol.parameters['relative_tolerance'] = 1e-7
 u_sol.parameters['absolute_tolerance'] = 1e-10
 reset_sparsity = True
 
-du_sol = KrylovSolver('gmres', 'jacobi')
+du_sol = KrylovSolver('bicgstab', 'hypre_euclid')
 du_sol.parameters['error_on_nonconvergence'] = False
 du_sol.parameters['nonzero_initial_guess'] = True
 du_sol.parameters['preconditioner']['reuse'] = True
-#du_sol.parameters['monitor_convergence'] = True
+du_sol.parameters['monitor_convergence'] = True
 du_sol.parameters['relative_tolerance'] = 1e-7
 du_sol.parameters['absolute_tolerance'] = 1e-10
 
@@ -250,7 +251,7 @@ p_sol = KrylovSolver('gmres', 'hypre_amg')
 p_sol.parameters['error_on_nonconvergence'] = False
 p_sol.parameters['nonzero_initial_guess'] = True
 p_sol.parameters['preconditioner']['reuse'] = True
-#p_sol.parameters['monitor_convergence'] = True
+p_sol.parameters['monitor_convergence'] = True
 p_sol.parameters['relative_tolerance'] = 1e-7
 p_sol.parameters['absolute_tolerance'] = 1e-10
 
@@ -272,7 +273,7 @@ while t < (T - tstep*DOLFIN_EPS):
     total_iters += 1
     
     ### prepare ###
-    p_top.assign(splev(t, spline_func))
+    p_top.assign(splev(t, spline_func)/20.)
     ### prepare ###
     
     if tstep == 1:
@@ -305,9 +306,11 @@ while t < (T - tstep*DOLFIN_EPS):
             b[ui].axpy(-1., P[ui]*x_['p'])
             [bc.apply(b[ui]) for bc in bcs[ui]]
             work[:] = x_[ui][:]
+            if u_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
+                print 'Solving tentative ', ui
             u_sol.solve(A, x_[ui], b[ui])
             err += norm(work - x_[ui])
-            b[ui][:] = bold[ui][:]
+            b[ui][:] = bold[ui][:] # In case of inner iterations
             
         ### Solve pressure ###
         dp_.vector()[:] = x_['p'][:]
@@ -316,6 +319,8 @@ while t < (T - tstep*DOLFIN_EPS):
             b['p'].axpy(-1./dt_, R[ui]*x_[ui]) # Divergence of u_
         [bc.apply(b['p']) for bc in bcs['p']]
         rp = residual(Ap, x_['p'], b['p'])
+        if p_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
+            print 'Solving p'        
         p_sol.solve(Ap, x_['p'], b['p'])
         if normalize: normalize(x_['p'])
         dp_.vector()[:] = x_['p'][:] - dp_.vector()[:]
@@ -329,21 +334,15 @@ while t < (T - tstep*DOLFIN_EPS):
     for ui in u_components:
         b[ui][:] = M*x_[ui][:]        
         b[ui].axpy(-dt_, P[ui]*dp_.vector())
-        [bc.apply(b[ui]) for bc in bcs[ui]]        
+        [bc.apply(b[ui]) for bc in bcs[ui]]
+        if du_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
+            print 'Solving ', ui
         du_sol.solve(M, x_[ui], b[ui])
 
     # Update to a new timestep
     for ui in u_components:
         x_2[ui][:] = x_1[ui][:]
         x_1[ui][:] = x_ [ui][:]
-
-    ################ Hack!! Because PETSc bicgstab with jacobi errors on the first tstep and exits in parallel ##
-    if tstep == 0:
-       u_sol = KrylovSolver('bicgstab', 'jacobi')
-       u_sol.parameters['error_on_nonconvergence'] = False
-       u_sol.parameters['nonzero_initial_guess'] = True
-       #u_sol.parameters['monitor_convergence'] = True
-    #################################################################################################
         
     # Print some information and save intermediate solution
     if tstep % check == 0:
@@ -353,20 +352,21 @@ while t < (T - tstep*DOLFIN_EPS):
         newfolder = path.join(folder, 'timestep='+str(tstep))
         u1 = assemble(dot(u_, normal)*ds(2), mesh=mesh, exterior_facet_domains=mf)
         u2 = assemble(dot(u_, normal)*ds(3), mesh=mesh, exterior_facet_domains=mf)
-        if MPI.process_number()==0:
-           print 'flux [cm/s] = ', u1/A2, u2/A3, u1, u2
-           try:
-               makedirs(newfolder)
-           except OSError:
-               pass
+        if MPI.process_number() == 0:
+            print 'flux [cm/s] = ', u1/A2, u2/A3, u1, u2
+        try:
+            makedirs(newfolder)
+        except OSError:
+            pass
         for ui in sys_comp:
-           newfile = File(path.join(newfolder, ui + '.xml.gz'))
-           newfile << q_[ui]
+            newfile = File(path.join(newfolder, ui + '.xml.gz'))
+            print 'Writing result file ', ui
+            newfile << q_[ui]
         
         if tstep % save_restart_file == 0:
-           for ui in u_components:
-               newfile_1 = File(path.join(newfolder, ui + '_1.xml.gz'))
-               newfile_1 << q_1[ui]
+            for ui in u_components:
+                newfile_1 = File(path.join(newfolder, ui + '_1.xml.gz'))
+                newfile_1 << q_1[ui]
     ### Update ################################################################            
 info_red('Additional memory use of solver = {0}'.format(eval(getMyMemoryUsage()) - eval(dolfin_memory_use)))
 info_red('Total memory use = ' + getMyMemoryUsage())
