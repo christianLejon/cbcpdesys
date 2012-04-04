@@ -76,7 +76,8 @@ m = 2
 smooth_func = smooth_flow(a, b, c, dt, m)
 spline_func = create_spline(smooth_func, m, c, dt)
 
-mesh = Mesh("/home/mikaelmo/cbcpdesys/cbc/cfd/data/straight_nerves_refined.xml")
+#mesh = Mesh("/home/mikaelmo/cbcpdesys/cbc/cfd/data/straight_nerves_refined.xml")
+mesh = Mesh("/home/mikael/Fenics/cbcpdesys/cbc/cfd/data/csf_block80_refined.xml")
 #mesh = UnitCube(40, 40, 100)
 #x = mesh.coordinates()
 #x[:, 2] = 10.*(x[:, 2] - 0.5)
@@ -226,7 +227,7 @@ P = dict((ui, assemble(v*p.dx(i)*dx)) for i, ui in enumerate(u_components))
 # Preassemble velocity divergence matrix
 Rx = dict((ui, assemble(q*u.dx(i)*dx)) for i, ui in  enumerate(u_components))
 
-u_sol = KrylovSolver('bicgstab', 'hypre_euclid')
+u_sol = KrylovSolver('bicgstab', 'jacobi')
 u_sol.parameters['error_on_nonconvergence'] = False
 u_sol.parameters['nonzero_initial_guess'] = True
 u_sol.parameters['monitor_convergence'] = True
@@ -242,7 +243,7 @@ du_sol.parameters['monitor_convergence'] = True
 du_sol.parameters['relative_tolerance'] = 1e-7
 du_sol.parameters['absolute_tolerance'] = 1e-10
 
-p_sol = KrylovSolver('bicgstab', 'hypre_euclid')
+p_sol = KrylovSolver('bicgstab', 'jacobi')
 p_sol.parameters['error_on_nonconvergence'] = False
 p_sol.parameters['nonzero_initial_guess'] = True
 p_sol.parameters['preconditioner']['reuse'] = True
@@ -268,7 +269,7 @@ while t < (T - tstep*DOLFIN_EPS):
     total_iters += 1
     
     ### prepare ###
-    dpdy = (0., splev(t, spline_func)/10., 0.)
+    dpdy = (0., 0., splev(t, spline_func)/10.)
     #b0 = dict((ui, assemble(v*Constant(dpdy[i])*dx)) for i, ui in enumerate(u_components))    
     ### prepare ###
     
@@ -303,6 +304,8 @@ while t < (T - tstep*DOLFIN_EPS):
             b[ui].axpy(-1., P[ui]*x_['pc'])
             [bc.apply(b[ui]) for bc in bcs[ui]]
             work[:] = x_[ui][:]
+            if u_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
+                print 'Solving tentative ', ui
             u_sol.solve(A, x_[ui], b[ui])
             err += norm(work - x_[ui])
             b[ui][:] = bold[ui][:]
@@ -313,6 +316,8 @@ while t < (T - tstep*DOLFIN_EPS):
         for ui in u_components:
             b['pc'].axpy(-1./dt_, Rx[ui]*x_[ui]) # Divergence of u_
         rp = residual(Ap, x_['pc'], b['pc'])
+        if p_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
+            print 'Solving p'        
         p_sol.solve(Ap, x_['pc'], b['pc'])
         dpc_.vector()[:] = x_['pc'][:] - dpc_.vector()[:]
         if tstep % check == 0:
@@ -325,7 +330,9 @@ while t < (T - tstep*DOLFIN_EPS):
     for ui in u_components:
         b[ui][:] = M*x_[ui][:]        
         b[ui].axpy(-dt_, P[ui]*dpc_.vector())
-        [bc.apply(b[ui]) for bc in bcs[ui]]        
+        [bc.apply(b[ui]) for bc in bcs[ui]]
+        if du_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
+            print 'Solving ', ui
         du_sol.solve(M, x_[ui], b[ui])
 
     # Update to a new timestep

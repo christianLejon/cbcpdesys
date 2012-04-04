@@ -77,7 +77,8 @@ smooth_func = smooth_flow(a, b, c, dt, m)
 spline_func = create_spline(smooth_func, m, c, dt)
 
 #mesh = Mesh("/home/mikaelmo/cbcpdesys/cbc/cfd/data/straight_nerves_refined.xml")
-mesh = Mesh("/home/mikaelmo/cbcpdesys/cbc/cfd/data/csf_block80_refined.xml")
+mesh = Mesh("/home/mikael/Fenics/cbcpdesys/cbc/cfd/data/csf_block80_refined.xml")
+#mesh = Mesh("/home/mikael/Fenics/cbcpdesys/cbc/cfd/data/straight_nerves_refined.xml")
 normal = FacetNormal(mesh)
     
 # Set parameters
@@ -134,20 +135,22 @@ restart_folder = None
 # Declare solution Functions and FunctionSpaces
 V = FunctionSpace(mesh, 'CG', 1)
 Q = FunctionSpace(mesh, 'CG', 1)
+R = FunctionSpace(mesh, 'R', 0)
 Vv = VectorFunctionSpace(mesh, 'CG', V.ufl_element().degree())
+QRR = MixedFunctionSpace([Q, R, R])
 u = TrialFunction(V)
 v = TestFunction(V)
-p = TrialFunction(Q)
-q = TestFunction(Q)
+p, pa, pb = TrialFunctions(QRR)
+q, qa, qb = TestFunctions(QRR)
 
 if dim == 2:
     u_components = ['u0', 'u1']
 else:
     u_components = ['u0', 'u1', 'u2']
-sys_comp =  u_components + ['p']
+sys_comp =  u_components + ['pcc']
 
 # Use dictionaries to hold all Functions and FunctionSpaces
-VV = dict((ui, V) for ui in u_components); VV['p'] = Q
+VV = dict((ui, V) for ui in u_components); VV['pcc'] = QRR
 
 # Start from previous solution if restart_folder is given
 if restart_folder:
@@ -162,9 +165,11 @@ else:
 u_  = as_vector([q_[ui]  for ui in u_components]) # Velocity vector at t
 u_1 = as_vector([q_1[ui] for ui in u_components]) # Velocity vector at t - dt
 u_2 = as_vector([q_2[ui] for ui in u_components]) # Velocity vector at t - 2*dt
-p_ = q_['p']                # pressure at t - dt/2
-dp_ = Function(Q)           # pressure correction
-
+q_['pcc'] = interpolate(Expression(("dpdx*(x[2]+5)", "0", "0"), dpdx=23.), QRR)
+pcc_ = q_['pcc']                # pressure at t - dt/2
+dpcc_ = Function(QRR)               # pressure correction
+p_, ca_, cb_ = pcc_.split()
+dp_, dca_, dcb_ = dpcc_.split()
 ###################  Boundary conditions  ###########################
 
 bcs = dict((ui, []) for ui in sys_comp)
@@ -198,9 +203,9 @@ p_bottom = Constant(0)
 bcs['u0'] = [DirichletBC(V, Constant(0), walls)]
 bcs['u1'] = [DirichletBC(V, Constant(0), walls)]
 bcs['u2'] = [DirichletBC(V, Constant(0), walls)]
-bcs['p']  = [DirichletBC(Q, p_top, top),
-             DirichletBC(Q, p_bottom, bottom)]
-
+#bcs['p']  = [DirichletBC(Q, p_top, top),
+             #DirichletBC(Q, p_bottom, bottom)]
+bcs['p'] = []
 # Normalize pressure or not?
 normalize = False
 
@@ -209,12 +214,14 @@ normalize = False
 # Preassemble some constant in time matrices
 M = assemble(inner(u, v)*dx)                    # Mass matrix
 K = assemble(nu*inner(grad(u), grad(v))*dx)     # Diffusion matrix
-Ap = assemble(inner(grad(q), grad(p))*dx)    # Pressure Laplacian
+Ap = assemble(inner(grad(q), grad(p))*dx + pa*q*ds(2) + p*qa*ds(2) + pb*q*ds(3) + p*qb*ds(3))     # Pressure Laplacian
+App = assemble(inner(grad(q), grad(p))*dx)    # Pressure Laplacian
 A = Matrix()                                    # Coefficient matrix (needs reassembling)
 
-# Apply boundary conditions on M and Ap that are used directly in solve
+dp0 = p_top*qa*ds(2)
+
+# Apply boundary conditions on M that are used directly in solve
 [bc.apply(M)  for bc in bcs['u0']]
-[bc.apply(Ap) for bc in bcs['p']]
 
 # Adams Bashforth projection of velocity at t - dt/2
 U_ = 1.5*u_1 - 0.5*u_2
@@ -226,10 +233,11 @@ a  = 0.5*inner(v, dot(U_, nabla_grad(u)))*dx
 P = dict((ui, assemble(v*p.dx(i)*dx)) for i, ui in enumerate(u_components))
 
 # Preassemble velocity divergence matrix
-if V.ufl_element().degree() == Q.ufl_element().degree():
-    R = P
-else:
-    R = dict((ui, assemble(q*u.dx(i)*dx)) for i, ui in  enumerate(u_components))
+#if V.ufl_element().degree() == Q.ufl_element().degree():
+    #R = P
+#else:
+    
+Rc = dict((ui, assemble(q*u.dx(i)*dx)) for i, ui in  enumerate(u_components))
 
 u_sol = KrylovSolver('bicgstab', 'jacobi')
 u_sol.parameters['error_on_nonconvergence'] = False
@@ -247,7 +255,7 @@ du_sol.parameters['monitor_convergence'] = True
 du_sol.parameters['relative_tolerance'] = 1e-7
 du_sol.parameters['absolute_tolerance'] = 1e-10
 
-p_sol = KrylovSolver('gmres', 'hypre_amg')
+p_sol = KrylovSolver('bicgstab', 'jacobi')
 p_sol.parameters['error_on_nonconvergence'] = False
 p_sol.parameters['nonzero_initial_guess'] = True
 p_sol.parameters['preconditioner']['reuse'] = True
@@ -273,7 +281,7 @@ while t < (T - tstep*DOLFIN_EPS):
     total_iters += 1
     
     ### prepare ###
-    p_top.assign(splev(t, spline_func)/20.)
+    p_top.assign(splev(t, spline_func))
     ### prepare ###
     
     if tstep == 1:
@@ -303,7 +311,7 @@ while t < (T - tstep*DOLFIN_EPS):
             
         for ui in u_components:
             bold[ui][:] = b[ui][:]
-            b[ui].axpy(-1., P[ui]*x_['p'])
+            b[ui].axpy(-1., P[ui]*x_['pcc'])
             [bc.apply(b[ui]) for bc in bcs[ui]]
             work[:] = x_[ui][:]
             if u_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
@@ -313,17 +321,16 @@ while t < (T - tstep*DOLFIN_EPS):
             b[ui][:] = bold[ui][:] # In case of inner iterations
             
         ### Solve pressure ###
-        dp_.vector()[:] = x_['p'][:]
-        b['p'][:] = Ap*x_['p']
+        dpcc_.vector()[:] = x_['pcc'][:]
+        b['pcc'] = assemble(dp0, exterior_facet_domains=mf)
+        b['pcc'].axpy(1., App*x_['pcc'])
         for ui in u_components:
-            b['p'].axpy(-1./dt_, R[ui]*x_[ui]) # Divergence of u_
-        [bc.apply(b['p']) for bc in bcs['p']]
-        rp = residual(Ap, x_['p'], b['p'])
+            b['pcc'].axpy(-1./dt_, Rc[ui]*x_[ui]) # Divergence of u_
+        rp = residual(Ap, x_['pcc'], b['pcc'])
         if p_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
             print 'Solving p'        
-        p_sol.solve(Ap, x_['p'], b['p'])
-        if normalize: normalize(x_['p'])
-        dp_.vector()[:] = x_['p'][:] - dp_.vector()[:]
+        p_sol.solve(Ap, x_['pcc'], b['pcc'])
+        dpcc_.vector()[:] = x_['pcc'][:] - dpcc_.vector()[:]
         if tstep % check == 0:
             if num_iter > 1:
                 if j == 1: info_blue('                 error u  error p')
@@ -333,7 +340,7 @@ while t < (T - tstep*DOLFIN_EPS):
     ### Update velocity ###
     for ui in u_components:
         b[ui][:] = M*x_[ui][:]        
-        b[ui].axpy(-dt_, P[ui]*dp_.vector())
+        b[ui].axpy(-dt_, P[ui]*dpcc_.vector())
         [bc.apply(b[ui]) for bc in bcs[ui]]
         if du_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
             print 'Solving ', ui

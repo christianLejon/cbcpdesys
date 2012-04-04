@@ -152,9 +152,6 @@ class PDESubSystemBase:
         x_star = self.work  # more informative name
         x_star[:] = self.x[:]    # start vector for iterative solvers
         self.setup_solver(assemble_A, assemble_b)
-        print 'A ', isnan(self.A.array()).any(), self.A.norm('l1'), self.A.norm('linf'), self.A.norm('frobenius') 
-        print 'b ', any(isnan(self.b.array()))
-        print 'x ', any(isnan(x_star.array()))
         self.xstar=x_star
         self.linear_solver.solve(self.A, x_star, self.b)
         if self.normalize: self.normalize(x_star)
@@ -281,7 +278,7 @@ class PDESubSystemBase:
             return -inner(grad(v), outer(w, u))
             
         elif convection_form == 'Skew':
-            return 0.5*(inner(v, dot(u, nabla_grad(u))) + inner(v, nabla_div(outer(w, u))))
+            return 0.5*(inner(v, dot(w, nabla_grad(u))) + inner(v, nabla_div(outer(w, u))))
 
     def get_work_vector(self):
         """Return a work vector. Check first in cached _work."""
