@@ -54,8 +54,8 @@ and then using the following to create the lhs A:
 """
 from cbc.cfd.oasis import *
 
-#parameters["linear_algebra_backend"] = "Epetra"
-parameters["linear_algebra_backend"] = "PETSc"
+parameters["linear_algebra_backend"] = "Epetra"
+#parameters["linear_algebra_backend"] = "PETSc"
 parameters["form_compiler"]["optimize"]     = False   # I sometimes get memory access error with True here (MM)
 parameters["form_compiler"]["cpp_optimize"] = True
 set_log_active(True)
@@ -79,6 +79,11 @@ spline_func = create_spline(smooth_func, m, c, dt)
 #mesh = Mesh("/home/mikaelmo/cbcpdesys/cbc/cfd/data/straight_nerves_refined.xml")
 mesh = Mesh("/home/mikael/Fenics/cbcpdesys/cbc/cfd/data/csf_block80_refined.xml")
 #mesh = Mesh("/home/mikael/Fenics/cbcpdesys/cbc/cfd/data/straight_nerves_refined.xml")
+#mesh = UnitCube(20, 20, 25)
+#xx = mesh.coordinates()
+#xx[:, 2] = 10.*(xx[:, 2] - 0.5)
+#xx[:, 1] = 0.25*xx[:, 1]
+#xx[:, 0] = 0.25*xx[:, 0]
 normal = FacetNormal(mesh)
     
 # Set parameters
@@ -165,7 +170,8 @@ else:
 u_  = as_vector([q_[ui]  for ui in u_components]) # Velocity vector at t
 u_1 = as_vector([q_1[ui] for ui in u_components]) # Velocity vector at t - dt
 u_2 = as_vector([q_2[ui] for ui in u_components]) # Velocity vector at t - 2*dt
-q_['pcc'] = interpolate(Expression(("dpdx*(x[2]+5)", "0", "0"), dpdx=23.), QRR)
+dpdx = splev(0, spline_func)/10.
+q_['pcc'] = interpolate(Expression(("dpdx*(x[2]+5)", "0", "0"), dpdx=dpdx), QRR)
 pcc_ = q_['pcc']                # pressure at t - dt/2
 dpcc_ = Function(QRR)               # pressure correction
 p_, ca_, cb_ = pcc_.split()
@@ -174,14 +180,19 @@ dp_, dca_, dcb_ = dpcc_.split()
 
 bcs = dict((ui, []) for ui in sys_comp)
 
+tol = 10.*DOLFIN_EPS
+# Just mark all boundaries as walls, overwrite with top and bottom
 def walls(x, on_bnd):
-    return on_bnd and not (abs(abs(x[2]) - 5.) < 1.e-12)
+    return on_bnd
+    
+#def walls(x, on_bnd):
+    #return on_bnd and (x[0] < tol or x[0] > 0.25 - tol or x[1] < tol or x[1] > 0.25 - tol) 
     
 def top(x, on_bnd):
-    return abs(x[2] - 5.) < 1.e-12 and on_bnd
+    return abs(x[2] - 5.) < 1.e-12 and on_bnd 
     
 def bottom(x, on_bnd):
-    return abs(x[2] + 5.) < 1.e-12 and on_bnd
+    return abs(x[2] + 5.) < 1.e-12 and on_bnd 
 
 # Create FacetFunction for computing intermediate results
 mf = FacetFunction("uint", mesh) # Facets
@@ -200,9 +211,9 @@ A3 = assemble(one*ds(3), mesh=mesh, exterior_facet_domains=mf)
     
 p_top = Constant(0)
 p_bottom = Constant(0)
-bcs['u0'] = [DirichletBC(V, Constant(0), walls)]
-bcs['u1'] = [DirichletBC(V, Constant(0), walls)]
-bcs['u2'] = [DirichletBC(V, Constant(0), walls)]
+bcs['u0'] = [DirichletBC(V, Constant(0), mf, 1)]
+bcs['u1'] = [DirichletBC(V, Constant(0), mf, 1)]
+bcs['u2'] = [DirichletBC(V, Constant(0), mf, 1)]
 #bcs['p']  = [DirichletBC(Q, p_top, top),
              #DirichletBC(Q, p_bottom, bottom)]
 bcs['p'] = []
@@ -214,8 +225,9 @@ normalize = False
 # Preassemble some constant in time matrices
 M = assemble(inner(u, v)*dx)                    # Mass matrix
 K = assemble(nu*inner(grad(u), grad(v))*dx)     # Diffusion matrix
-Ap = assemble(inner(grad(q), grad(p))*dx + pa*q*ds(2) + p*qa*ds(2) + pb*q*ds(3) + p*qb*ds(3))     # Pressure Laplacian
-App = assemble(inner(grad(q), grad(p))*dx)    # Pressure Laplacian
+App = assemble(inner(grad(q), grad(p))*dx)      # Pressure Laplacian
+Ap = assemble(inner(grad(q), grad(p))*dx + pa*q*ds(2) + p*qa*ds(2) + pb*q*ds(3) + p*qb*ds(3),
+              exterior_facet_domains=mf)        # Pressure Laplacian plus boundary terms
 A = Matrix()                                    # Coefficient matrix (needs reassembling)
 
 dp0 = p_top*qa*ds(2)
@@ -239,29 +251,40 @@ P = dict((ui, assemble(v*p.dx(i)*dx)) for i, ui in enumerate(u_components))
     
 Rc = dict((ui, assemble(q*u.dx(i)*dx)) for i, ui in  enumerate(u_components))
 
-u_sol = KrylovSolver('bicgstab', 'jacobi')
-u_sol.parameters['error_on_nonconvergence'] = False
-u_sol.parameters['nonzero_initial_guess'] = True
-u_sol.parameters['monitor_convergence'] = True
-u_sol.parameters['relative_tolerance'] = 1e-7
-u_sol.parameters['absolute_tolerance'] = 1e-10
 reset_sparsity = True
 
-du_sol = KrylovSolver('bicgstab', 'hypre_euclid')
-du_sol.parameters['error_on_nonconvergence'] = False
-du_sol.parameters['nonzero_initial_guess'] = True
-du_sol.parameters['preconditioner']['reuse'] = True
-du_sol.parameters['monitor_convergence'] = True
-du_sol.parameters['relative_tolerance'] = 1e-7
-du_sol.parameters['absolute_tolerance'] = 1e-10
+if True:
+    u_sol = KrylovSolver('bicgstab', 'jacobi')
+    u_sol.parameters['error_on_nonconvergence'] = False
+    u_sol.parameters['nonzero_initial_guess'] = True
+    u_sol.parameters['monitor_convergence'] = True
+    u_sol.parameters['relative_tolerance'] = 1e-7
+    u_sol.parameters['absolute_tolerance'] = 1e-10
+    
+    du_sol = KrylovSolver('bicgstab', 'ilu')
+    du_sol.parameters['error_on_nonconvergence'] = False
+    du_sol.parameters['nonzero_initial_guess'] = True
+    du_sol.parameters['preconditioner']['reuse'] = True
+    du_sol.parameters['monitor_convergence'] = True
+    du_sol.parameters['relative_tolerance'] = 1e-7
+    du_sol.parameters['absolute_tolerance'] = 1e-10
 
-p_sol = KrylovSolver('bicgstab', 'jacobi')
-p_sol.parameters['error_on_nonconvergence'] = False
-p_sol.parameters['nonzero_initial_guess'] = True
-p_sol.parameters['preconditioner']['reuse'] = True
-p_sol.parameters['monitor_convergence'] = True
-p_sol.parameters['relative_tolerance'] = 1e-7
-p_sol.parameters['absolute_tolerance'] = 1e-10
+    p_sol = KrylovSolver('gmres', 'ml_amg')
+    p_sol.parameters['error_on_nonconvergence'] = False
+    p_sol.parameters['nonzero_initial_guess'] = True
+    p_sol.parameters['preconditioner']['reuse'] = True
+    p_sol.parameters['monitor_convergence'] = True
+    p_sol.parameters['relative_tolerance'] = 1e-7
+    p_sol.parameters['absolute_tolerance'] = 1e-10
+else:
+    u_sol = LUSolver()
+    u_sol.parameters['reuse_factorization'] = False
+
+    p_sol = LUSolver()
+    p_sol.parameters['reuse_factorization'] = True
+
+    du_sol = LUSolver()
+    du_sol.parameters['reuse_factorization'] = True
 
 x_  = dict((ui, q_ [ui].vector()) for ui in sys_comp)     # Solution vectors t
 x_1 = dict((ui, q_1[ui].vector()) for ui in u_components) # Solution vectors t - dt
@@ -314,7 +337,8 @@ while t < (T - tstep*DOLFIN_EPS):
             b[ui].axpy(-1., P[ui]*x_['pcc'])
             [bc.apply(b[ui]) for bc in bcs[ui]]
             work[:] = x_[ui][:]
-            if u_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
+            #if u_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
+            if MPI.process_number() == 0:
                 print 'Solving tentative ', ui
             u_sol.solve(A, x_[ui], b[ui])
             err += norm(work - x_[ui])
@@ -327,8 +351,10 @@ while t < (T - tstep*DOLFIN_EPS):
         for ui in u_components:
             b['pcc'].axpy(-1./dt_, Rc[ui]*x_[ui]) # Divergence of u_
         rp = residual(Ap, x_['pcc'], b['pcc'])
-        if p_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
-            print 'Solving p'        
+        #if p_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
+        if MPI.process_number() == 0:
+            print 'Solving p' 
+            
         p_sol.solve(Ap, x_['pcc'], b['pcc'])
         dpcc_.vector()[:] = x_['pcc'][:] - dpcc_.vector()[:]
         if tstep % check == 0:
@@ -342,7 +368,8 @@ while t < (T - tstep*DOLFIN_EPS):
         b[ui][:] = M*x_[ui][:]        
         b[ui].axpy(-dt_, P[ui]*dpcc_.vector())
         [bc.apply(b[ui]) for bc in bcs[ui]]
-        if du_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
+        #if du_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
+        if MPI.process_number() == 0:
             print 'Solving ', ui
         du_sol.solve(M, x_[ui], b[ui])
 
