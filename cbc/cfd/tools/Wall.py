@@ -196,7 +196,7 @@ class Yplus(Wallfunction):
         # Use the velocity functionspace to compute the distance to the wall. 
         # If y is different from u, then project onto velocity space to get 
         # the same numbering
-        if y.function_space().ufl_element().degree == V.ufl_element().degree():
+        if y.function_space().ufl_element().degree() == V.ufl_element().degree():
             yy = y
         else:
             Q = FunctionSpace(V.mesh(), V.sub(0).ufl_element().family(), V.ufl_element().degree())

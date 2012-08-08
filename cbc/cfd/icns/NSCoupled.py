@@ -86,7 +86,7 @@ class CoupledBase(PDESubSystem):
                 up_, up = self.solver_namespace['up_'], self.solver_namespace['up']
                 F_ = action(self.F, coefficient=up_)
                 J_ = derivative(F_, up_, up)
-                self.a, self.L = J_, -F_
+                self.a, self.L = J_, F_
 
     def add_exterior(self, u, v, p, q, n, nu, **kwargs):
         """
@@ -130,7 +130,7 @@ class CoupledBase(PDESubSystem):
             - inner(q, div(u))*dx - inner(v, f)*dx
         return F
         
-    def stabilization(self, u_, u_1, u, p, q, nu, nut_, eps, n, convection_form, 
+    def stabilization(self, u_, u, p, q, nu, nut_, eps, n, convection_form, 
                       **kwargs):
         """Add stabilization to Navier Stokes solver."""
         if type(nu) is Constant:

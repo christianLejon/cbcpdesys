@@ -9,7 +9,7 @@ Base class for all Turbulence model solvers.
 from cbc.pdesys.PDESystem import *
 
 solver_parameters = copy.deepcopy(default_solver_parameters)
-solver_parameters = recursive_update(default_solver_parameters, {
+solver_parameters = recursive_update(solver_parameters, {
     'apply': defaultdict(lambda: 'use_formula'),
     'familyname': 'Turbulence model'
 })

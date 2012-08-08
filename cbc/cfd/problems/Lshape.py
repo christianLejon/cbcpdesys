@@ -94,12 +94,12 @@ if __name__ == '__main__':
          pdesubsystem=dict(u=1, p=1, velocity_update=1, up=1), 
          linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab', up='lu'), 
          precond=dict(u='jacobi', p='amg', velocity_update='ilu'),
-         iteration_type='Picard', max_iter=1, max_err=1e-6,
+         iteration_type='Newton', max_iter=5, max_err=1e-6,
          stabilization_prm=0.01)
          )
     problem = Lshape(problem_parameters)
-    solver = icns.NSFullySegregated(problem, solver_parameters)
-    #solver = icns.NSCoupled(problem, solver_parameters)  
+    #solver = icns.NSFullySegregated(problem, solver_parameters)
+    solver = icns.NSCoupled(problem, solver_parameters)  
     #solver = icns.NSSegregated(problem, solver_parameters)
     t0 = time.time()
     problem.solve()

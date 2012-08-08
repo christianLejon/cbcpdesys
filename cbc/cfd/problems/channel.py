@@ -53,8 +53,8 @@ class channel(NSProblem):
         self.L = problem_parameters['L']
         m = Rectangle(0., -1., self.L, 1., self.prm['Nx'], self.prm['Ny'])
         # Create stretched mesh in y-direction
-        #x = m.coordinates()        
-        #x[:, 1] = arctan(pi*(x[:, 1]))/arctan(pi) 
+        x = m.coordinates()        
+        x[:, 1] = arctan(pi*(x[:, 1]))/arctan(pi) 
         #x[:, 1] = 0.5*x[:, 1]
         return m        
         
@@ -122,7 +122,16 @@ class channel(NSProblem):
     def functional(self, u):
         x = array((1.0, 0.))
         values = array((0.0, 0.0))
-        u.eval(values, x)
+        if isinstance(u, ufl.tensors.ListTensor):
+            try:
+                u[0].eval(values, x)
+            except RuntimeError:
+                pass
+        else:
+            try:
+                u.eval(values, x)
+            except RuntimeError:
+                pass
         return values[0]
 
     def reference(self):
@@ -141,7 +150,10 @@ class channel(NSProblem):
         
     def update(self):
         NSProblem.update(self)
-        info_green(self.error())
+        fun, err = self.functional(self.NS_solver.u_), self.reference()
+        if not abs(fun) <= 1e-12:
+            print MPI.process_number(), "Error: ", fun - err 
+        #info_green(self.error())
         
     def __info__(self):
         return 'Periodic channel flow'
@@ -155,27 +167,35 @@ if __name__ == '__main__':
     problem_parameters['Nx'] = 16
     problem_parameters['Ny'] = 16
     problem_parameters['T'] = 100.
-    problem_parameters['Re'] = 2000.
+    problem_parameters['Re'] = 20.
     problem_parameters['max_iter'] = 1
     problem_parameters['max_err'] = 1e-10
     problem_parameters['plot_velocity'] = True # plot velocity at end of timestep
     problem_parameters['periodic'] = True      # Use or not periodic boundary conditions
     problem_parameters['L'] = 5.
-    problem_parameters['dt'] = 1
+    problem_parameters['dt'] = 1.
     solver_parameters = recursive_update(solver_parameters, 
     dict(degree=dict(u=2, u0=2, u1=2),
          pdesubsystem=dict(u=1, p=1, velocity_update=1, up=1), max_iter=1,         # GRPC 30
-         linear_solver=dict(u='lu', p='lu', velocity_update='lu'), 
-         precond=dict(u='jacobi', p='amg', velocity_update='jacobi'))
+         linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
+         precond=dict(u='hypre_euclid', p='hypre_amg', velocity_update='hypre_euclid'))
     )
     
     # Set up problem
     NS_problem = channel(problem_parameters)
     
     # Choose Navier-Stokes solver
-    #NS_solver = icns.NSFullySegregated(NS_problem, solver_parameters)
-    NS_solver = icns.NSSegregated(NS_problem, solver_parameters)
+    NS_solver = icns.NSFullySegregated(NS_problem, solver_parameters)
+    #NS_solver = icns.NSSegregated(NS_problem, solver_parameters)
     #NS_solver = icns.NSCoupled(NS_problem, solver_parameters)
+    
+    for name in NS_solver.system_names:
+        NS_solver.pdesubsystems[name].prm['monitor_convergence'] = True
+        NS_solver.pdesubsystems[name].linear_solver.parameters['relative_tolerance'] = 1e-14
+        NS_solver.pdesubsystems[name].linear_solver.parameters['absolute_tolerance'] = 1e-14
+    #solver.pdesubsystems['u0_update'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['u1_update'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['u2_update'].prm['monitor_convergence'] = True
     
     # Solve the problem
     NS_problem.solve()

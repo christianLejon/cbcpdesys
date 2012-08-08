@@ -74,7 +74,7 @@ class ScalarBase(PDESubSystem):
             u  = self.solver_namespace[self.name]
             F_ = action(self.F, coefficient=u_)
             J_ = derivative(F_, u_, u)
-            self.a, self.L = J_, -F_
+            self.a, self.L = J_, F_
             
     def add_exterior(self, c, v_c, n, nu, **kwargs):
         C = self.Laplace_C

@@ -173,7 +173,7 @@ class PDESubSystemBase:
         self.assemble(self.b)
         #if self.normalize: self.normalize(b)
         if not hasattr(self, 'first'):
-            [bc.apply(self.x) for bc in self.bcs]
+            #[bc.apply(self.x) for bc in self.bcs]
             self.first = True
         [bc.apply(self.A, self.b, self.x) for bc in self.bcs]
         dx = self.work   # more informative name
@@ -181,7 +181,7 @@ class PDESubSystemBase:
         self.linear_solver.solve(self.A, dx, self.b)
         if self.normalize: self.normalize(dx)
         omega = self.prm['omega']
-        self.x.axpy(omega, dx)  # relax
+        self.x.axpy(-omega, dx)  # relax
         self.update()
         return norm(self.b), dx
         #return 1, dx
@@ -345,9 +345,12 @@ class PDESubSystem(PDESubSystemBase):
             self.get_form(form_args)
             u_ = self.solver_namespace[self.name + '_']
             u  = self.solver_namespace[self.name]
-            F_ = action(self.F, coefficient=u_)
+            if len(ufl.algorithms.extract_arguments(self.F)) == 2:
+                F_ = action(self.F, coefficient=u_)
+            else:
+                F_ = self.F
             J_ = derivative(F_, u_, u)
-            self.a, self.L = J_, -F_
+            self.a, self.L = J_, F_
 
 class DerivedQuantity(PDESubSystemBase):
     """Base class for derived quantities.        
