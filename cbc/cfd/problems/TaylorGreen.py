@@ -34,7 +34,8 @@ class TaylorGreen(NSProblem):
         self.q0 = initial_velocity
     
     def gen_mesh(self):
-        m = UnitCube(self.prm['Nx'], self.prm['Ny'], self.prm['Nz'])
+        #m = UnitCube(self.prm['Nx'], self.prm['Ny'], self.prm['Nz'])
+        m = Box(0, 0, 0, 1, 1, 1, self.prm['Nx'], self.prm['Ny'], self.prm['Nz'])
         scale = 2*(m.coordinates() - 0.5)*pi
         m.coordinates()[:, :] = scale
         return m
@@ -74,7 +75,8 @@ class TaylorGreen(NSProblem):
                                 mf = self.mf,
                                 periodic_map = periodic_mapZ)
                                 
-        return [periodicX, periodicY, periodicZ]
+        return [periodicX, periodicY, periodicZ]        
+        #return [periodicX, periodicY]
        
     def update(self):
         if (self.tstep-1) % self.NS_solver.prm['save_solution'] == 0:
@@ -90,15 +92,15 @@ if __name__ == '__main__':
     from cbc.cfd.icns import solver_parameters  # parameters to NS solver
     set_log_active(True)
     problem_parameters['time_integration']='Transient'
-    problem_parameters['Nx'] = 24
-    problem_parameters['Ny'] = 24
-    problem_parameters['Nz'] = 24
-    problem_parameters['T'] = 1.
+    problem_parameters['Nx'] = 12
+    problem_parameters['Ny'] = 12
+    problem_parameters['Nz'] = 12
+    problem_parameters['T'] = 10.
     solver_parameters = recursive_update(solver_parameters, 
     dict(degree=dict(u=1),
          pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
-         linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
-         precond=dict(u='jacobi', p='ilu', velocity_update='jacobi'),
+         linear_solver=dict(u='bicgstab', p='lu', velocity_update='bicgstab'), 
+         precond=dict(u='hypre_euclid', p='hypre_amg', velocity_update='hypre_euclid'),
          save_solution=10)
          )
     
@@ -107,10 +109,15 @@ if __name__ == '__main__':
     #NS_solver = icns.NSSegregated(NS_problem, solver_parameters)
     #NS_solver = icns.NSCoupled(NS_problem, solver_parameters)
     
+    #for name in NS_solver.system_names:
+        #if name is not 'p':
+            #NS_solver.pdesubsystems[name].prm['monitor_convergence'] = True
+            #NS_solver.pdesubsystems[name].linear_solver.parameters['relative_tolerance'] = 1e-12
+            #NS_solver.pdesubsystems[name].linear_solver.parameters['absolute_tolerance'] = 1e-12
     t0 = time()
     NS_problem.solve()
     print 'time = ', time()-t0
-    print summary()
+    list_timings()
     plot(NS_solver.u_)
     interactive()
     

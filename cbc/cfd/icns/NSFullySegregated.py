@@ -4,6 +4,7 @@ __copyright__ = "Copyright (C) 2010 " + __author__
 __license__  = "GNU GPL version 3 or any later version"
 
 from NSSolver import *
+from numpy import isnan, where
 
 class NSFullySegregated(NSSolver):
     """Segregated solver for the Navier-Stokes equations.
@@ -56,7 +57,7 @@ class NSFullySegregated(NSSolver):
                               normalize=self.normalize['p'])
         
         # Initialize pressure through this presolve (should improve accuracy of first step)
-        self.pdesubsystems['p'].solve()
+        #self.pdesubsystems['p'].solve()
         if self.prm['time_integration'] == 'Transient':
             uu_subsystem = 'VelocityUpdate_' + \
                            str(self.prm['pdesubsystem']['velocity_update'])
@@ -415,16 +416,16 @@ class Transient_Velocity_101(VelocityBase):
     def solve_Picard_system(self, assemble_A, assemble_b):
         # Assemble A and parts of b
         if assemble_A: self.assemble()
-        
         # In case of inner iterations over u-p system, it is only 
         # the pressure part of b that needs reassembling. Remember the
         # preassembled part in bold
         self.bold[:] = self.b[:] 
         self.b.axpy(-1., self.P*self.solver_namespace['x_']['p'])
         [bc.apply(self.A, self.b) for bc in self.bcs]
+
         self.work[:] = self.x[:]    # start vector for iterative solvers
         # Check out line below to save one matrix vector product
-        rv = residual(self.A, self.x, self.b)
+        rv = residual(self.A, self.x, self.b)        
         #rv = 0
         self.setup_solver(assemble_A, assemble_b)
         self.linear_solver.solve(self.A, self.x, self.b)

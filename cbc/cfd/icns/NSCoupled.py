@@ -34,7 +34,7 @@ class NSCoupled(NSSolver):
                 else:
                     if bc.type() == 'Wall':
                         # Default is zero on walls for all quantities
-                        func = Constant((1e-10,)*self.mesh.geometry().dim())
+                        func = Constant((0,)*self.mesh.geometry().dim())
                         add_BC(bcu['up'], self.V['up'].sub(0), bc, func)                        
                     elif bc.type() == 'VelocityInlet':
                         raise TypeError, 'expected func for VelocityInlet'                
@@ -84,7 +84,10 @@ class CoupledBase(PDESubSystem):
                     self.F = self.F + self.stabilization(**form_args) 
                 # Set up Newton system
                 up_, up = self.solver_namespace['up_'], self.solver_namespace['up']
-                F_ = action(self.F, coefficient=up_)
+                if len(ufl.algorithms.extract_arguments(self.F)) == 2:
+                    F_ = action(self.F, coefficient=up_)
+                else:
+                    F_ = self.F
                 J_ = derivative(F_, up_, up)
                 self.a, self.L = J_, F_
 

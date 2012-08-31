@@ -42,7 +42,7 @@ class V2F(TurbSolver):
         model = self.prm['model']
         info('Setting parameters for %s V2F model ' %(model))
         self.problem.NS_solver.prm['apply']['S2'] = 'project'
-        for dq in ['T', 'L']:
+        for dq in ['T', 'L', 'Ce1']:
             # Specify projection as default
             # (remaining DQs are use_formula by default)
             self.prm['apply'][dq] = self.prm['apply'].get(dq, 'project')

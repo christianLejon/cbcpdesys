@@ -226,9 +226,9 @@ class PDESystem:
         for name in self.system_names:
             bcu[name] = []
             
-        for bc in bcs:
-            for name in self.system_names:
-                V = self.V[name]
+        for name in self.system_names:
+            V = self.V[name]
+            for bc in bcs:
                 if bc.type() in ('VelocityInlet', 'Wall'):
                     if hasattr(bc, 'func'):
                         if isinstance(bc.func, dict):
@@ -260,7 +260,8 @@ class PDESystem:
                     add_BC(bcu[name], V, bc, None)
                 else:
                     info("No assigned boundary condition for %s -- skipping..."
-                         %(bc.__class__.__name__))                
+                         %(bc.__class__.__name__))
+                         
         return bcu
         
     def solve(self, func = 'advance', redefine = True, **kwargs):
