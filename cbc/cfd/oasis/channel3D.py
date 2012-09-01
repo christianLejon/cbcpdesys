@@ -71,9 +71,9 @@ info_red('Memory use of plain dolfin = ' + dolfin_memory_use)
 Lx = 4.
 Ly = 2.
 Lz = 2.
-Nx = 16
-Ny = 16
-Nz = 16
+Nx = 40
+Ny = 40
+Nz = 40
 mesh = Box(0., -Ly/2., -Lz/2., Lx, Ly/2., Lz/2., Nx, Ny, Nz)
 # Create stretched mesh in y-direction
 x = mesh.coordinates()        
@@ -86,7 +86,7 @@ nu = Constant(2.e-5)           # Viscosity
 utau = nu(0) * Re_tau
 t = 0.0                        # time
 tstep = 0                      # Timestep
-T = 1.8                        # End time
+T = 100.0                        # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
 max_error = 1e-6
@@ -250,7 +250,16 @@ V0 = assemble(one*dx, mesh=mesh)
 A1 = assemble(one*ds(1), mesh=mesh, exterior_facet_domains=mf)
 A2 = assemble(one*ds(2), mesh=mesh, exterior_facet_domains=mf)
 A3 = assemble(one*ds(3), mesh=mesh, exterior_facet_domains=mf)
-   
+
+# Preassemble constant pressure gradient matrix
+# Before creating PeriodicBC to avoid master/slave sparsity issues
+P = dict((ui, assemble(v*p.dx(i)*dx)) for i, ui in enumerate(u_components))
+
+# Preassemble velocity divergence matrix
+Rx = dict((ui, assemble(q*u.dx(i)*dx)) for i, ui in  enumerate(u_components))
+#for ui in  u_components:
+#    bcs['p'][0].pre_solve_elimination(QR._periodic_master_slave_dofs, Rx[ui])
+
 bc = [PeriodicBC(V, pbx), PeriodicBC(V, pbz), DirichletBC(V, Constant(0), walls)]
 bcs['u0'] = bc
 bcs['u1'] = bc
@@ -262,8 +271,20 @@ bcs['pc'] = [PeriodicBC(QR, pbx), PeriodicBC(QR, pbz)]
 # Preassemble some constant in time matrices
 M = assemble(inner(u, v)*dx)                    # Mass matrix
 K = assemble(nu*inner(grad(u), grad(v))*dx)     # Diffusion matrix
-Ap = assemble(inner(grad(q), grad(p))*dx + (inner(d, p) + inner(q, c)) * dx)    # Pressure Laplacian
+Ap = assemble(inner(grad(q), grad(p))*dx + 0*(inner(d, p) + inner(q, c)) * dx)    # Pressure Laplacian
 A = Matrix()                                    # Coefficient matrix (needs reassembling)
+
+NN = Ap.size(0)
+if (NN-1 >= Ap.local_range(0)[0] and NN-1 < Ap.local_range(0)[1]):
+    a1 = Ap.getrow(NN-1)
+    a2 = Ap.getrow(NN-2)
+    a1[1][-2] = 1.
+    a2[1][-1] = 1.
+    #Ap.setrow(NN-2, array(a2[0], 'I'), a2[1])
+    #Ap.setrow(NN-1, array(a1[0], 'I'), a1[1])
+    Ap.setrow(NN-2, array([NN-2], 'I'), array([1.]))
+    Ap.setrow(NN-1, array([NN-2, NN-1], 'I'), array([1., 1.]))
+Ap.apply("insert")
 
 # Apply boundary conditions on M and Ap that are used directly in solve
 App = Ap.copy()
@@ -272,6 +293,8 @@ MM = M.copy()
 [bc.apply(App) for bc in bcs['pc']]
 bcs['pc'][0].pre_solve_elimination(QR._periodic_master_slave_dofs, App)
 bcs['u0'][0].pre_solve_elimination(V._periodic_master_slave_dofs, MM)
+MM.compress()
+App.compress()
 
 # Adams Bashforth projection of velocity at t - dt/2
 U_ = 1.5*u_1 - 0.5*u_2
@@ -279,46 +302,38 @@ U_ = 1.5*u_1 - 0.5*u_2
 # Convection form
 a  = 0.5*inner(v, dot(U_, nabla_grad(u)))*dx
 
-# Preassemble constant pressure gradient matrix
-P = dict((ui, assemble(v*p.dx(i)*dx)) for i, ui in enumerate(u_components))
-
-# Preassemble velocity divergence matrix
-Rx = dict((ui, assemble(q*u.dx(i)*dx)) for i, ui in  enumerate(u_components))
-#for ui in  u_components:
-#    bcs['p'][0].pre_solve_elimination(QR._periodic_master_slave_dofs, Rx[ui])
-
 #u_sol = LUSolver()
-u_sol = KrylovSolver('bicgstab', 'hypre_euclid')
+u_sol = KrylovSolver('bicgstab', 'jacobi')
 u_sol.parameters['error_on_nonconvergence'] = False
 u_sol.parameters['nonzero_initial_guess'] = True
 u_sol.parameters['preconditioner']['reuse'] = False
-u_sol.parameters['monitor_convergence'] = False
+u_sol.parameters['monitor_convergence'] = True
 u_sol.parameters['maximum_iterations'] = 50
-u_sol.parameters['relative_tolerance'] = 1e-9
-u_sol.parameters['absolute_tolerance'] = 1e-10
+#u_sol.parameters['relative_tolerance'] = 1e-9
+#u_sol.parameters['absolute_tolerance'] = 1e-10
 u_sol.t = 0
 reset_sparsity = True
 
 #du_sol = LUSolver()
-du_sol = KrylovSolver('bicgstab', 'hypre_euclid')
+du_sol = KrylovSolver('gmres', 'hypre_amg')
 du_sol.parameters['error_on_nonconvergence'] = False
 du_sol.parameters['nonzero_initial_guess'] = True
 du_sol.parameters['preconditioner']['reuse'] = True
-du_sol.parameters['monitor_convergence'] = False
+du_sol.parameters['monitor_convergence'] = True
 du_sol.parameters['maximum_iterations'] = 50
-du_sol.parameters['relative_tolerance'] = 1e-9
-du_sol.parameters['absolute_tolerance'] = 1e-10
+#du_sol.parameters['relative_tolerance'] = 1e-9
+#du_sol.parameters['absolute_tolerance'] = 1e-10
 du_sol.t = 0
 
 #p_sol = LUSolver()
-p_sol = KrylovSolver('tfqmr', 'hypre_euclid')
+p_sol = KrylovSolver('gmres', 'hypre_amg')
 p_sol.parameters['error_on_nonconvergence'] = False
 p_sol.parameters['nonzero_initial_guess'] = True
 p_sol.parameters['preconditioner']['reuse'] = True
-p_sol.parameters['monitor_convergence'] = False
+p_sol.parameters['monitor_convergence'] = True
 p_sol.parameters['maximum_iterations'] = 50
-#p_sol.parameters['relative_tolerance'] = 1e-9
-#p_sol.parameters['absolute_tolerance'] = 1e-10
+p_sol.parameters['relative_tolerance'] = 1e-9
+p_sol.parameters['absolute_tolerance'] = 1e-10
 p_sol.t = 0
 
 x_  = dict((ui, q_ [ui].vector()) for ui in sys_comp)     # Solution vectors t
@@ -401,7 +416,7 @@ while t < T + DOLFIN_EPS:
         for ui in u_components:
             b['pc'].axpy(-1./dt_, Rx[ui]*x_[ui]) # Divergence of u_
         [bc.apply(b['pc']) for bc in bcs['pc']]
-        rp = residual(Ap, x_['pc'], b['pc'])
+        #rp = residual(Ap, x_['pc'], b['pc'])
         #if p_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
         if MPI.process_number() == 0:
             print 'Solving p'        
@@ -473,4 +488,6 @@ print 'u_sol ', u_sol.t
 print 'du_sol ', du_sol.t
 print 'p_sol ', p_sol.t
 #plot(project(u_, Vv))
+interactive()
+
 
