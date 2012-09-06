@@ -1,7 +1,7 @@
 __author__ = "Mikael Mortensen <mikaem@math.uio.no>"
 __date__ = "2011-12-19"
 __copyright__ = "Copyright (C) 2011 " + __author__
-__license__  = "GNU GPL version 3 or any later version"
+__license__  = "GNU Lesser GPL version 3 or any later version"
 
 """
 This is a highly tuned and stripped down Navier-Stokes solver optimized
@@ -88,7 +88,7 @@ f = Constant((0,)*dim)
 #####################################################################
 
 # Declare solution Functions and FunctionSpaces
-V = FunctionSpace(mesh, 'CG', 2)
+V = FunctionSpace(mesh, 'CG', 1)
 Q = FunctionSpace(mesh, 'CG', 1)
 Vv = VectorFunctionSpace(mesh, 'CG', V.ufl_element().degree())
 u = TrialFunction(V)
@@ -145,6 +145,8 @@ A = Matrix()                                    # Coefficient matrix (needs reas
 [bc.apply(M)  for bc in bcs['u0']]
 [bc.apply(Ap) for bc in bcs['p']]
 
+Ap.compress()
+
 # Adams Bashforth projection of velocity at t - dt/2
 U_ = 1.5*u_1 - 0.5*u_2
 
@@ -177,18 +179,20 @@ list_timings()
 u_sol = KrylovSolver('gmres', 'jacobi')
 u_sol.parameters['error_on_nonconvergence'] = False
 u_sol.parameters['nonzero_initial_guess'] = True
-#u_sol.parameters['monitor_convergence'] = True
+u_sol.parameters['monitor_convergence'] = True
 reset_sparsity = True
 
-du_sol = KrylovSolver('gmres', 'jacobi')
+du_sol = KrylovSolver('gmres', 'hypre_amg')
 du_sol.parameters['error_on_nonconvergence'] = False
 du_sol.parameters['nonzero_initial_guess'] = True
 du_sol.parameters['preconditioner']['reuse'] = True
+du_sol.parameters['monitor_convergence'] = True
 
 p_sol = KrylovSolver('gmres', 'hypre_amg')
 p_sol.parameters['error_on_nonconvergence'] = False
 p_sol.parameters['nonzero_initial_guess'] = True
 p_sol.parameters['preconditioner']['reuse'] = True
+p_sol.parameters['monitor_convergence'] = True
 
 x_  = dict((ui, q_ [ui].vector()) for ui in sys_comp)     # Solution vectors t
 x_1 = dict((ui, q_1[ui].vector()) for ui in u_components) # Solution vectors t - dt
@@ -250,7 +254,7 @@ while t < (T - tstep*DOLFIN_EPS):
         [bc.apply(b['p']) for bc in bcs['p']]
         rp = residual(Ap, x_['p'], b['p'])
         p_sol.solve(Ap, x_['p'], b['p'])
-        if normalize: normalize(x_['p'])
+        #if normalize: normalize(x_['p'])
         dp_.vector()[:] = x_['p'][:] - dp_.vector()[:]
         if tstep % check == 0:
             if num_iter > 1:
@@ -279,6 +283,9 @@ mymem = eval(getMyMemoryUsage())-eval(dolfin_memory_use)
 info_red('Total memory use of solver = ' + str(comm.reduce(mymem, root=0)))
 list_timings()
 #plot(project(u_, Vv)) 
-plot(p_, interactive=True)
+#plot(p_, interactive=True)
+from cbc.cfd.tools.Streamfunctions import StreamFunction
+psi = StreamFunction(u_, [], use_strong_bc=True)
+plot(psi)
 
 

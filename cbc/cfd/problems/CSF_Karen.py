@@ -1,7 +1,7 @@
 __author__ = "Mikael Mortensen <mikaem@math.uio.no>"
 __date__ = "2012-02-02"
 __copyright__ = "Copyright (C) 2012 " + __author__
-__license__  = "GNU GPL version 3 or any later version"
+__license__  = "GNU Lesser GPL version 3 or any later version"
 
 from NSProblem import *
 from csf_formula4 import smooth_flow, create_spline, splev

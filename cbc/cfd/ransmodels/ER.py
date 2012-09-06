@@ -1,7 +1,7 @@
 __author__ = "Jorgen Myre <jorgenmy@math.uio.no>"
 __date__ = "2011-02-22"
 __copyright__ = "Copyright (C) 2011 " + __author__
-__license__  = "GNU GPL version 3 or any later version?"
+__license__  = "GNU Lesser GPL version 3 or any later version?"
 """
 
     K-Epsilon/Reynolds-stress turbulence models

@@ -36,18 +36,26 @@ respective author(s).
 License
 -------
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
+CBC.PDESys is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
-For details, refer to the file COPYING.
+CBC.PDESys is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License
+along with CBC.PDESys. If not, see <http://www.gnu.org/licenses/>.
+
+For details, refer to the file COPYING.LESSER.
 
 Feedback, questions
 -------------------
 
 For questions, please contact
 
-  Mikael Mortensen <Mikael.Mortensen@ffi.no>
+  Mikael Mortensen <mikaem@math.uio.no>
 
-Oslo, November 2011
+Oslo, October 2012

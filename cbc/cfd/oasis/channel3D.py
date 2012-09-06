@@ -1,7 +1,7 @@
 __author__ = "Mikael Mortensen <mikaem@math.uio.no>"
 __date__ = "2011-12-19"
 __copyright__ = "Copyright (C) 2011 " + __author__
-__license__  = "GNU GPL version 3 or any later version"
+__license__  = "GNU Lesser GPL version 3 or any later version"
 """
 This is a highly tuned and stripped down Navier-Stokes solver optimized
 for both speed and memory.  
@@ -55,6 +55,7 @@ and then using the following to create the lhs A:
 from cbc.cfd.oasis import *
 from numpy import arctan, array
 import random
+from pylab import find
 
 #parameters["linear_algebra_backend"] = "Epetra"
 parameters["linear_algebra_backend"] = "PETSc"
@@ -71,9 +72,9 @@ info_red('Memory use of plain dolfin = ' + dolfin_memory_use)
 Lx = 4.
 Ly = 2.
 Lz = 2.
-Nx = 40
-Ny = 40
-Nz = 40
+Nx = 16
+Ny = 16
+Nz = 16
 mesh = Box(0., -Ly/2., -Lz/2., Lx, Ly/2., Lz/2., Nx, Ny, Nz)
 # Create stretched mesh in y-direction
 x = mesh.coordinates()        
@@ -86,7 +87,7 @@ nu = Constant(2.e-5)           # Viscosity
 utau = nu(0) * Re_tau
 t = 0.0                        # time
 tstep = 0                      # Timestep
-T = 100.0                        # End time
+T = 100.                        # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
 max_error = 1e-6
@@ -128,7 +129,8 @@ else:
     
 #### Set a folder that contains xml.gz files of the solution. 
 restart_folder = None        
-#restart_folder = '/home/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=0.001/1'
+#restart_folder = '/home/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=2./1'
+#restart_folder = "/home-4/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=2.0000e-01/13/timestep=5000"
 #### Use for initialization if not None
     
 #####################################################################
@@ -182,19 +184,31 @@ class RandomStreamVector(Expression):
 psi = interpolate(RandomStreamVector(), Vv)
 u0 = project(curl(psi), Vv)
 u0x = project(u0[0], V)
-q_['u1'] = project(u0[1], V)
-q_['u2'] = project(u0[2], V)
-#u0 = project(psi.dx(0), V)
-q_['u0'].vector()[:] = 0.1335
-q_['u0'].vector().axpy(1.0, u0x.vector())
-#u1 = project(-psi.dx(1), V)
-#q_['u1'].vector()[:] = u1.vector()[:]
-q_1['u0'].vector()[:] = q_['u0'].vector()[:]
-q_2['u0'].vector()[:] = q_['u0'].vector()[:]
-q_1['u1'].vector()[:] = q_['u1'].vector()[:]
-q_2['u1'].vector()[:] = q_['u1'].vector()[:]
-q_1['u2'].vector()[:] = q_['u2'].vector()[:]
-q_2['u2'].vector()[:] = q_['u2'].vector()[:]
+u1x = project(u0[1], V)
+u2x = project(u0[2], V)
+if restart_folder == None:    
+    #u0 = project(psi.dx(0), V)
+    q_['u0'].vector()[:] = 0.1335
+    q_['u0'].vector().axpy(1.0, u0x.vector())
+    #u1 = project(-psi.dx(1), V)
+    #q_['u1'].vector()[:] = u1.vector()[:]
+    q_1['u0'].vector()[:] = q_['u0'].vector()[:]
+    q_2['u0'].vector()[:] = q_['u0'].vector()[:]
+    q_1['u1'].vector()[:] = q_['u1'].vector()[:]
+    q_2['u1'].vector()[:] = q_['u1'].vector()[:]
+    q_1['u2'].vector()[:] = q_['u2'].vector()[:]
+    q_2['u2'].vector()[:] = q_['u2'].vector()[:]
+else:
+    # Add a random field to jumpstart the turbulence
+    q_['u0'].vector().axpy(1.0, u0x.vector())
+    q_['u1'].vector().axpy(1.0, u1x.vector())
+    q_['u2'].vector().axpy(1.0, u2x.vector())
+    q_1['u0'].vector().axpy(1.0, u0x.vector())
+    q_1['u1'].vector().axpy(1.0, u1x.vector())
+    q_1['u2'].vector().axpy(1.0, u2x.vector())
+    q_2['u0'].vector().axpy(1.0, u0x.vector())
+    q_2['u1'].vector().axpy(1.0, u1x.vector())
+    q_2['u2'].vector().axpy(1.0, u2x.vector())
 
 u_  = as_vector([q_[ui]  for ui in u_components]) # Velocity vector at t
 u_1 = as_vector([q_1[ui] for ui in u_components]) # Velocity vector at t - dt
@@ -257,8 +271,6 @@ P = dict((ui, assemble(v*p.dx(i)*dx)) for i, ui in enumerate(u_components))
 
 # Preassemble velocity divergence matrix
 Rx = dict((ui, assemble(q*u.dx(i)*dx)) for i, ui in  enumerate(u_components))
-#for ui in  u_components:
-#    bcs['p'][0].pre_solve_elimination(QR._periodic_master_slave_dofs, Rx[ui])
 
 bc = [PeriodicBC(V, pbx), PeriodicBC(V, pbz), DirichletBC(V, Constant(0), walls)]
 bcs['u0'] = bc
@@ -274,27 +286,31 @@ K = assemble(nu*inner(grad(u), grad(v))*dx)     # Diffusion matrix
 Ap = assemble(inner(grad(q), grad(p))*dx + 0*(inner(d, p) + inner(q, c)) * dx)    # Pressure Laplacian
 A = Matrix()                                    # Coefficient matrix (needs reassembling)
 
-NN = Ap.size(0)
-if (NN-1 >= Ap.local_range(0)[0] and NN-1 < Ap.local_range(0)[1]):
-    a1 = Ap.getrow(NN-1)
-    a2 = Ap.getrow(NN-2)
-    a1[1][-2] = 1.
-    a2[1][-1] = 1.
+#NN = Ap.size(0)
+#if (NN-1 >= Ap.local_range(0)[0] and NN-1 < Ap.local_range(0)[1]):
+    #a1 = Ap.getrow(NN-1)
+    #a2 = Ap.getrow(NN-2)
+    #a1[1][-2] = 1.
+    #a2[1][-1] = 1.
+    ##Ap.setrow(NN-1, array(a2[0], 'I'), a2[1])
+    ##Ap.setrow(NN-2, array(a1[0], 'I'), a1[1])
+    #Ap.setrow(NN-1, array(a2[0], 'I'), a2[1])
+    #a2[1][:] = 0    
+    #a2[1][find(a2[0] == NN-2)] = 1.
     #Ap.setrow(NN-2, array(a2[0], 'I'), a2[1])
-    #Ap.setrow(NN-1, array(a1[0], 'I'), a1[1])
-    Ap.setrow(NN-2, array([NN-2], 'I'), array([1.]))
-    Ap.setrow(NN-1, array([NN-2, NN-1], 'I'), array([1., 1.]))
-Ap.apply("insert")
+    ##Ap.setrow(NN-2, array([NN-2], 'I'), array([1.]))
+    ##Ap.setrow(NN-1, array([NN-2, NN-1], 'I'), array([1., 1.]))    
+
+#Ap.apply("insert")
 
 # Apply boundary conditions on M and Ap that are used directly in solve
-App = Ap.copy()
 MM = M.copy()
 [bc.apply(MM) for bc in bcs['u0']]
-[bc.apply(App) for bc in bcs['pc']]
-bcs['pc'][0].pre_solve_elimination(QR._periodic_master_slave_dofs, App)
+[bc.apply(Ap) for bc in bcs['pc']]
+bcs['pc'][0].pre_solve_elimination(QR._periodic_master_slave_dofs, Ap)
 bcs['u0'][0].pre_solve_elimination(V._periodic_master_slave_dofs, MM)
 MM.compress()
-App.compress()
+Ap.compress()
 
 # Adams Bashforth projection of velocity at t - dt/2
 U_ = 1.5*u_1 - 0.5*u_2
@@ -412,16 +428,22 @@ while t < T + DOLFIN_EPS:
             
         ### Solve pressure ###
         dpc_.vector()[:] = x_['pc'][:]
-        b['pc'][:] = Ap*x_['pc']
+        #b['pc'][:] = Ap*x_['pc']
+        b['pc'][:] = 0.
         for ui in u_components:
             b['pc'].axpy(-1./dt_, Rx[ui]*x_[ui]) # Divergence of u_
         [bc.apply(b['pc']) for bc in bcs['pc']]
-        #rp = residual(Ap, x_['pc'], b['pc'])
+        b['pc'].axpy(1., Ap*x_['pc'])  ## Move this after bc.apply since Ap has been through pre_solve_elimination
         #if p_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
         if MPI.process_number() == 0:
             print 'Solving p'        
         t0 = time.time()
-        p_sol.solve(App, x_['pc'], b['pc'])
+        if num_iter > 1:
+            rp = residual(Ap, x_['pc'], b['pc'])
+        #if (NN-1 >= b['pc'].local_range()[0] and NN-1 < b['pc'].local_range()[1]):
+            #b['pc'][NN-1] = b['pc'][NN-2]
+            #b['pc'][NN-2] = 0
+        p_sol.solve(Ap, x_['pc'], b['pc'])
         p_sol.t += (time.time()-t0)
         bcs['pc'][0].post_solve(QR._periodic_master_slave_dofs, x_['pc'])
         dpc_.vector()[:] = x_['pc'][:] - dpc_.vector()[:]
@@ -433,7 +455,7 @@ while t < T + DOLFIN_EPS:
     ### Update ################################################################
     ### Update velocity ###
     for ui in u_components:
-        b[ui][:] = M*x_[ui][:]        
+        b[ui][:] = M*x_[ui][:] 
         b[ui].axpy(-dt_, P[ui]*dpc_.vector())
         [bc.apply(b[ui]) for bc in bcs[ui]]
         #if du_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:

@@ -1,7 +1,7 @@
 __author__ = "Mikael Mortensen <mikaem@math.uio.no>"
 __date__ = "2011-12-19"
 __copyright__ = "Copyright (C) 2011 " + __author__
-__license__  = "GNU GPL version 3 or any later version"
+__license__  = "GNU Lesser GPL version 3 or any later version"
 
 """
 This is a highly tuned and stripped down Navier-Stokes solver optimized
@@ -56,6 +56,7 @@ and then using the following to create the lhs A:
 """
 from cbc.cfd.oasis import *
 from numpy import array
+from pylab import find
 
 #parameters["linear_algebra_backend"] = "Epetra"
 parameters["linear_algebra_backend"] = "PETSc"
@@ -69,7 +70,7 @@ info_red('Memory use of plain dolfin = ' + dolfin_memory_use)
 
 ################### Problem dependent parameters ####################
 
-mesh = UnitSquare(10, 10)
+mesh = UnitSquare(100, 100)
 nu = Constant(0.001)          # Viscosity
 t = 0                         # time
 tstep = 0                     # Timestep
@@ -78,8 +79,8 @@ T = 0.001                       # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
 max_error = 1e-6
-dt = Constant(0.001)
-#dt = Constant(0.25*T/ceil(T/0.2/mesh.hmin())) # timestep
+#dt = Constant(0.001)
+dt = Constant(0.25*T/ceil(T/0.2/mesh.hmin())) # timestep
 check = 1                     # print out info every check timestep 
 
 # Specify body force
@@ -142,17 +143,25 @@ bcs['u1'] = [bc01, bc0]
 M = assemble(inner(u, v)*dx)                    # Mass matrix
 K = assemble(nu*inner(grad(u), grad(v))*dx)     # Diffusion matrix
 # Set integral of pressure on ds to zero
-Ap = assemble(inner(grad(q), dt*grad(p))*dx + inner(d, p)*dx + inner(c, q)*dx)    # Pressure Laplacian
-# Or try to set one single node to zero
-#Ap = assemble(inner(grad(q), dt*grad(p))*dx)    # Pressure Laplacian
-#bb = Ap.getrow(Q.dim()-1)
-#Ap.setrow(Q.dim(), array([Q.dim()-1], 'I'), array([1.], 'd'))
-#bb[1][-1] = 1.
-#Ap.setrow(Q.dim()-1, array(bb[0], 'I'), bb[1])
-#Ap.apply('insert')
+Ap = assemble(inner(grad(q), dt*grad(p))*dx + 0*(inner(d, p) + inner(c, q))*dx)    # Pressure Laplacian
+NN = Ap.size(0)
+if (NN-1 >= Ap.local_range(0)[0] and NN-1 < Ap.local_range(0)[1]):
+    a1 = Ap.getrow(NN-1)
+    a2 = Ap.getrow(NN-2)
+    a1[1][-2] = 1.
+    a2[1][-1] = 1.
+    #Ap.setrow(NN-1, array(a2[0], 'I'), a2[1])
+    #Ap.setrow(NN-2, array(a1[0], 'I'), a1[1])
+    Ap.setrow(NN-1, array(a2[0], 'I'), a2[1])
+    a2[1][:] = 0    
+    a2[1][find(a2[0] == NN-2)] += 1.
+    Ap.setrow(NN-2, array(a2[0], 'I'), a2[1])
+    #Ap.setrow(NN-2, array([NN-2], 'I'), array([1.]))
+    #Ap.setrow(NN-1, array([NN-2, NN-1], 'I'), array([1., 1.]))    
+    
+Ap.apply("insert")
+Ap.compress()
 
-#Ap.compress()
-#Ap.apply("add")
 A = Matrix()                                    # Coefficient matrix (needs reassembling)
 
 # Apply boundary conditions on M and Ap that are used directly in solve
@@ -190,13 +199,13 @@ u_sol.parameters['nonzero_initial_guess'] = True
 u_sol.parameters['monitor_convergence'] = True
 reset_sparsity = True
 
-du_sol = KrylovSolver('bicgstab', 'hypre_euclid')
+du_sol = KrylovSolver('gmres', 'hypre_amg')
 du_sol.parameters['error_on_nonconvergence'] = False
 du_sol.parameters['nonzero_initial_guess'] = True
 du_sol.parameters['preconditioner']['reuse'] = True
 du_sol.parameters['monitor_convergence'] = True
 
-p_sol = KrylovSolver('bicgstab', 'ilu')
+p_sol = KrylovSolver('gmres', 'hypre_amg')
 p_sol.parameters['error_on_nonconvergence'] = False
 p_sol.parameters['nonzero_initial_guess'] = True
 p_sol.parameters['preconditioner']['reuse'] = True
@@ -260,12 +269,14 @@ while t < (T - tstep*DOLFIN_EPS):
         b['pc'][:] = Ap*x_['pc']
         for ui in u_components:
             b['pc'].axpy(-1., Rx[ui]*x_[ui]) # Divergence of u_
-        [bc.apply(b['pc']) for bc in bcs['pc']]
-        rp = residual(Ap, x_['pc'], b['pc'])
+        if num_iter > 1:
+            rp = residual(Ap, x_['pc'], b['pc'])
         if MPI.process_number() == 0:
             print 'Solving pressure'
+        if (NN-1 >= b['pc'].local_range()[0] and NN-1 < b['pc'].local_range()[1]):
+            b['pc'][NN-1] = b['pc'][NN-2]
+            b['pc'][NN-2] = 0
         p_sol.solve(Ap, x_['pc'], b['pc'])
-        #solve(Ap, x_['pc'], b['pc'])
         dpc_.vector()[:] = x_['pc'][:] - dpc_.vector()[:]
         if tstep % check == 0:
             if num_iter > 1:
@@ -297,5 +308,6 @@ info_red('Total memory use of solver = ' + str(comm.reduce(mymem, root=0)))
 list_timings()
 #plot(project(u_, Vv)) 
 #plot(p_, interactive=True)
-
-
+from cbc.cfd.tools.Streamfunctions import StreamFunction
+psi = StreamFunction(u_, [], use_strong_bc=True)
+plot(psi, interactive=True)
