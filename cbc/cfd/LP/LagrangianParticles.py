@@ -585,8 +585,8 @@ if __name__=='__main__':
     duidxj = project(grad(u), S)
                                   
     #u = interpolate(Expression(('1.', '0.')), Vv)
-    u.gather() # Required for parallel
-    duidxj.gather()
+    u.update() # Required for parallel
+    duidxj.update()
 
     # Initialize particles
     # Note, with a random function one must compute points on 0 and bcast to get the same values on all procs
