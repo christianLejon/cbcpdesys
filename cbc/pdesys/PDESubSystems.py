@@ -85,6 +85,7 @@ class PDESubSystemBase:
         # Define matrix and vector for unchanging parts of tensor
         self.A1 = None
         self.b1 = None        
+        self.inner_iter = 0
         info_green(self._info())
                 
     def query_args(self, sub_system):
@@ -121,6 +122,7 @@ class PDESubSystemBase:
         solve = eval('self.solve_%s_system' %(self.prm['iteration_type']))
         while err > self.prm['max_inner_err'] and j < max_iter:
             res, dx = solve(assemble_A, assemble_b)
+            self.inner_iter = j
             j += 1
             ndx = norm(dx)
             if max_iter > 1: 
@@ -167,15 +169,17 @@ class PDESubSystemBase:
         return res, err
 
     def solve_Newton_system(self, *args):
-        #"""One assemble and solve of Newton system."""
+        """One assemble and solve of Newton system."""
         self.prepare()
         self.assemble(self.A)
-        self.assemble(self.b)
-        #if self.normalize: self.normalize(b)
-        if not hasattr(self, 'first'):
+        if self.inner_iter == 0:
+            self.assemble(self.b)
+            if self.normalize: self.normalize(self.b)
             #[bc.apply(self.x) for bc in self.bcs]
-            self.first = True
-        [bc.apply(self.A, self.b, self.x) for bc in self.bcs]
+            [bc.apply(self.A, self.b, self.x) for bc in self.bcs]
+            self.residual0 = self.b.norm("l2")
+        else:
+            [bc.apply(self.A) for bc in self.bcs]
         dx = self.work   # more informative name
         dx.zero()        # start vector for iterative solvers
         self.linear_solver.solve(self.A, dx, self.b)
@@ -183,7 +187,28 @@ class PDESubSystemBase:
         omega = self.prm['omega']
         self.x.axpy(-omega, dx)  # relax
         self.update()
-        return self.b.norm('l2'), dx
+        self.assemble(self.b)
+        [bc.apply(self.b, self.x) for bc in self.bcs]
+        #dx.zero()
+        #return self.b.norm("l2") / self.residual0, dx  # Relative error
+        return self.b.norm("l2"), dx                    # Absolute error
+
+        #self.prepare()
+        #self.assemble(self.A)
+        #self.assemble(self.b)
+        ##if self.normalize: self.normalize(b)
+        #if not hasattr(self, 'first'):
+            ##[bc.apply(self.x) for bc in self.bcs]
+            #self.first = True
+        #[bc.apply(self.A, self.b, self.x) for bc in self.bcs]
+        #dx = self.work   # more informative name
+        #dx.zero()        # start vector for iterative solvers
+        #self.linear_solver.solve(self.A, dx, self.b)
+        #if self.normalize: self.normalize(dx)
+        #omega = self.prm['omega']
+        #self.x.axpy(-omega, dx)  # relax
+        #self.update()
+        #return self.b.norm('l2'), dx
         
     def assemble(self, M):
         """Assemble tensor."""
