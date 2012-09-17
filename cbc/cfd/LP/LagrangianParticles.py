@@ -1,7 +1,7 @@
 __author__ = "Mikael Mortensen <mikaem@math.uio.no>"
 __date__ = "2012-01-7"
 __copyright__ = "Copyright (C) 2011 " + __author__
-__license__  = "GNU GPL version 3 or any later version"
+__license__  = "GNU Lesser GPL version 3 or any later version"
 """
 This module contains functionality for Lagrangian tracking of particles 
 """
@@ -585,8 +585,8 @@ if __name__=='__main__':
     duidxj = project(grad(u), S)
                                   
     #u = interpolate(Expression(('1.', '0.')), Vv)
-    u.gather() # Required for parallel
-    duidxj.gather()
+    u.update() # Required for parallel
+    duidxj.update()
 
     # Initialize particles
     # Note, with a random function one must compute points on 0 and bcast to get the same values on all procs

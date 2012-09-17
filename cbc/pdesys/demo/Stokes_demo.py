@@ -4,7 +4,7 @@ to solve the Stokes problem using a preconditioned iterative method.
 __author__ = "Mikael Mortensen <mikaem@math.uio.no>"
 __date__ = "2011-08-16"
 __copyright__ = "Copyright (C) 2011 " + __author__
-__license__  = "GNU GPL version 3 or any later version"
+__license__  = "GNU Lesser GPL version 3 or any later version"
 
 from cbc.pdesys import *
 

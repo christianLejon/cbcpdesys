@@ -1,7 +1,7 @@
 __author__ = "Mikael Mortensen <mikaem@math.uio.no>"
 __date__ = "2010-09-08"
 __copyright__ = "Copyright (C) 2010 " + __author__
-__license__  = "GNU GPL version 3 or any later version"
+__license__  = "GNU Lesser GPL version 3 or any later version"
 
 import ufl
 import copy
@@ -167,18 +167,15 @@ class PDESubSystemBase:
         return res, err
 
     def solve_Newton_system(self, *args):
-        """One assemble and solve of Newton system."""
+        #"""One assemble and solve of Newton system."""
         self.prepare()
         self.assemble(self.A)
+        self.assemble(self.b)
+        #if self.normalize: self.normalize(b)
         if not hasattr(self, 'first'):
-            self.assemble(self.b)
-            if self.normalize: self.normalize(self.b)
             #[bc.apply(self.x) for bc in self.bcs]
-            self.first = 1
-            [bc.apply(self.A, self.b, self.x) for bc in self.bcs]
-            self.residual0 = self.b.norm("l2")
-        else:
-            [bc.apply(self.A) for bc in self.bcs]
+            self.first = True
+        [bc.apply(self.A, self.b, self.x) for bc in self.bcs]
         dx = self.work   # more informative name
         dx.zero()        # start vector for iterative solvers
         self.linear_solver.solve(self.A, dx, self.b)
@@ -186,12 +183,8 @@ class PDESubSystemBase:
         omega = self.prm['omega']
         self.x.axpy(-omega, dx)  # relax
         self.update()
-        self.assemble(self.b)
-        [bc.apply(self.b, self.x) for bc in self.bcs]
-        dx.zero()
-        #return self.b.norm("l2") / self.residual0, dx  # Relative error
-        return self.b.norm("l2"), dx                    # Absolute error
-
+        return self.b.norm('l2'), dx
+        
     def assemble(self, M):
         """Assemble tensor."""
         if isinstance(M, Matrix):

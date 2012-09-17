@@ -5,7 +5,7 @@ nonlinear PDE """
 __author__ = "Mikael Mortensen <mikaem@math.uio.no>"
 __date__ = "2011-06-30"
 __copyright__ = "Copyright (C) 2011 " + __author__
-__license__  = "GNU GPL version 3 or any later version"
+__license__  = "GNU Lesser GPL version 3 or any later version"
 
 import random
 from cbc.pdesys import *
