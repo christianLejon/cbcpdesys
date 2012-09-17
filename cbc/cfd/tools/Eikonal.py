@@ -28,7 +28,7 @@ class Eikonal(PDESystem):
         a1, L1 = lhs(F1), rhs(F1)
         A1, b1 = assemble_system(a1, L1)
         for bc in self.bc['y']: bc.apply(A1, b1)
-        solve(A1, self.y_.vector(), b1)
+        solve(A1, self.y_.vector(), b1, self.prm['linear_solver'], self.prm['precond'])
         #
         self.solve()
 

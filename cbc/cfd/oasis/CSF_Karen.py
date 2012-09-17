@@ -53,9 +53,13 @@ and then using the following to create the lhs A:
 
 """
 from cbc.cfd.oasis import *
+#import cbc.cfd.tools.Eikonal as Eikonal
+from numpy import sin
 
-parameters["linear_algebra_backend"] = "Epetra"
-#parameters["linear_algebra_backend"] = "PETSc"
+#KrylovSolver.solve = KrylovSolver.solve1 # Because of the Eikonal solver
+
+#parameters["linear_algebra_backend"] = "Epetra"
+parameters["linear_algebra_backend"] = "PETSc"
 parameters["form_compiler"]["optimize"]     = False   # I sometimes get memory access error with True here (MM)
 parameters["form_compiler"]["cpp_optimize"] = True
 set_log_active(True)
@@ -76,8 +80,8 @@ m = 2
 smooth_func = smooth_flow(a, b, c, dt, m)
 spline_func = create_spline(smooth_func, m, c, dt)
 
-#mesh = Mesh("/home/mikaelmo/cbcpdesys/cbc/cfd/data/straight_nerves_refined.xml")
-mesh = Mesh("/home/mikael/Fenics/cbcpdesys/cbc/cfd/data/csf_block80_refined.xml")
+mesh = Mesh("/home-4/mikaelmo/cbcpdesys/cbc/cfd/data/straight_nerves_refined.xml")
+#mesh = Mesh("/home-4/mikaelmo/cbcpdesys/cbc/cfd/data/csf_block80_refined.xml")
 #mesh = Mesh("/home/mikael/Fenics/cbcpdesys/cbc/cfd/data/straight_nerves_refined.xml")
 #mesh = UnitCube(20, 20, 25)
 #xx = mesh.coordinates()
@@ -90,11 +94,11 @@ normal = FacetNormal(mesh)
 nu = Constant(0.007)           # Viscosity
 t = 0.0                         # time
 tstep = 0                     # Timestep
-T = 1.                        # End time
+T = 5.                         # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
 max_error = 1e-6
-check = 100                    # print out info and save solution every check timestep 
+check = 10                    # print out info and save solution every check timestep 
 save_restart_file = 1000       # Saves two previous timesteps needed for a clean restart
     
 # Specify body force
@@ -105,7 +109,7 @@ f = Constant((0,)*dim)
 #dt =  0.2*(h / U)
 #n  = int(T / dt + 1.0)
 #dt = Constant(T / n)
-dt = Constant(1.e-4)
+dt = Constant(1e-4)
 n = int(T / dt(0))
 
 # Give a folder for storing the results
@@ -140,22 +144,20 @@ restart_folder = None
 # Declare solution Functions and FunctionSpaces
 V = FunctionSpace(mesh, 'CG', 1)
 Q = FunctionSpace(mesh, 'CG', 1)
-R = FunctionSpace(mesh, 'R', 0)
 Vv = VectorFunctionSpace(mesh, 'CG', V.ufl_element().degree())
-QRR = MixedFunctionSpace([Q, R, R])
 u = TrialFunction(V)
 v = TestFunction(V)
-p, pa, pb = TrialFunctions(QRR)
-q, qa, qb = TestFunctions(QRR)
+p = TrialFunction(Q)
+q = TestFunction(Q)
 
 if dim == 2:
     u_components = ['u0', 'u1']
 else:
     u_components = ['u0', 'u1', 'u2']
-sys_comp =  u_components + ['pcc']
+sys_comp =  u_components + ['p']
 
 # Use dictionaries to hold all Functions and FunctionSpaces
-VV = dict((ui, V) for ui in u_components); VV['pcc'] = QRR
+VV = dict((ui, V) for ui in u_components); VV['p'] = Q
 
 # Start from previous solution if restart_folder is given
 if restart_folder:
@@ -171,22 +173,17 @@ u_  = as_vector([q_[ui]  for ui in u_components]) # Velocity vector at t
 u_1 = as_vector([q_1[ui] for ui in u_components]) # Velocity vector at t - dt
 u_2 = as_vector([q_2[ui] for ui in u_components]) # Velocity vector at t - 2*dt
 dpdx = splev(0, spline_func)/10.
-q_['pcc'] = interpolate(Expression(("dpdx*(x[2]+5)", "0", "0"), dpdx=dpdx), QRR)
-pcc_ = q_['pcc']                # pressure at t - dt/2
-dpcc_ = Function(QRR)               # pressure correction
-p_, ca_, cb_ = pcc_.split()
-dp_, dca_, dcb_ = dpcc_.split()
+q_['p'] = interpolate(Expression(("0")), Q)
+p_ = q_['p']                # pressure at t - dt/2
+dp_ = Function(Q)               # pressure correction
 ###################  Boundary conditions  ###########################
 
 bcs = dict((ui, []) for ui in sys_comp)
 
 tol = 10.*DOLFIN_EPS
 # Just mark all boundaries as walls, overwrite with top and bottom
-def walls(x, on_bnd):
+def alldomains(x, on_bnd):
     return on_bnd
-    
-#def walls(x, on_bnd):
-    #return on_bnd and (x[0] < tol or x[0] > 0.25 - tol or x[1] < tol or x[1] > 0.25 - tol) 
     
 def top(x, on_bnd):
     return abs(x[2] - 5.) < 1.e-12 and on_bnd 
@@ -197,7 +194,7 @@ def bottom(x, on_bnd):
 # Create FacetFunction for computing intermediate results
 mf = FacetFunction("uint", mesh) # Facets
 mf.set_all(0)
-Walls = AutoSubDomain(walls)
+Walls = AutoSubDomain(alldomains)
 Walls.mark(mf, 1)
 Top = AutoSubDomain(top)
 Top.mark(mf, 2)
@@ -211,28 +208,43 @@ A3 = assemble(one*ds(3), mesh=mesh, exterior_facet_domains=mf)
     
 p_top = Constant(0)
 p_bottom = Constant(0)
-bcs['u0'] = [DirichletBC(V, Constant(0), mf, 1)]
-bcs['u1'] = [DirichletBC(V, Constant(0), mf, 1)]
-bcs['u2'] = [DirichletBC(V, Constant(0), mf, 1)]
-#bcs['p']  = [DirichletBC(Q, p_top, top),
-             #DirichletBC(Q, p_bottom, bottom)]
-bcs['p'] = []
+#u_in = Constant(0)
+#uz_in = Constant(0)
+
+# Find distance to wall
+#Walls.type = lambda : 'Wall'
+#Walls.mf = mf
+#Walls.bid = 1 # Boundary indicator for wall
+#Eikonal.solver_parameters['max_err'] = 1e-6
+#Eikonal.solver_parameters['linear_solver'] = 'gmres'
+#Eikonal.solver_parameters['precond'] = 'ml_amg'
+#eikonal = Eikonal.Eikonal(mesh, [Walls], parameters=Eikonal.solver_parameters)
+#distance_to_wall = eikonal.y_
+u_in = Expression("-sin(2*t*pi)*64.*(sqrt(x[0]*x[0]+x[1]*x[1])-0.5)*(0.75-sqrt(x[0]*x[0]+x[1]*x[1]))", t=0)
+
+#ff = File('distance.xml.gz')
+#ff << distance_to_wall
+
+bcs['u0'] = [DirichletBC(V, Constant(0), mf, 2), DirichletBC(V, Constant(0), mf, 3),
+             DirichletBC(V, Constant(0), mf, 1)]
+bcs['u1'] = [DirichletBC(V, Constant(0), mf, 2), DirichletBC(V, Constant(0), mf, 3),
+             DirichletBC(V, Constant(0), mf, 1)]
+bcs['u2'] = [DirichletBC(V, u_in, mf, 2), DirichletBC(V, u_in, mf, 3),
+             DirichletBC(V, Constant(0), mf, 1)]
+bcs['p']  = []
 # Normalize pressure or not?
-normalize = False
+#normalize = True
 
 #####################################################################
 
 # Preassemble some constant in time matrices
 M = assemble(inner(u, v)*dx)                    # Mass matrix
 K = assemble(nu*inner(grad(u), grad(v))*dx)     # Diffusion matrix
-App = assemble(inner(grad(q), grad(p))*dx)      # Pressure Laplacian
-Ap = assemble(inner(grad(q), grad(p))*dx + pa*q*ds(2) + p*qa*ds(2) + pb*q*ds(3) + p*qb*ds(3),
-              exterior_facet_domains=mf)        # Pressure Laplacian plus boundary terms
+Ap = assemble(inner(grad(q), grad(p))*dx)      # Pressure Laplacian
 A = Matrix()                                    # Coefficient matrix (needs reassembling)
 
-dp0 = p_top*qa*ds(2)
-
-# Apply boundary conditions on M that are used directly in solve
+# Apply boundary conditions on M and Ap that are used directly in solve
+[bc.apply(Ap) for bc in bcs['p']]
 [bc.apply(M)  for bc in bcs['u0']]
 
 # Adams Bashforth projection of velocity at t - dt/2
@@ -251,29 +263,31 @@ P = dict((ui, assemble(v*p.dx(i)*dx)) for i, ui in enumerate(u_components))
     
 Rc = dict((ui, assemble(q*u.dx(i)*dx)) for i, ui in  enumerate(u_components))
 
+list_timings()
+
 reset_sparsity = True
 
 if True:
-    u_sol = KrylovSolver('bicgstab', 'jacobi')
+    u_sol = KrylovSolver('bicgstab', 'hypre_euclid')
     u_sol.parameters['error_on_nonconvergence'] = False
     u_sol.parameters['nonzero_initial_guess'] = True
     u_sol.parameters['monitor_convergence'] = True
     u_sol.parameters['relative_tolerance'] = 1e-7
     u_sol.parameters['absolute_tolerance'] = 1e-10
     
-    du_sol = KrylovSolver('bicgstab', 'ilu')
+    du_sol = KrylovSolver('bicgstab', 'hypre_euclid')
     du_sol.parameters['error_on_nonconvergence'] = False
     du_sol.parameters['nonzero_initial_guess'] = True
     du_sol.parameters['preconditioner']['reuse'] = True
-    du_sol.parameters['monitor_convergence'] = True
+    du_sol.parameters['monitor_convergence'] = False
     du_sol.parameters['relative_tolerance'] = 1e-7
     du_sol.parameters['absolute_tolerance'] = 1e-10
 
-    p_sol = KrylovSolver('gmres', 'ml_amg')
+    p_sol = KrylovSolver('bicgstab', 'hypre_amg')
     p_sol.parameters['error_on_nonconvergence'] = False
     p_sol.parameters['nonzero_initial_guess'] = True
     p_sol.parameters['preconditioner']['reuse'] = True
-    p_sol.parameters['monitor_convergence'] = True
+    p_sol.parameters['monitor_convergence'] = False
     p_sol.parameters['relative_tolerance'] = 1e-7
     p_sol.parameters['absolute_tolerance'] = 1e-10
 else:
@@ -304,7 +318,10 @@ while t < (T - tstep*DOLFIN_EPS):
     total_iters += 1
     
     ### prepare ###
-    p_top.assign(splev(t, spline_func))
+    #p_top.assign(splev(t, spline_func))
+    #uz_in.assign(-10.*sin(t * pi * 2.))
+    #distance_to_wall.vector()._scale(-100*sin(2*t*pi))
+    u_in.t = t
     ### prepare ###
     
     if tstep == 1:
@@ -334,7 +351,7 @@ while t < (T - tstep*DOLFIN_EPS):
             
         for ui in u_components:
             bold[ui][:] = b[ui][:]
-            b[ui].axpy(-1., P[ui]*x_['pcc'])
+            b[ui].axpy(-1., P[ui]*x_['p'])
             [bc.apply(b[ui]) for bc in bcs[ui]]
             work[:] = x_[ui][:]
             #if u_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
@@ -345,18 +362,19 @@ while t < (T - tstep*DOLFIN_EPS):
             b[ui][:] = bold[ui][:] # In case of inner iterations
             
         ### Solve pressure ###
-        dpcc_.vector()[:] = x_['pcc'][:]
-        b['pcc'] = assemble(dp0, exterior_facet_domains=mf)
-        b['pcc'].axpy(1., App*x_['pcc'])
+        dp_.vector()[:] = x_['p'][:]
+        b['p'][:] = Ap * x_['p']
         for ui in u_components:
-            b['pcc'].axpy(-1./dt_, Rc[ui]*x_[ui]) # Divergence of u_
-        rp = residual(Ap, x_['pcc'], b['pcc'])
+            b['p'].axpy(-1./dt_, Rc[ui]*x_[ui]) # Divergence of u_
+        [bc.apply(b['p']) for bc in bcs['p']]
+        rp = residual(Ap, x_['p'], b['p'])
         #if p_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
         if MPI.process_number() == 0:
             print 'Solving p' 
             
-        p_sol.solve(Ap, x_['pcc'], b['pcc'])
-        dpcc_.vector()[:] = x_['pcc'][:] - dpcc_.vector()[:]
+        p_sol.solve(Ap, x_['p'], b['p'])
+        normalize(x_['p'])
+        dp_.vector()[:] = x_['p'][:] - dp_.vector()[:]
         if tstep % check == 0:
             if num_iter > 1:
                 if j == 1: info_blue('                 error u  error p')
@@ -366,7 +384,7 @@ while t < (T - tstep*DOLFIN_EPS):
     ### Update velocity ###
     for ui in u_components:
         b[ui][:] = M*x_[ui][:]        
-        b[ui].axpy(-dt_, P[ui]*dpcc_.vector())
+        b[ui].axpy(-dt_, P[ui]*dp_.vector())
         [bc.apply(b[ui]) for bc in bcs[ui]]
         #if du_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
         if MPI.process_number() == 0:
@@ -377,6 +395,8 @@ while t < (T - tstep*DOLFIN_EPS):
     for ui in u_components:
         x_2[ui][:] = x_1[ui][:]
         x_1[ui][:] = x_ [ui][:]
+
+    #distance_to_wall.vector()._scale(-1./100*sin(2*t*pi))
         
     # Print some information and save intermediate solution
     if tstep % check == 0:
@@ -388,15 +408,18 @@ while t < (T - tstep*DOLFIN_EPS):
         u2 = assemble(dot(u_, normal)*ds(3), mesh=mesh, exterior_facet_domains=mf)
         if MPI.process_number() == 0:
             print 'flux [cm/s] = ', u1/A2, u2/A3, u1, u2
+        MPI.barrier()
         try:
             makedirs(newfolder)
         except OSError:
             pass
+        MPI.barrier()
         for ui in sys_comp:
             newfile = File(path.join(newfolder, ui + '.xml.gz'))
             print 'Writing result file ', ui
             newfile << q_[ui]
         
+        MPI.barrier()
         if tstep % save_restart_file == 0:
             for ui in u_components:
                 newfile_1 = File(path.join(newfolder, ui + '_1.xml.gz'))
@@ -407,4 +430,3 @@ info_red('Total memory use = ' + getMyMemoryUsage())
 list_timings()
 info_red('Total computing time = {0:f}'.format(time.time()- t0))
 #plot(project(u_, Vv))
-

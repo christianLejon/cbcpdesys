@@ -885,11 +885,11 @@ class Subdict(dict):
     def __missing__(self, key):
         try:
             self[key] = self.solver_namespace['prm'][key][self.sub_name]
-            info_green("Adding ['{}']['{}'] = {} to pdesubsystem {}".format(key, 
+            info_green("Adding ['{0}']['{1}'] = {2} to pdesubsystem {3}".format(key, 
                        self.sub_name, self[key], ''.join(self.sub_name)))
         except:
             self[key] = self.solver_namespace['prm'][key]
-            info_green("Adding ['{}'] = {} to pdesubsystem {}".format(key, 
+            info_green("Adding ['{0}'] = {1} to pdesubsystem {2}".format(key, 
                        self[key], ''.join(self.sub_name)))
         return self[key]
         

@@ -71,9 +71,9 @@ info_red('Memory use of plain dolfin = ' + dolfin_memory_use)
 Lx = 4.
 Ly = 2.
 Lz = 2.
-Nx = 40
-Ny = 40
-Nz = 40
+Nx = 100
+Ny = 100
+Nz = 100
 mesh = Box(0., -Ly/2., -Lz/2., Lx, Ly/2., Lz/2., Nx, Ny, Nz)
 # Create stretched mesh in y-direction
 x = mesh.coordinates()        
@@ -84,14 +84,15 @@ normal = FacetNormal(mesh)
 Re_tau = 395.
 nu = Constant(2.e-5)           # Viscosity
 utau = nu(0) * Re_tau
-t = 0.0                        # time
-tstep = 0                      # Timestep
-T = 100.0                        # End time
+t = 2500.0                        # time
+tstep = 12500                      # Timestep
+T = 3500.0                        # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
-iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
+iters_on_first_timestep = 1   # Pressure velocity iterations on first timestep
 max_error = 1e-6
-check = 10                    # print out info and save solution every check timestep 
-save_restart_file = 100       # Saves two previous timesteps needed for a clean restart
+check = 100                    # print out info and save solution every check timestep 
+save_vtk = 10
+save_restart_file = 500       # Saves two previous timesteps needed for a clean restart
     
 # Specify body force
 dim = mesh.geometry().dim()
@@ -105,7 +106,12 @@ dt = Constant(0.2)
 n = int(T / dt(0))
 
 # Give a folder for storing the results
-folder = None
+#folder = None
+folder = "/home-4/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=2.0000e-01/13"
+vtk_file = File("/home-4/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=2.0000e-01/13/VTK2/u.pvd")
+u_stats_file = File("/home-4/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=2.0000e-01/13/Stats/umean.xml.gz")
+k_stats_file = File("/home-4/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=2.0000e-01/13/Stats/kmean.xml.gz")
+p_stats_file = File("/home-4/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=2.0000e-01/13/Stats/pmean.xml.gz")
 
 if not folder is None:
     if MPI.process_number() == 0:
@@ -127,8 +133,9 @@ else:
         makedirs(folder)
     
 #### Set a folder that contains xml.gz files of the solution. 
-restart_folder = None        
+#restart_folder = None        
 #restart_folder = '/home/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=0.001/1'
+restart_folder = "/home-4/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=2.0000e-01/13/timestep=12500"
 #### Use for initialization if not None
     
 #####################################################################
@@ -179,22 +186,36 @@ class RandomStreamVector(Expression):
         return (3,)
         
 #psi = interpolate(RandomStreamFunction(), V)
-psi = interpolate(RandomStreamVector(), Vv)
-u0 = project(curl(psi), Vv)
-u0x = project(u0[0], V)
-q_['u1'] = project(u0[1], V)
-q_['u2'] = project(u0[2], V)
-#u0 = project(psi.dx(0), V)
-q_['u0'].vector()[:] = 0.1335
-q_['u0'].vector().axpy(1.0, u0x.vector())
-#u1 = project(-psi.dx(1), V)
-#q_['u1'].vector()[:] = u1.vector()[:]
-q_1['u0'].vector()[:] = q_['u0'].vector()[:]
-q_2['u0'].vector()[:] = q_['u0'].vector()[:]
-q_1['u1'].vector()[:] = q_['u1'].vector()[:]
-q_2['u1'].vector()[:] = q_['u1'].vector()[:]
-q_1['u2'].vector()[:] = q_['u2'].vector()[:]
-q_2['u2'].vector()[:] = q_['u2'].vector()[:]
+#psi = interpolate(RandomStreamVector(), Vv)
+#u0 = project(curl(psi), Vv)
+#u0x = project(u0[0], V)
+#u1x = project(u0[1], V)
+#u2x = project(u0[2], V)
+#if restart_folder == None:    
+#    #u0 = project(psi.dx(0), V)
+#    q_['u0'].vector()[:] = 0.1335
+#    q_['u0'].vector().axpy(1.0, u0x.vector())
+#    q_['u1'].vector()[:] = u1x.vector()[:]
+#    q_['u2'].vector()[:] = u2x.vector()[:]
+#    #u1 = project(-psi.dx(1), V)
+#    #q_['u1'].vector()[:] = u1.vector()[:]
+#    q_1['u0'].vector()[:] = q_['u0'].vector()[:]
+#    q_2['u0'].vector()[:] = q_['u0'].vector()[:]
+#    q_1['u1'].vector()[:] = q_['u1'].vector()[:]
+#    q_2['u1'].vector()[:] = q_['u1'].vector()[:]
+#    q_1['u2'].vector()[:] = q_['u2'].vector()[:]
+#    q_2['u2'].vector()[:] = q_['u2'].vector()[:]
+#else:
+#    # Add a random field to jumpstart the turbulence
+#    q_['u0'].vector().axpy(1.0, u0x.vector())
+#    q_['u1'].vector().axpy(1.0, u1x.vector())
+#    q_['u2'].vector().axpy(1.0, u2x.vector())
+#    q_1['u0'].vector().axpy(1.0, u0x.vector())
+#    q_1['u1'].vector().axpy(1.0, u1x.vector())
+#    q_1['u2'].vector().axpy(1.0, u2x.vector())
+#    q_2['u0'].vector().axpy(1.0, u0x.vector())
+#    q_2['u1'].vector().axpy(1.0, u1x.vector())
+#    q_2['u2'].vector().axpy(1.0, u2x.vector())
 
 u_  = as_vector([q_[ui]  for ui in u_components]) # Velocity vector at t
 u_1 = as_vector([q_1[ui] for ui in u_components]) # Velocity vector at t - dt
@@ -348,10 +369,12 @@ b0 = dict((ui, assemble(v*Constant(dpdx[i])*dx)) for i, ui in enumerate(u_compon
 
 u0mean = Function(V)
 kmean = Function(V)
+pmean = Function(QR)
 
 t0 = t1 = time.time()
 dt_ = dt(0)
 total_iters = 0
+tstep0 = tstep
 while t < T + DOLFIN_EPS:
     list_timings(True)
     t += dt_
@@ -452,9 +475,14 @@ while t < T + DOLFIN_EPS:
     ## Update statistics
     u0mean.vector().axpy(1.0, x_['u0'])
     kmean.vector().axpy(1.0, 0.5 * (x_['u0'] * x_['u0'] + x_['u1'] * x_['u1'] + x_['u2'] * x_['u2']))
+    pmean.vector().axpy(1.0, x_['pc'])
     #################################################################################################
         
     # Print some information and save intermediate solution
+    if tstep % save_vtk == 0:
+        uvtk = project(u_, Vv)
+        vtk_file << uvtk
+ 
     if tstep % check == 0:
         info_red('Total computing time on previous {0:d} timesteps = {1:f}'.format(check, time.time() - t1))
         t1 = time.time()
@@ -477,8 +505,13 @@ while t < T + DOLFIN_EPS:
                newfile_1 = File(path.join(newfolder, ui + '_1.xml.gz'))
                newfile_1 << q_1[ui]
     ### Update ################################################################            
-u0mean.vector()._scale(1./tstep)
-kmean.vector()._scale(1./tstep)
+u0mean.vector()._scale(1./(tstep-tstep0))
+kmean.vector()._scale(1./(tstep-tstep0))
+pmean.vector()._scale(1./(tstep-tstep0))
+u_stats_file << u0mean
+k_stats_file << kmean
+p_stats_file << pmean
+
 info_red('Additional memory use of solver = {0}'.format(eval(getMyMemoryUsage()) - eval(dolfin_memory_use)))
 info_red('Total memory use = ' + getMyMemoryUsage())
 list_timings()
