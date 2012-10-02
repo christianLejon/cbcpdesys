@@ -55,7 +55,7 @@ class Wallfunction:
             if i in v2c:
                 for ci in v2c[i]:
                     c = Cell(mesh,ci)
-                    dofmap.tabulate_dofs(a, c)
+                    a[:] = dofmap.cell_dofs(c.index())
                     x = dofmap.tabulate_coordinates(c)
                     aa = list(a)
                     ii = aa.index(i) # The local index of the boundary node
@@ -94,7 +94,7 @@ class Wallfunction:
                 if len(v2c[i]) == 1:
                     ci = v2c[i][0]
                     c = Cell(mesh,ci)
-                    dofmap.tabulate_dofs(a, c)
+                    a[:] = dofmap.cell_dofs(c.index())
                     if not any([jj in vertices_inside_boundary for jj in a]):
                         corners.append(i)
 
@@ -125,7 +125,7 @@ class Wallfunction:
         c2v = {}
         for c in cells(mesh): 
             c2v[c.index()] = []
-            dofmap.tabulate_dofs(a, c)
+            a[:] = dofmap.cell_dofs(c.index())
             for v in a: 
                 c2v[c.index()].append(int(v))
                 if v2c.has_key(v):

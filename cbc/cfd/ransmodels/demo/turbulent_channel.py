@@ -63,6 +63,7 @@ def tospline(problem):
 if __name__=='__main__':
     # Set up turbulent channel problem
     # Turbulent channel only works with periodic boundaries
+    #parameters["linear_algebra_backend"] = "Epetra" 
     problem_parameters['periodic'] = True
     problem_parameters['time_integration'] = 'Steady'
     problem_parameters['Re_tau'] = Re_tau= 395.
