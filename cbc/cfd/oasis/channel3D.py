@@ -71,9 +71,9 @@ info_red('Memory use of plain dolfin = ' + dolfin_memory_use)
 Lx = 4.
 Ly = 2.
 Lz = 2.
-Nx = 100
-Ny = 100
-Nz = 100
+Nx = 40
+Ny = 50
+Nz = 30
 mesh = Box(0., -Ly/2., -Lz/2., Lx, Ly/2., Lz/2., Nx, Ny, Nz)
 # Create stretched mesh in y-direction
 x = mesh.coordinates()        
@@ -84,15 +84,15 @@ normal = FacetNormal(mesh)
 Re_tau = 395.
 nu = Constant(2.e-5)           # Viscosity
 utau = nu(0) * Re_tau
-t = 2500.0                        # time
-tstep = 12500                      # Timestep
-T = 3500.0                        # End time
+t = 0.0                        # time
+tstep = 0                      # Timestep
+T = 10.0                        # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
-iters_on_first_timestep = 1   # Pressure velocity iterations on first timestep
+iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
 max_error = 1e-6
-check = 100                    # print out info and save solution every check timestep 
-save_vtk = 10
-save_restart_file = 500       # Saves two previous timesteps needed for a clean restart
+check = 10                    # print out info and save solution every check timestep 
+save_vtk = 10000
+save_restart_file = 50000       # Saves two previous timesteps needed for a clean restart
     
 # Specify body force
 dim = mesh.geometry().dim()
@@ -102,16 +102,16 @@ dim = mesh.geometry().dim()
 #dt =  0.2*(h / U)
 #n  = int(T / dt + 1.0)
 #dt = Constant(T / n)
-dt = Constant(0.2)
+dt = Constant(0.1)
 n = int(T / dt(0))
 
 # Give a folder for storing the results
-#folder = None
-folder = "/home-4/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=2.0000e-01/13"
-vtk_file = File("/home-4/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=2.0000e-01/13/VTK2/u.pvd")
-u_stats_file = File("/home-4/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=2.0000e-01/13/Stats/umean.xml.gz")
-k_stats_file = File("/home-4/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=2.0000e-01/13/Stats/kmean.xml.gz")
-p_stats_file = File("/home-4/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=2.0000e-01/13/Stats/pmean.xml.gz")
+folder = "/home/mikael/Fenics/cbcpdesys/cbc/cfd/oasis/channel395/"
+#folder = "/home-4/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=2.0000e-01/13"
+vtk_file = File("/home/mikael/Fenics/cbcpdesys/cbc/cfd/oasis/channel395/VTK/u/u.pvd")
+u_stats_file = File("/home/mikael/Fenics/cbcpdesys/cbc/cfd/oasis/channel395/Stats/umean.xml.gz")
+k_stats_file = File("/home/mikael/Fenics/cbcpdesys/cbc/cfd/oasis/channel395/Stats/kmean.xml.gz")
+p_stats_file = File("/home/mikael/Fenics/cbcpdesys/cbc/cfd/oasis/channel395/Stats/pmean.xml.gz")
 
 if not folder is None:
     if MPI.process_number() == 0:
@@ -133,9 +133,9 @@ else:
         makedirs(folder)
     
 #### Set a folder that contains xml.gz files of the solution. 
-#restart_folder = None        
+restart_folder = None        
 #restart_folder = '/home/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=0.001/1'
-restart_folder = "/home-4/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=2.0000e-01/13/timestep=12500"
+#restart_folder = "/home-4/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=2.0000e-01/13/timestep=12500"
 #### Use for initialization if not None
     
 #####################################################################
@@ -185,37 +185,40 @@ class RandomStreamVector(Expression):
     def value_shape(self):
         return (3,)
         
-#psi = interpolate(RandomStreamFunction(), V)
-#psi = interpolate(RandomStreamVector(), Vv)
-#u0 = project(curl(psi), Vv)
-#u0x = project(u0[0], V)
-#u1x = project(u0[1], V)
-#u2x = project(u0[2], V)
-#if restart_folder == None:    
-#    #u0 = project(psi.dx(0), V)
-#    q_['u0'].vector()[:] = 0.1335
-#    q_['u0'].vector().axpy(1.0, u0x.vector())
-#    q_['u1'].vector()[:] = u1x.vector()[:]
-#    q_['u2'].vector()[:] = u2x.vector()[:]
-#    #u1 = project(-psi.dx(1), V)
-#    #q_['u1'].vector()[:] = u1.vector()[:]
-#    q_1['u0'].vector()[:] = q_['u0'].vector()[:]
-#    q_2['u0'].vector()[:] = q_['u0'].vector()[:]
-#    q_1['u1'].vector()[:] = q_['u1'].vector()[:]
-#    q_2['u1'].vector()[:] = q_['u1'].vector()[:]
-#    q_1['u2'].vector()[:] = q_['u2'].vector()[:]
-#    q_2['u2'].vector()[:] = q_['u2'].vector()[:]
-#else:
-#    # Add a random field to jumpstart the turbulence
-#    q_['u0'].vector().axpy(1.0, u0x.vector())
-#    q_['u1'].vector().axpy(1.0, u1x.vector())
-#    q_['u2'].vector().axpy(1.0, u2x.vector())
-#    q_1['u0'].vector().axpy(1.0, u0x.vector())
-#    q_1['u1'].vector().axpy(1.0, u1x.vector())
-#    q_1['u2'].vector().axpy(1.0, u2x.vector())
-#    q_2['u0'].vector().axpy(1.0, u0x.vector())
-#    q_2['u1'].vector().axpy(1.0, u1x.vector())
-#    q_2['u2'].vector().axpy(1.0, u2x.vector())
+psi = interpolate(RandomStreamFunction(), V)
+psi = interpolate(RandomStreamVector(), Vv)
+u0 = project(curl(psi), Vv)
+u0x = project(u0[0], V)
+u1x = project(u0[1], V)
+u2x = project(u0[2], V)
+#dy = interpolate(Expression("x[1] > 0. ? 1. - x[1] : x[1] + 1."), V)
+y = interpolate(Expression("2*0.1335*((1+x[1])*(1-x[1]))"), V)
+
+if restart_folder == None:    
+   #u0 = project(psi.dx(0), V)
+   q_['u0'].vector()[:] = y.vector()[:] 
+   q_['u0'].vector().axpy(1.0, u0x.vector())
+   q_['u1'].vector()[:] = u1x.vector()[:]
+   q_['u2'].vector()[:] = u2x.vector()[:]
+   #u1 = project(-psi.dx(1), V)
+   #q_['u1'].vector()[:] = u1.vector()[:]
+   q_1['u0'].vector()[:] = q_['u0'].vector()[:]
+   q_2['u0'].vector()[:] = q_['u0'].vector()[:]
+   q_1['u1'].vector()[:] = q_['u1'].vector()[:]
+   q_2['u1'].vector()[:] = q_['u1'].vector()[:]
+   q_1['u2'].vector()[:] = q_['u2'].vector()[:]
+   q_2['u2'].vector()[:] = q_['u2'].vector()[:]
+else:
+   # Add a random field to jumpstart the turbulence
+   q_['u0'].vector().axpy(1.0, u0x.vector())
+   q_['u1'].vector().axpy(1.0, u1x.vector())
+   q_['u2'].vector().axpy(1.0, u2x.vector())
+   q_1['u0'].vector().axpy(1.0, u0x.vector())
+   q_1['u1'].vector().axpy(1.0, u1x.vector())
+   q_1['u2'].vector().axpy(1.0, u2x.vector())
+   q_2['u0'].vector().axpy(1.0, u0x.vector())
+   q_2['u1'].vector().axpy(1.0, u1x.vector())
+   q_2['u2'].vector().axpy(1.0, u2x.vector())
 
 u_  = as_vector([q_[ui]  for ui in u_components]) # Velocity vector at t
 u_1 = as_vector([q_1[ui] for ui in u_components]) # Velocity vector at t - dt
@@ -231,7 +234,13 @@ bcs = dict((ui, []) for ui in sys_comp)
 
 def walls(x, on_bnd):
     return on_bnd and (near(x[1], -Ly/2.) or near(x[1], Ly/2.))
-    
+
+def outlet(x, on_bnd):
+    return on_bnd and near(x[0], Lx)
+
+def outletz(x, on_bnd):
+    return on_bnd and near(x[2], Lz/2.)
+
 class PeriodicBoundaryX(SubDomain):
 
     # Left boundary is "target domain" G
@@ -265,6 +274,10 @@ Walls = AutoSubDomain(walls)
 Walls.mark(mf, 1)
 pbx.mark(mf, 2)
 pbz.mark(mf, 3)
+Outlet = AutoSubDomain(outlet)
+Outletz = AutoSubDomain(outletz)
+Outlet.mark(mf, 4)
+Outletz.mark(mf, 5)
 
 one = Constant(1)
 V0 = assemble(one*dx, mesh=mesh)
@@ -328,7 +341,7 @@ u_sol = KrylovSolver('bicgstab', 'jacobi')
 u_sol.parameters['error_on_nonconvergence'] = False
 u_sol.parameters['nonzero_initial_guess'] = True
 u_sol.parameters['preconditioner']['reuse'] = False
-u_sol.parameters['monitor_convergence'] = True
+u_sol.parameters['monitor_convergence'] = False
 u_sol.parameters['maximum_iterations'] = 50
 #u_sol.parameters['relative_tolerance'] = 1e-9
 #u_sol.parameters['absolute_tolerance'] = 1e-10
@@ -336,11 +349,11 @@ u_sol.t = 0
 reset_sparsity = True
 
 #du_sol = LUSolver()
-du_sol = KrylovSolver('gmres', 'hypre_amg')
+du_sol = KrylovSolver('bicgstab', 'hypre_euclid')
 du_sol.parameters['error_on_nonconvergence'] = False
 du_sol.parameters['nonzero_initial_guess'] = True
 du_sol.parameters['preconditioner']['reuse'] = True
-du_sol.parameters['monitor_convergence'] = True
+du_sol.parameters['monitor_convergence'] = False
 du_sol.parameters['maximum_iterations'] = 50
 #du_sol.parameters['relative_tolerance'] = 1e-9
 #du_sol.parameters['absolute_tolerance'] = 1e-10
@@ -351,10 +364,10 @@ p_sol = KrylovSolver('gmres', 'hypre_amg')
 p_sol.parameters['error_on_nonconvergence'] = False
 p_sol.parameters['nonzero_initial_guess'] = True
 p_sol.parameters['preconditioner']['reuse'] = True
-p_sol.parameters['monitor_convergence'] = True
+p_sol.parameters['monitor_convergence'] = False
 p_sol.parameters['maximum_iterations'] = 50
-p_sol.parameters['relative_tolerance'] = 1e-9
-p_sol.parameters['absolute_tolerance'] = 1e-10
+#p_sol.parameters['relative_tolerance'] = 1e-9
+#p_sol.parameters['absolute_tolerance'] = 1e-10
 p_sol.t = 0
 
 x_  = dict((ui, q_ [ui].vector()) for ui in sys_comp)     # Solution vectors t
@@ -371,12 +384,27 @@ u0mean = Function(V)
 kmean = Function(V)
 pmean = Function(QR)
 
+# To project solution on Vv more efficiently:
+uv = TrialFunction(Vv)
+vv = TestFunction(Vv)
+AV = assemble(inner(uv, vv)*dx)
+dv = DirichletBC(Vv, Constant((0, 0, 0)), walls)
+dv.apply(AV)
+AV.compress()
+uvtk = Function(Vv)
+vtk_time = 0
+project_sol = KrylovSolver('gmres', 'hypre_amg')
+project_sol.parameters['error_on_nonconvergence'] = False
+project_sol.parameters['nonzero_initial_guess'] = True
+project_sol.parameters['preconditioner']['reuse'] = True
+project_sol.parameters['monitor_convergence'] = True
+project_sol.parameters['maximum_iterations'] = 50
+
 t0 = t1 = time.time()
 dt_ = dt(0)
 total_iters = 0
 tstep0 = tstep
 while t < T + DOLFIN_EPS:
-    list_timings(True)
     t += dt_
     tstep += 1
     j = 0
@@ -439,7 +467,7 @@ while t < T + DOLFIN_EPS:
         for ui in u_components:
             b['pc'].axpy(-1./dt_, Rx[ui]*x_[ui]) # Divergence of u_
         [bc.apply(b['pc']) for bc in bcs['pc']]
-        #rp = residual(Ap, x_['pc'], b['pc'])
+        rp = residual(Ap, x_['pc'], b['pc'])
         #if p_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
         if MPI.process_number() == 0:
             print 'Solving p'        
@@ -466,44 +494,56 @@ while t < T + DOLFIN_EPS:
         du_sol.solve(MM, x_[ui], b[ui])
         du_sol.t += (time.time()-t0)
         bcs[ui][0].post_solve(V._periodic_master_slave_dofs, x_[ui])
-
+    
     # Update to a new timestep
     for ui in u_components:
         x_2[ui][:] = x_1[ui][:]
         x_1[ui][:] = x_ [ui][:]
 
     ## Update statistics
-    u0mean.vector().axpy(1.0, x_['u0'])
-    kmean.vector().axpy(1.0, 0.5 * (x_['u0'] * x_['u0'] + x_['u1'] * x_['u1'] + x_['u2'] * x_['u2']))
-    pmean.vector().axpy(1.0, x_['pc'])
+    #u0mean.vector().axpy(1.0, x_['u0'])
+    #kmean.vector().axpy(1.0, 0.5 * (x_['u0'] * x_['u0'] + x_['u1'] * x_['u1'] + x_['u2'] * x_['u2']))
+    #pmean.vector().axpy(1.0, x_['pc'])
     #################################################################################################
         
     # Print some information and save intermediate solution
+    vtk0 = time.time()
     if tstep % save_vtk == 0:
         uvtk = project(u_, Vv)
+        #bvtk = assemble(dot(u_, vv)*dx)
+        #dv.apply(bvtk)
+        if MPI.process_number() == 0:
+            print 'Projecting velocity'
+        #project_sol.solve(AV, uvtk.vector(), bvtk)
         vtk_file << uvtk
- 
+    vtk_time += time.time() - vtk0
+    
     if tstep % check == 0:
+        list_timings(True)
         info_red('Total computing time on previous {0:d} timesteps = {1:f}'.format(check, time.time() - t1))
         t1 = time.time()
         info_green('Time = {0:2.4e}, timestep = {1:6d}, End time = {2:2.4e}'.format(t, tstep, T)) 
-        newfolder = path.join(folder, 'timestep='+str(tstep))
-        u1 = assemble(dot(u_, normal)*ds(2), mesh=mesh, exterior_facet_domains=mf)
-        plot(u_[0], rescale=True)
-        if MPI.process_number()==0:
-           print 'flux [m/s] = ', u1/A2
-           try:
-               makedirs(newfolder)
-           except OSError:
-               pass
-        for ui in sys_comp:
-           newfile = File(path.join(newfolder, ui + '.xml.gz'))
-           newfile << q_[ui]
+        #newfolder = path.join(folder, 'timestep='+str(tstep))
+        #u2 = assemble(dot(u_, normal)*ds(2), mesh=mesh, exterior_facet_domains=mf)
+        #u3 = assemble(dot(u_, normal)*ds(3), mesh=mesh, exterior_facet_domains=mf)
+        #u4 = assemble(dot(u_, normal)*ds(4), mesh=mesh, exterior_facet_domains=mf)
+        #u5 = assemble(dot(u_, normal)*ds(5), mesh=mesh, exterior_facet_domains=mf)
         
-        if tstep % save_restart_file == 0:
-           for ui in u_components:
-               newfile_1 = File(path.join(newfolder, ui + '_1.xml.gz'))
-               newfile_1 << q_1[ui]
+        #plot(u_[0], rescale=True)
+        #if MPI.process_number()==0:
+           #print 'flux [m/s] = ', (u2+u4)/u4, (u3+u5)/u5
+           #try:
+               #makedirs(newfolder)
+           #except OSError:
+               #pass
+        #for ui in sys_comp:
+           #newfile = File(path.join(newfolder, ui + '.xml.gz'))
+           #newfile << q_[ui]
+        
+        #if tstep % save_restart_file == 0:
+           #for ui in u_components:
+               #newfile_1 = File(path.join(newfolder, ui + '_1.xml.gz'))
+               #newfile_1 << q_1[ui]
     ### Update ################################################################            
 u0mean.vector()._scale(1./(tstep-tstep0))
 kmean.vector()._scale(1./(tstep-tstep0))
@@ -521,6 +561,7 @@ print 'u_sol ', u_sol.t
 print 'du_sol ', du_sol.t
 print 'p_sol ', p_sol.t
 #plot(project(u_, Vv))
+print 'vtk time ', vtk_time
 interactive()
 
 
