@@ -137,9 +137,9 @@ if __name__ == '__main__':
     from cbc.cfd.icns import solver_parameters
     from time import time
     set_log_active(True)
-    problem_parameters['time_integration']='Steady'
+    problem_parameters['time_integration']='Transient'
     problem_parameters['T'] = 1.
-    problem_parameters['max_iter'] = 10
+    problem_parameters['max_iter'] = 1
     problem_parameters['plot_velocity'] = False
     problem_parameters['pressure_bc'] = False
     solver_parameters = recursive_update(solver_parameters, 
@@ -151,9 +151,9 @@ if __name__ == '__main__':
          )
     
     NS_problem = diffusor(problem_parameters)
-    #NS_solver = icns.NSFullySegregated(NS_problem, solver_parameters)
+    NS_solver = icns.NSFullySegregated(NS_problem, solver_parameters)
     #NS_solver = icns.NSSegregated(NS_problem, solver_parameters)
-    NS_solver = icns.NSCoupled(NS_problem, solver_parameters)
+    #NS_solver = icns.NSCoupled(NS_problem, solver_parameters)
     #NS_solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
     #NS_solver.pdesubsystems['u2'].prm['monitor_convergence'] = True
     #NS_solver.pdesubsystems['p'].prm['monitor_convergence'] = True
