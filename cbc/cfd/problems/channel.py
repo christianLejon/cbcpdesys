@@ -171,7 +171,7 @@ if __name__ == '__main__':
     problem_parameters['max_iter'] = 1
     problem_parameters['max_err'] = 1e-10
     problem_parameters['plot_velocity'] = True # plot velocity at end of timestep
-    problem_parameters['periodic'] = True      # Use or not periodic boundary conditions
+    problem_parameters['periodic'] = False      # Use or not periodic boundary conditions
     problem_parameters['L'] = 5.
     problem_parameters['dt'] = 1.
     solver_parameters = recursive_update(solver_parameters, 

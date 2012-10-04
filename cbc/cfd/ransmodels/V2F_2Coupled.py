@@ -46,13 +46,15 @@ class V2F_2Coupled(V2F):
         return bcu
         
     def solve_inner(self, max_iter=1, max_err=1e-7, logging=True):
+        tot_err = ""
         for name in self.system_names:
             err, j = solve_nonlinear([self.pdesubsystems[name]],
                                      max_iter=max_iter, max_err=max_err,
                                      logging=max_iter>1)
-            self.solve_derived_quantities()
+            self.solve_derived_quantities() # An extra solve for derived quantities
+            tot_err += err
         self.total_number_iters += j
-        return err
+        return tot_err
                 
 class V2FBase(TurbModel):
     

@@ -827,7 +827,7 @@ def solve_nonlinear(pdesubsystems, max_iter=1, max_err=1e-7, logging=True):
                     pdesubsystem.assemble_A = pdesubsystem.prm['reassemble_lhs_inner']
                 if pdesubsystem.assemble_b:
                     pdesubsystem.assemble_b = pdesubsystem.prm['reassemble_rhs_inner']
-                       
+                      
             # print result
             if logging:
                 info_green("    Iter    %s error | " %(j)+ 
