@@ -85,14 +85,14 @@ Re_tau = 395.
 nu = Constant(2.e-5)           # Viscosity
 utau = nu(0) * Re_tau
 t = 0.0                        # time
-tstep = 0                      # Timestep
+tstep =00                      # Timestep
 T = 10.0                        # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
 max_error = 1e-6
 check = 10                    # print out info and save solution every check timestep 
 save_vtk = 10000
-save_restart_file = 50000       # Saves two previous timesteps needed for a clean restart
+save_restart_file = 1000       # Saves two previous timesteps needed for a clean restart
     
 # Specify body force
 dim = mesh.geometry().dim()
@@ -106,12 +106,13 @@ dt = Constant(0.1)
 n = int(T / dt(0))
 
 # Give a folder for storing the results
-folder = "/home/mikael/Fenics/cbcpdesys/cbc/cfd/oasis/channel395/"
+folder = None
+#folder = "/home/mikael/Fenics/cbcpdesys/cbc/cfd/oasis/channel395_L/"
 #folder = "/home-4/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=2.0000e-01/13"
-vtk_file = File("/home/mikael/Fenics/cbcpdesys/cbc/cfd/oasis/channel395/VTK/u/u.pvd")
-u_stats_file = File("/home/mikael/Fenics/cbcpdesys/cbc/cfd/oasis/channel395/Stats/umean.xml.gz")
-k_stats_file = File("/home/mikael/Fenics/cbcpdesys/cbc/cfd/oasis/channel395/Stats/kmean.xml.gz")
-p_stats_file = File("/home/mikael/Fenics/cbcpdesys/cbc/cfd/oasis/channel395/Stats/pmean.xml.gz")
+#vtk_file = File("/home/mikael/Fenics/cbcpdesys/cbc/cfd/oasis/channel395_L/VTK/u/u.pvd")
+#u_stats_file = File("/home/mikael/Fenics/cbcpdesys/cbc/cfd/oasis/channel395_L/Stats/umean.xml.gz")
+#k_stats_file = File("/home/mikael/Fenics/cbcpdesys/cbc/cfd/oasis/channel395_L/Stats/kmean.xml.gz")
+#p_stats_file = File("/home/mikael/Fenics/cbcpdesys/cbc/cfd/oasis/channel395_L/Stats/pmean.xml.gz")
 
 if not folder is None:
     if MPI.process_number() == 0:
@@ -134,6 +135,7 @@ else:
     
 #### Set a folder that contains xml.gz files of the solution. 
 restart_folder = None        
+#restart_folder = "/home/mikael/Fenics/cbcpdesys/cbc/cfd/oasis/channel395/timestep=100"
 #restart_folder = '/home/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=0.001/1'
 #restart_folder = "/home-4/mikaelmo/cbcpdesys/cbc/cfd/oasis/csf_results/dt=2.0000e-01/13/timestep=12500"
 #### Use for initialization if not None
@@ -208,7 +210,7 @@ if restart_folder == None:
    q_2['u1'].vector()[:] = q_['u1'].vector()[:]
    q_1['u2'].vector()[:] = q_['u2'].vector()[:]
    q_2['u2'].vector()[:] = q_['u2'].vector()[:]
-else:
+elif False:
    # Add a random field to jumpstart the turbulence
    q_['u0'].vector().axpy(1.0, u0x.vector())
    q_['u1'].vector().axpy(1.0, u1x.vector())
@@ -330,6 +332,12 @@ bcs['u0'][0].pre_solve_elimination(V._periodic_master_slave_dofs, MM)
 MM.compress()
 App.compress()
 
+ones = Vector(q_['u0'].vector())
+ones[:] = 1.
+ML = MM * ones
+MP = Vector(ML)
+ML.set_local(1. / ML.array())
+
 # Adams Bashforth projection of velocity at t - dt/2
 U_ = 1.5*u_1 - 0.5*u_2
 
@@ -366,8 +374,8 @@ p_sol.parameters['nonzero_initial_guess'] = True
 p_sol.parameters['preconditioner']['reuse'] = True
 p_sol.parameters['monitor_convergence'] = False
 p_sol.parameters['maximum_iterations'] = 50
-#p_sol.parameters['relative_tolerance'] = 1e-9
-#p_sol.parameters['absolute_tolerance'] = 1e-10
+p_sol.parameters['relative_tolerance'] = 1e-7*dt(0)
+p_sol.parameters['absolute_tolerance'] = 1e-7*dt(0)
 p_sol.t = 0
 
 x_  = dict((ui, q_ [ui].vector()) for ui in sys_comp)     # Solution vectors t
@@ -483,17 +491,26 @@ while t < T + DOLFIN_EPS:
 
     ### Update ################################################################
     ### Update velocity ###
+    #for ui in u_components:
+        #b[ui][:] = M*x_[ui][:]        
+        #b[ui].axpy(-dt_, P[ui]*dpc_.vector())
+        #[bc.apply(b[ui]) for bc in bcs[ui]]
+        ##if du_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
+        #if MPI.process_number() == 0:  
+            #print 'Solving ', ui
+        #t0 = time.time()
+        #du_sol.solve(MM, x_[ui], b[ui])
+        #du_sol.t += (time.time()-t0)
+        #bcs[ui][0].post_solve(V._periodic_master_slave_dofs, x_[ui])
+
+    # Lumping
+    t0 = time.time()
     for ui in u_components:
-        b[ui][:] = M*x_[ui][:]        
-        b[ui].axpy(-dt_, P[ui]*dpc_.vector())
-        [bc.apply(b[ui]) for bc in bcs[ui]]
-        #if du_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
-        if MPI.process_number() == 0:  
-            print 'Solving ', ui
-        t0 = time.time()
-        du_sol.solve(MM, x_[ui], b[ui])
-        du_sol.t += (time.time()-t0)
+        MP[:] = (P[ui] * dpc_.vector()) * ML
+        x_[ui].axpy(-dt_, MP)
         bcs[ui][0].post_solve(V._periodic_master_slave_dofs, x_[ui])
+        bcs[ui][2].apply(x_[ui])
+    du_sol.t += (time.time()-t0)
     
     # Update to a new timestep
     for ui in u_components:
@@ -523,13 +540,13 @@ while t < T + DOLFIN_EPS:
         info_red('Total computing time on previous {0:d} timesteps = {1:f}'.format(check, time.time() - t1))
         t1 = time.time()
         info_green('Time = {0:2.4e}, timestep = {1:6d}, End time = {2:2.4e}'.format(t, tstep, T)) 
-        #newfolder = path.join(folder, 'timestep='+str(tstep))
+        newfolder = path.join(folder, 'timestep='+str(tstep))
         #u2 = assemble(dot(u_, normal)*ds(2), mesh=mesh, exterior_facet_domains=mf)
         #u3 = assemble(dot(u_, normal)*ds(3), mesh=mesh, exterior_facet_domains=mf)
         #u4 = assemble(dot(u_, normal)*ds(4), mesh=mesh, exterior_facet_domains=mf)
         #u5 = assemble(dot(u_, normal)*ds(5), mesh=mesh, exterior_facet_domains=mf)
         
-        #plot(u_[0], rescale=True)
+        plot(u_[0], rescale=True)
         #if MPI.process_number()==0:
            #print 'flux [m/s] = ', (u2+u4)/u4, (u3+u5)/u5
            #try:
@@ -540,17 +557,17 @@ while t < T + DOLFIN_EPS:
            #newfile = File(path.join(newfolder, ui + '.xml.gz'))
            #newfile << q_[ui]
         
-        #if tstep % save_restart_file == 0:
-           #for ui in u_components:
-               #newfile_1 = File(path.join(newfolder, ui + '_1.xml.gz'))
-               #newfile_1 << q_1[ui]
+        if tstep % save_restart_file == 0:
+           for ui in u_components:
+               newfile_1 = File(path.join(newfolder, ui + '_1.xml.gz'))
+               newfile_1 << q_1[ui]
     ### Update ################################################################            
 u0mean.vector()._scale(1./(tstep-tstep0))
 kmean.vector()._scale(1./(tstep-tstep0))
 pmean.vector()._scale(1./(tstep-tstep0))
-u_stats_file << u0mean
-k_stats_file << kmean
-p_stats_file << pmean
+#u_stats_file << u0mean
+#k_stats_file << kmean
+#p_stats_file << pmean
 
 info_red('Additional memory use of solver = {0}'.format(eval(getMyMemoryUsage()) - eval(dolfin_memory_use)))
 info_red('Total memory use = ' + getMyMemoryUsage())

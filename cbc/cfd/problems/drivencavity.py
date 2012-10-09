@@ -69,6 +69,7 @@ class drivencavity(NSProblem):
         return vmin
         
     def update(self):
+        NSProblem.update(self)
         if hasattr(self, 'lp'):
             self.lp.step(self.pdesystems['Navier-Stokes'].u_, self.prm['dt'])
             if self.tstep % 500:
@@ -112,10 +113,10 @@ if __name__ == '__main__':
         N = 2
     problem_parameters['Nx'] = mesh_sizes[N]
     problem_parameters['Ny'] = mesh_sizes[N]
-    problem_parameters['Re'] = 1000.
+    problem_parameters['Re'] = 100.
     problem_parameters['T'] = 0.5
     #problem_parameters['T'] = 0.02
-    #problem_parameters['plot_velocity'] = True
+    problem_parameters['plot_velocity'] = True
     #problem_parameters['plot_pressure'] = True
     #problem_parameters['max_iter'] = 1
     problem_parameters['iter_first_timestep'] = 2

@@ -1,5 +1,5 @@
 from dolfin import *
-from LagrangianParticles import zalesak, LagrangianParticles
+from LagrangianParticles import zalesak, LagrangianParticlesPosition
 import time
 from copy import deepcopy
 
@@ -95,12 +95,12 @@ dx = deepcopy(xx)
 solver = LUSolver()
 solver.parameters['reuse_factorization'] = True # Since u_ is constant    
 
-lp = LagrangianParticles(V2)
+lp = LagrangianParticlesPosition(V2)
 
-class LS_particles(LagrangianParticles):
+class LS_particles(LagrangianParticlesPosition):
     
     def __init__(self, V, Vp):
-        LagrangianParticles.__init__(self, V)
+        LagrangianParticlesPosition.__init__(self, V)
         self.Vp = Vp
         self.p_element = Vp.dolfin_element()
         self.p_num_tensor_entries = 1
