@@ -72,7 +72,7 @@ class drivencavity(NSProblem):
         NSProblem.update(self)
         if hasattr(self, 'lp'):
             self.lp.step(self.pdesystems['Navier-Stokes'].u_, self.prm['dt'])
-            if self.tstep % 500:
+            if self.tstep % 5:
                 self.lp.scatter()
         #if self.tstep % 100 == 0:
             #info_red('Memory usage = ' + self.getMyMemoryUsage())
@@ -99,7 +99,7 @@ def line(x0, y0, dx, dy, N=10):
 if __name__ == '__main__':
     import cbc.cfd.icns as icns
     from cbc.cfd.icns import solver_parameters
-    from cbc.cfd.LP import LagrangianParticles
+    from cbc.cfd.LP.LagrangianParticles import LagrangianParticles
     from numpy import linspace, pi, zeros, where, array, ndarray, squeeze, load, sin, cos, arcsin, arctan
     from pylab import show
     import time
@@ -121,7 +121,7 @@ if __name__ == '__main__':
     #problem_parameters['max_iter'] = 1
     problem_parameters['iter_first_timestep'] = 2
     solver_parameters = recursive_update(solver_parameters, 
-    dict(degree=dict(u=2, u0=1, u1=1),
+    dict(degree=dict(u=2, u0=2, u1=2),
         pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
         linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
         precond=dict(u='jacobi', p='hypre_amg', velocity_update='jacobi'),
@@ -129,9 +129,9 @@ if __name__ == '__main__':
         max_iter=1 # Number of pressure/velocity iterations on given timestep
         ))
     problem = drivencavity(problem_parameters)
-    #solver = icns.NSFullySegregated(problem, solver_parameters)
-    solver = icns.NSCoupled(problem, solver_parameters)
-    #x = line(x0=0.5, y0=0.5, dx=0.5, dy=0., N=10)
+    solver = icns.NSFullySegregated(problem, solver_parameters)
+    #solver = icns.NSCoupled(problem, solver_parameters)
+    #x = line(x0=0.5, y0=0.5, dx=0.25, dy=0., N=10)
     #lp = LagrangianParticles(solver.V['u'])
     #lp.add_particles(x)
     #problem.lp = lp
