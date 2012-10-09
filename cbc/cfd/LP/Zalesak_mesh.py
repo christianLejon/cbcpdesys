@@ -96,31 +96,6 @@ solver = LUSolver()
 solver.parameters['reuse_factorization'] = True # Since u_ is constant    
 
 lp = LagrangianParticlesPosition(V2)
-
-class LS_particles(LagrangianParticlesPosition):
-    
-    def __init__(self, V, Vp):
-        LagrangianParticlesPosition.__init__(self, V)
-        self.Vp = Vp
-        self.p_element = Vp.dolfin_element()
-        self.p_num_tensor_entries = 1
-        for i in range(self.p_element.value_rank()):
-            self.p_num_tensor_entries *= self.p_element.value_dimension(i)
-        self.p_coefficients = zeros(self.p_element.space_dimension())
-        self.p_basis_matrix = zeros((self.p_element.space_dimension(), 
-                                     self.p_num_tensor_entries))
-
-        
-    def random_point_in_triangle(self, cell):
-        x = zeros(3)
-        a = zeros(3)
-        coor = self.mesh.coordinates()
-        for i, v in enumerate(vertices(cell)):
-            x[i] = coor[v]
-        a[:2] = random.rand(2)/2.
-        a[2] = a[0] + a[1]
-        p = x * a
-
 lp.add_particles(z)
 
 t0 = time.time()
