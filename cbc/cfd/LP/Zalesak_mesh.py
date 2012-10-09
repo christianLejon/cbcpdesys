@@ -110,10 +110,10 @@ while t <= 628*2:
     #lp.step(u_, dt(0))
     
     # Move zalesak mesh
-    #for i in range(xx.shape[0]):
-        #du = u_(xx[i, :])
-        #xx[i, :] = xx[i, :] + du[:]
-        #dx[i, :] = du[:]
+    for i in range(xx.shape[0]):
+        du = u_(xx[i, :])
+        xx[i, :] = xx[i, :] + du[:] * dt(0)
+        dx[i, :] = du[:]
     
     if step % 20 == 0:
         ff << phi_, pt
