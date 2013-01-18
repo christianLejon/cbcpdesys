@@ -24,7 +24,7 @@ class drivencavity(NSProblem):
         NSProblem.__init__(self, parameters=parameters)
         self.init_memory_use = self.getMyMemoryUsage()
         
-        self.mesh = UnitSquare(self.prm['Nx'], self.prm['Ny'])
+        self.mesh = UnitSquareMesh(self.prm['Nx'], self.prm['Ny'])
         #self.mesh = self.gen_mesh()
         # Set viscosity
         self.prm['viscosity'] = 1./self.prm['Re']
@@ -48,10 +48,10 @@ class drivencavity(NSProblem):
 
     def initialize(self, pdesystem):
         """Initialize solution simply by applying lid_velocity to the top boundary"""
-        return False   # This will simply use u = (0, 0) and p = 0 all over
+        #return False   # This will simply use u = (0, 0) and p = 0 all over
         if pdesystem.prm['familyname'] == 'Navier-Stokes':
             for name in pdesystem.system_names:
-                if not name == 'up': # Coupled solver does not need this, makes no difference
+                if not (name == 'up' or name == 'pc'): # Coupled solver does not need this, makes no difference
                     d = DirichletBC(pdesystem.V[name], lid_velocity[name], lid)
                     d.apply(pdesystem.x_[name])
                     d.apply(pdesystem.x_1[name])
@@ -113,18 +113,18 @@ if __name__ == '__main__':
         N = 2
     problem_parameters['Nx'] = mesh_sizes[N]
     problem_parameters['Ny'] = mesh_sizes[N]
-    problem_parameters['Re'] = 100.
-    problem_parameters['T'] = 0.5
+    problem_parameters['Re'] = 1000.
+    problem_parameters['T'] = 0.1
     #problem_parameters['T'] = 0.02
-    problem_parameters['plot_velocity'] = True
+    problem_parameters['plot_velocity'] = False
     #problem_parameters['plot_pressure'] = True
     #problem_parameters['max_iter'] = 1
     problem_parameters['iter_first_timestep'] = 2
     solver_parameters = recursive_update(solver_parameters, 
-    dict(degree=dict(u=2, u0=2, u1=2),
-        pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
-        linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
-        precond=dict(u='jacobi', p='hypre_amg', velocity_update='jacobi'),
+    dict(degree=dict(u=1, u0=1, u1=1),
+        pdesubsystem=dict(u=101, p=101, pc=101, velocity_update=101, up=1), 
+        linear_solver=dict(u='bicgstab', pc='gmres', velocity_update='gmres'), 
+        precond=dict(u='jacobi', pc='hypre_amg', velocity_update='hypre_amg'),
         iteration_type='Picard',
         max_iter=1 # Number of pressure/velocity iterations on given timestep
         ))
@@ -135,12 +135,15 @@ if __name__ == '__main__':
     #lp = LagrangianParticles(solver.V['u'])
     #lp.add_particles(x)
     #problem.lp = lp
-    
+        
     t0 = time.time()
     problem.solve(logging=True)
     t1 = time.time()-t0
     info_red('Total computing time = {0:f}'.format(t1))
     list_timings()
+    from cbc.cfd.tools.Streamfunctions import StreamFunction
+    psi = StreamFunction(solver.u_, [], use_strong_bc=True)
+    plot(psi)
 
     print 'Functional = ', problem.functional(solver.u_), ' ref ', problem.reference(0)
 
@@ -157,4 +160,6 @@ if __name__ == '__main__':
     psi_error = abs(psi-problem.reference(0))
     
     #dump_result(problem, solver, t1, psi_error)
+    
+    interactive()
     

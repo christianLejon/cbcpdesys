@@ -104,7 +104,7 @@ class VelocityBase(PDESubSystem):
                 # Set up Newton system
                 u_, u = self.solver_namespace['u_'], self.solver_namespace['u']
                 if len(ufl.algorithms.extract_arguments(self.F)) == 2:
-                    F_ = action(self.F, function = u_)
+                    F_ = action(self.F, coefficient=u_)
                 else:
                     F_ = self.F
                 J = derivative(F_, u_, u)

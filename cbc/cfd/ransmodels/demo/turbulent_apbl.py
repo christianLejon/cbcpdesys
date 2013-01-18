@@ -86,30 +86,37 @@ class apbl(NSapbl):
 
 if __name__ == '__main__':
     ## Set up problem ##
+    parameters['reorder_dofs_serial'] = False
     problem_parameters['time_integration']='Steady'
-    problem_parameters['Nx'] = 80
-    problem_parameters['Ny'] = 80
+    problem_parameters['Nx'] = 100
+    problem_parameters['Ny'] = 40
     problem_parameters['Re_tau'] = Re_tau = 395.
     problem_parameters['utau'] = utau = 0.05
     problem_parameters['pressure_bc'] = False
     problem_parameters['plot_velocity'] = True
     problem = apbl(problem_parameters)
     problem.prm['viscosity'] = utau/Re_tau
-    problem_parameters['turbulence_model'] = 'OriginalV2F'
     
     ## Set up Navier-Stokes solver ##
     solver_parameters['degree']['u'] = 1
-    solver_parameters['omega'].default_factory = lambda : 0.9
+    solver_parameters['omega'].default_factory = lambda : 0.8
     NS_solver = icns.NSCoupled(problem, solver_parameters)
     
     ## Set up turbulence model ##
-    rans_parameters['omega'].default_factory = lambda : 0.7
+    rans_parameters['omega'].default_factory = lambda : 0.6
+    problem_parameters['turbulence_model'] = 'OriginalV2F'
+    #problem_parameters['turbulence_model'] = 'LienKalizin'
     Turb_solver = ransmodels.V2F_2Coupled(problem, rans_parameters,
                             model=problem_parameters['turbulence_model'])
-    
+
+    #problem_parameters['turbulence_model'] = 'StandardKE'
+    #Turb_solver = ransmodels.StandardKE_Coupled(problem, rans_parameters,
+                            #model=problem_parameters['turbulence_model'])
+
     ## solve the problem ##    
     t0 = time()
     problem_parameters['max_iter'] = 100
+    Turb_solver.pdesubsystems['v2f'].linear_solver.parameters['report'] = True
     problem.solve()
     print 'time = ', time()-t0
     list_timings()

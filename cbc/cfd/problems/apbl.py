@@ -74,14 +74,14 @@ class apbl(NSProblem):
         self.q0 = self.zero_velocity if transient else self.inlet_velocity
 
     def create_mesh_and_boundaries(self):
-        m = Rectangle(0., -1., self.L, 1., self.prm['Nx'], self.prm['Ny'])
+        m = RectangleMesh(0., -1., self.L, 1., self.prm['Nx'], self.prm['Ny'], "right")
         
         # Create stretched mesh in y-direction
         x = m.coordinates()
-        x[:, 1] = arctan(pi*(x[:, 1]))/arctan(pi) + 1. 
+        x[:, 1] = arctan(0.25*pi*(x[:, 1]))/arctan(0.25*pi) + 1. 
         
         # We have to mark the boundaries before modifying the mesh:
-        self.mf = FacetFunction("uint", m)
+        self.mf = FacetFunction("size_t", m)
         self.mf.set_all(0)
         
         walls = FlowSubDomain(lambda x, on_bnd: ((abs(x[1]) < 5.*DOLFIN_EPS or
@@ -133,7 +133,7 @@ if __name__ == '__main__':
     problem_parameters['T'] = 10.
     problem_parameters['max_iter'] = 1
     #problem_parameters['pressure_bc'] = True
-    problem_parameters['plot_velocity'] = False
+    problem_parameters['plot_velocity'] = True
     solver_parameters = recursive_update(solver_parameters, 
     dict(degree=dict(u=1),
          pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
@@ -142,9 +142,9 @@ if __name__ == '__main__':
          iteration_type='Picard', max_iter=5)
          )
     NS_problem = apbl(problem_parameters)
-    NS_solver = icns.NSFullySegregated(NS_problem, solver_parameters)        
-    #NS_solver = icns.NSCoupled(NS_problem, solver_parameters) 
+    #NS_solver = icns.NSFullySegregated(NS_problem, solver_parameters)        
+    NS_solver = icns.NSCoupled(NS_problem, solver_parameters) 
     
-    NS_solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
+    #NS_solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
     NS_problem.solve()
     

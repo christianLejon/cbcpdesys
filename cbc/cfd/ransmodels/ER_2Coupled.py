@@ -35,9 +35,9 @@ class ER_2Coupled(ER):
         # Set wall functions
         for bc in bcs:
             if bc.type() == 'Wall':
-                bcu['ke'].append(QWall['ke'](bc, self.y, self.nu(0))) 
+                bcu['ke'].append(QWall['ke'](self.V['ke'], bc, self.y, self.nu(0))) 
                 bcu['ke'][-1].type = bc.type
-                bcu['RijFij'].append(QWall['Fij_2'](bc, self.y, self.nu(0), self.ke_, self.ni))
+                bcu['RijFij'].append(QWall['Fij_2'](self.V['RijFij'], bc, self.y, self.nu(0), self.ke_, self.ni))
                 #bcu['RijFij'].append(QWall['Fij_2'](bc, self.y, self.nu(0), self.ke_))
                 bcu['RijFij'][-1].type = bc.type
         return bcu

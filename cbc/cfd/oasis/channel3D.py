@@ -55,6 +55,8 @@ and then using the following to create the lhs A:
 from cbc.cfd.oasis import *
 from numpy import arctan, array
 import random
+from pylab import find
+from cbc.cfd.tools.Streamfunctions import StreamFunction3D
 
 #parameters["linear_algebra_backend"] = "Epetra"
 parameters["linear_algebra_backend"] = "PETSc"
@@ -74,19 +76,48 @@ Lz = 2.
 Nx = 40
 Ny = 50
 Nz = 30
-mesh = Box(0., -Ly/2., -Lz/2., Lx, Ly/2., Lz/2., Nx, Ny, Nz)
+mesh = BoxMesh(0., -Ly/2., -Lz/2., Lx, Ly/2., Lz/2., Nx, Ny, Nz)
 # Create stretched mesh in y-direction
 x = mesh.coordinates()        
 x[:, 1] = arctan(pi*(x[:, 1]))/arctan(pi) 
 normal = FacetNormal(mesh)
-    
+
+class PeriodicBoundaryX(SubDomain):
+
+    # Left boundary is "target domain" G
+    def inside(self, x, on_boundary):
+        return near(x[0], 0.) and on_boundary
+
+    # Map right boundary (H) to left boundary (G)
+    def map(self, x, y):
+        y[0] = x[0] - Lx
+        y[1] = x[1]
+        y[2] = x[2]
+
+class PeriodicBoundaryZ(SubDomain):
+
+    # Left boundary is "target domain" G
+    def inside(self, x, on_boundary):
+        return near(x[2], -Lz/2.) and on_boundary
+
+    # Map right boundary (H) to left boundary (G)
+    def map(self, x, y):
+        y[0] = x[0]
+        y[1] = x[1]
+        y[2] = x[2] - Lz
+                
+pbx = PeriodicBoundaryX()
+pbz = PeriodicBoundaryZ()
+mesh.add_periodic_direction(pbx)
+mesh.add_periodic_direction(pbz)
+
 # Set parameters
 Re_tau = 395.
 nu = Constant(2.e-5)           # Viscosity
 utau = nu(0) * Re_tau
 t = 0.0                        # time
-tstep =00                      # Timestep
-T = 10.0                        # End time
+tstep = 0                      # Timestep
+T = 0.1                        # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
 max_error = 1e-6
@@ -181,20 +212,20 @@ class RandomStreamVector(Expression):
     def __init__(self):
         random.seed(2 + MPI.process_number())
     def eval(self, values, x):
-        values[0] = 0.002*random.random()
-        values[1] = 0.002*random.random()
-        values[2] = 0.002*random.random()
+        values[0] = 0.001*random.random()
+        values[1] = 0.001*random.random()
+        values[2] = 0.001*random.random()
     def value_shape(self):
         return (3,)
         
-psi = interpolate(RandomStreamFunction(), V)
+#psi = interpolate(RandomStreamFunction(), V)
 psi = interpolate(RandomStreamVector(), Vv)
 u0 = project(curl(psi), Vv)
 u0x = project(u0[0], V)
 u1x = project(u0[1], V)
 u2x = project(u0[2], V)
 #dy = interpolate(Expression("x[1] > 0. ? 1. - x[1] : x[1] + 1."), V)
-y = interpolate(Expression("2*0.1335*((1+x[1])*(1-x[1]))"), V)
+y = interpolate(Expression("0.1335*((1+x[1])*(1-x[1]))"), V)
 
 if restart_folder == None:    
    #u0 = project(psi.dx(0), V)
@@ -243,34 +274,8 @@ def outlet(x, on_bnd):
 def outletz(x, on_bnd):
     return on_bnd and near(x[2], Lz/2.)
 
-class PeriodicBoundaryX(SubDomain):
-
-    # Left boundary is "target domain" G
-    def inside(self, x, on_boundary):
-        return near(x[0], 0.) and on_boundary
-
-    # Map right boundary (H) to left boundary (G)
-    def map(self, x, y):
-        y[0] = x[0] - Lx
-        y[1] = x[1]
-        y[2] = x[2]
-
-class PeriodicBoundaryZ(SubDomain):
-
-    # Left boundary is "target domain" G
-    def inside(self, x, on_boundary):
-        return near(x[2], -Lz/2.) and on_boundary
-
-    # Map right boundary (H) to left boundary (G)
-    def map(self, x, y):
-        y[0] = x[0]
-        y[1] = x[1]
-        y[2] = x[2] - Lz
-                
-pbx = PeriodicBoundaryX()
-pbz = PeriodicBoundaryZ()
 # Create FacetFunction for computing intermediate results
-mf = FacetFunction("uint", mesh) # Facets
+mf = FacetFunction("sizet", mesh) # Facets
 mf.set_all(0)
 Walls = AutoSubDomain(walls)
 Walls.mark(mf, 1)
@@ -288,53 +293,39 @@ A2 = assemble(one*ds(2), mesh=mesh, exterior_facet_domains=mf)
 A3 = assemble(one*ds(3), mesh=mesh, exterior_facet_domains=mf)
 
 # Preassemble constant pressure gradient matrix
-# Before creating PeriodicBC to avoid master/slave sparsity issues
 P = dict((ui, assemble(v*p.dx(i)*dx)) for i, ui in enumerate(u_components))
 
 # Preassemble velocity divergence matrix
 Rx = dict((ui, assemble(q*u.dx(i)*dx)) for i, ui in  enumerate(u_components))
-#for ui in  u_components:
-#    bcs['p'][0].pre_solve_elimination(QR._periodic_master_slave_dofs, Rx[ui])
 
-bc = [PeriodicBC(V, pbx), PeriodicBC(V, pbz), DirichletBC(V, Constant(0), walls)]
+bc = [DirichletBC(V, Constant(0), walls)]
 bcs['u0'] = bc
 bcs['u1'] = bc
 bcs['u2'] = bc
-bcs['pc'] = [PeriodicBC(QR, pbx), PeriodicBC(QR, pbz)]
+bcs['pc'] = []
 
+normalize = extended_normalize(QR, 0)
 #####################################################################
 
 # Preassemble some constant in time matrices
 M = assemble(inner(u, v)*dx)                    # Mass matrix
 K = assemble(nu*inner(grad(u), grad(v))*dx)     # Diffusion matrix
-Ap = assemble(inner(grad(q), grad(p))*dx + 0*(inner(d, p) + inner(q, c)) * dx)    # Pressure Laplacian
+Ap = assemble(inner(grad(q), grad(p))*dx)    # Pressure Laplacian
 A = Matrix()                                    # Coefficient matrix (needs reassembling)
 
-NN = Ap.size(0)
-if (NN-1 >= Ap.local_range(0)[0] and NN-1 < Ap.local_range(0)[1]):
-    a1 = Ap.getrow(NN-1)
-    a2 = Ap.getrow(NN-2)
-    a1[1][-2] = 1.
-    a2[1][-1] = 1.
-    #Ap.setrow(NN-2, array(a2[0], 'I'), a2[1])
-    #Ap.setrow(NN-1, array(a1[0], 'I'), a1[1])
-    Ap.setrow(NN-2, array([NN-2], 'I'), array([1.]))
-    Ap.setrow(NN-1, array([NN-2, NN-1], 'I'), array([1., 1.]))
-Ap.apply("insert")
+c1 = (inner(d, p) + inner(q, c)) * dx(1)
+cf = CellFunction('sizet', mesh, 0)
+cf[0] = 1
+Ac = assemble(c1, cell_domains=cf)
+Ap.axpy(1., Ac, False)
 
 # Apply boundary conditions on M and Ap that are used directly in solve
-App = Ap.copy()
-MM = M.copy()
-[bc.apply(MM) for bc in bcs['u0']]
-[bc.apply(App) for bc in bcs['pc']]
-bcs['pc'][0].pre_solve_elimination(QR._periodic_master_slave_dofs, App)
-bcs['u0'][0].pre_solve_elimination(V._periodic_master_slave_dofs, MM)
-MM.compress()
-App.compress()
+[bc.apply(M) for bc in bcs['u0']]
+Ap.compress()
 
 ones = Vector(q_['u0'].vector())
 ones[:] = 1.
-ML = MM * ones
+ML = M * ones
 MP = Vector(ML)
 ML.set_local(1. / ML.array())
 
@@ -372,7 +363,7 @@ p_sol = KrylovSolver('gmres', 'hypre_amg')
 p_sol.parameters['error_on_nonconvergence'] = False
 p_sol.parameters['nonzero_initial_guess'] = True
 p_sol.parameters['preconditioner']['reuse'] = True
-p_sol.parameters['monitor_convergence'] = False
+p_sol.parameters['monitor_convergence'] = True
 p_sol.parameters['maximum_iterations'] = 50
 p_sol.parameters['relative_tolerance'] = 1e-7*dt(0)
 p_sol.parameters['absolute_tolerance'] = 1e-7*dt(0)
@@ -448,7 +439,7 @@ while t < T + DOLFIN_EPS:
             A._scale(-1.)
             A.axpy(2./dt_, M, True)
             [bc.apply(A) for bc in bcs['u0']]
-            bcs['u0'][0].pre_solve_elimination(V._periodic_master_slave_dofs, A)
+            #bcs['u0'][0].pre_solve_elimination(V._periodic_master_slave_dofs, A)
             
         for ui in u_components:
             bold[ui][:] = b[ui][:]
@@ -467,22 +458,22 @@ while t < T + DOLFIN_EPS:
             u_sol.t += (time.time()-t0)
             err += norm(work - x_[ui])
             b[ui][:] = bold[ui][:]
-            bcs[ui][0].post_solve(V._periodic_master_slave_dofs, x_[ui])
+            #bcs[ui][0].post_solve(V._periodic_master_slave_dofs, x_[ui])
             
         ### Solve pressure ###
         dpc_.vector()[:] = x_['pc'][:]
-        b['pc'][:] = Ap*x_['pc']
+        b['pc'][:] = 0.
         for ui in u_components:
             b['pc'].axpy(-1./dt_, Rx[ui]*x_[ui]) # Divergence of u_
-        [bc.apply(b['pc']) for bc in bcs['pc']]
+        b['pc'].axpy(1., Ap*x_['pc'])
         rp = residual(Ap, x_['pc'], b['pc'])
         #if p_sol.parameters['monitor_convergence'] and MPI.process_number() == 0:
         if MPI.process_number() == 0:
             print 'Solving p'        
         t0 = time.time()
-        p_sol.solve(App, x_['pc'], b['pc'])
+        p_sol.solve(Ap, x_['pc'], b['pc'])
         p_sol.t += (time.time()-t0)
-        bcs['pc'][0].post_solve(QR._periodic_master_slave_dofs, x_['pc'])
+        normalize(pc_.vector())
         dpc_.vector()[:] = x_['pc'][:] - dpc_.vector()[:]
         if tstep % check == 0:
             if num_iter > 1:
@@ -499,17 +490,15 @@ while t < T + DOLFIN_EPS:
         #if MPI.process_number() == 0:  
             #print 'Solving ', ui
         #t0 = time.time()
-        #du_sol.solve(MM, x_[ui], b[ui])
+        #du_sol.solve(M, x_[ui], b[ui])
         #du_sol.t += (time.time()-t0)
-        #bcs[ui][0].post_solve(V._periodic_master_slave_dofs, x_[ui])
 
     # Lumping
     t0 = time.time()
     for ui in u_components:
         MP[:] = (P[ui] * dpc_.vector()) * ML
         x_[ui].axpy(-dt_, MP)
-        bcs[ui][0].post_solve(V._periodic_master_slave_dofs, x_[ui])
-        bcs[ui][2].apply(x_[ui])
+        bcs[ui][0].apply(x_[ui])
     du_sol.t += (time.time()-t0)
     
     # Update to a new timestep
@@ -579,6 +568,10 @@ print 'du_sol ', du_sol.t
 print 'p_sol ', p_sol.t
 #plot(project(u_, Vv))
 print 'vtk time ', vtk_time
+psi = StreamFunction3D(u_, mf)
+
+plot(psi[0])
+
 interactive()
 
 

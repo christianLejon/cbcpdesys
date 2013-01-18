@@ -18,13 +18,13 @@ class Lshape(NSProblem):
         # Create the L-shaped mesh 
         mesh_ = UnitSquare(self.prm['Nx'], self.prm['Ny'])
         subm = Submesh()
-        self.mf1 = MeshFunction("uint", mesh_, 2)
+        self.mf1 = MeshFunction("sizet", mesh_, 2)
         self.mf1.set_all(0)
         subm.mark(self.mf1, 1)
         self.mesh = mesh = SubMesh(mesh_, self.mf1, 0)
         
         # Create meshfunction to mark all boundaries
-        self.mf = FacetFunction("uint", mesh)
+        self.mf = FacetFunction("sizet", mesh)
         self.mf.set_all(0)
         
         self.boundaries = self.create_boundaries()
@@ -94,13 +94,13 @@ if __name__ == '__main__':
          pdesubsystem=dict(u=1, p=1, velocity_update=1, up=1), 
          linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab', up='lu'), 
          precond=dict(u='jacobi', p='amg', velocity_update='ilu'),
-         iteration_type='Newton', max_iter=5, max_err=1e-6,
+         iteration_type='Picard', max_iter=5, max_err=1e-6,
          stabilization_prm=0.01)
          )
     problem = Lshape(problem_parameters)
     #solver = icns.NSFullySegregated(problem, solver_parameters)
-    solver = icns.NSCoupled(problem, solver_parameters)  
-    #solver = icns.NSSegregated(problem, solver_parameters)
+    #solver = icns.NSCoupled(problem, solver_parameters)  
+    solver = icns.NSSegregated(problem, solver_parameters)
     t0 = time.time()
     problem.solve()
     t1 = time.time() - t0

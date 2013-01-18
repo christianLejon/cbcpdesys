@@ -37,11 +37,11 @@ class V2F_2Coupled(V2F):
         # Set wall functions
         for bc in bcs:
             if bc.type() == 'Wall':
-                bcu['ke'].append(QWall['ke'](bc, self.y, self.nu(0))) 
+                bcu['ke'].append(QWall['ke'](self.V['ke'], bc, self.y, self.nu(0))) 
                 bcu['ke'][-1].type = bc.type
                 if self.prm['model'] == 'OriginalV2F':
-                    bcu['v2f'].append(QWall['v2f'](bc, self.y, self.nu(0), 
-                                                   self.ke_))
+                    bcu['v2f'].append(QWall['v2f'](self.V['v2f'], bc, self.y, 
+                                                   self.nu(0), self.ke_))
                     bcu['v2f'][-1].type = bc.type
         return bcu
         
@@ -58,20 +58,18 @@ class V2F_2Coupled(V2F):
                 
 class V2FBase(TurbModel):
     
+    def __init__(self, solver_namespace, sub_system, bcs=[], normalize=None, **kwargs):
+        TurbModel.__init__(self, solver_namespace, sub_system, bcs, normalize, **kwargs)
+    
+        self.v2_dofs = self.V.sub(1).dofmap().dofs()
+    
     def update(self):
         """ Only v2 that is bounded by zero """
-        if self.solver_namespace['prm']['model'] == 'OriginalV2F':
-            dim = self.x.size(0)/2
-            self.x[:dim].set_local(minimum(maximum(1e-12, self.x.array()[:dim]), 1e8))
-        else:
-            self.x[:].set_local(minimum(maximum(1e-12, self.x.array()[:]), 1e8))
-    
-class KEBase(TurbModel):    
-    def update(self):
-        """This makes k=1e-10 on walls and v2ok is then 0.01 if used with compute_dofs."""
-        bound(self.x, minf=1e-10)
-        
-class Steady_ke_1(KEBase):
+        x = self.x.array()
+        x[self.v2_dofs] = minimum(maximum(1e-12, x[self.v2_dofs]), 1e6)
+        self.x.set_local(x)
+            
+class Steady_ke_1(TurbModel):
     def form(self, k, e, v_k, v_e, k_, e_, nu, nut_, u_, Ce1_, P_, T_, Ce2, 
                    e_d, sigma_e, **kwargs):        
         Fk = (nu + nut_)*inner(grad(v_k), grad(k))*dx \
@@ -84,7 +82,7 @@ class Steady_ke_1(KEBase):
             
         return Fk + Fe
         
-class Steady_ke_2(KEBase):
+class Steady_ke_2(TurbModel):
     """Pseudo-transient."""
     def form(self, k, e, v_k, v_e, k_, e_, nu, nut_, u_, Ce1_, P_, T_, Sij_, 
                    dt, Ce2, e_d, sigma_e, **kwargs):

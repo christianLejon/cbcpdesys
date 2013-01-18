@@ -81,16 +81,16 @@ class diffusor(NSProblem):
         self.prm['dt'] = self.timestep()
         
         # Choose dictionary for initializing
-        transient = self.prm['time_integration']=='Transient'
+        transient = self.prm['time_integration'] == 'Transient'
         self.q0 = self.zero_velocity if transient else self.inlet_velocity
 
     def create_mesh_and_boundaries(self):
         self.L = 16.
-        m = Rectangle(0., -1., self.L, 1., self.prm['Nx'], self.prm['Ny'])
+        m = RectangleMesh(0., -1., self.L, 1., self.prm['Nx'], self.prm['Ny'])
         x = m.coordinates()
         # Create stretched mesh in y-direction
         x[:, 1] = arctan(1.*pi*(x[:, 1]))/arctan(1.*pi) 
-        self.mf = FacetFunction("uint", m)     # Facets
+        self.mf = FacetFunction("sizet", m)     # Facets
         self.mf.set_all(0)
         # We mark the boundaries before modifying the mesh:
         walls  = FlowSubDomain(lambda x, on_boundary: (near(x[1], 1.) or near(x[1], -1.)
@@ -145,8 +145,8 @@ if __name__ == '__main__':
     solver_parameters = recursive_update(solver_parameters, 
     dict(degree=dict(u=1),
          pdesubsystem=dict(u=1, p=1, velocity_update=1, up=1), 
-         linear_solver=dict(u='lu', p='lu', velocity_update='lu'), 
-         precond=dict(u='jacobi', p='amg', velocity_update='jacobi'),
+         linear_solver=dict(u='bicgstab', p='gmres', velocity_update='gmres'), 
+         precond=dict(u='jacobi', p='hypre_amg', velocity_update='hypre_amg'),
          iteration_type='Picard')
          )
     
@@ -162,7 +162,7 @@ if __name__ == '__main__':
     t0 = time()
     NS_problem.solve()
     print 'time = ', time()-t0
-    print summary()
+    print list_timings()
     plot(NS_solver.u_)
     interactive()
     

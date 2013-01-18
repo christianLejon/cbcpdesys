@@ -21,10 +21,21 @@ class LowReynolds_Segregated(LowReynolds):
     def define(self):
         """ Set up linear algebra schemes and their boundary conditions """
         LowReynolds.define(self)
-        self.schemes['k'] = eval(self.prm['time_integration'] + '_k_' + 
-               str(self.prm['scheme']['k']))(self, self.system_composition[0])        
-        self.schemes['e'] = eval(self.prm['time_integration'] + '_e_' + 
-               str(self.prm['scheme']['e']))(self, self.system_composition[1])
+        self.pdesubsystems['k'] = eval(self.prm['time_integration'] + '_k_' + 
+               str(self.prm['pdesubsystem']['k']))(vars(self), ['k'], bcs=self.bc['k'])
+        self.pdesubsystems['e'] = eval(self.prm['time_integration'] + '_e_' + 
+               str(self.prm['pdesubsystem']['e']))(vars(self), ['e'], bcs=self.bc['e'])
+
+    def solve_inner(self, max_iter=1, max_err=1e-7, logging=True):
+        tot_err = ""
+        for name in self.system_names:
+            err, j = solve_nonlinear([self.pdesubsystems[name]],
+                                     max_iter=max_iter, max_err=max_err,
+                                     logging=max_iter>1)
+            self.solve_derived_quantities() # An extra solve for derived quantities
+            tot_err += err
+        self.total_number_iters += j
+        return tot_err
         
 class Steady_k_1(TurbModel):
         

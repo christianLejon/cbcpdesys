@@ -15,11 +15,12 @@ import os
 
 #parameters["linear_algebra_backend"] = "Epetra"
 parameters["linear_algebra_backend"] = "PETSc"
-#parameters['form_compiler']['representation'] = 'quadrature'
-parameters["form_compiler"]["optimize"]     = False
+parameters['form_compiler']['representation'] = 'quadrature'
+parameters["form_compiler"]["optimize"]     = True
 parameters["form_compiler"]["cpp_optimize"] = True
 # Cache for work arrays
 _work = {}
+_arrays = {}
 
 # Wrap Krylov solver because of the two different calls depending on whether the preconditioner has been set.
 KrylovSolver.solve1 = KrylovSolver.solve
@@ -69,7 +70,8 @@ class PDESubSystemBase:
             max_inner_iter=1,
             max_inner_err=1e-5,
             reset_sparsity=True,
-            wall_value=1e-12
+            wall_value=1e-12,
+            cache_arrays=False
             )
         self.prm.update(**kwargs)
         self.bcs = bcs
@@ -213,13 +215,27 @@ class PDESubSystemBase:
     def assemble(self, M):
         """Assemble tensor."""
         if isinstance(M, Matrix):
-            M = assemble(self.a, tensor=M,
-                     exterior_facet_domains=self.exterior_facet_domains,
-                     reset_sparsity=self.prm['reset_sparsity'])
-            # It is possible to preassemble parts of the matrix in A1. In that case just add the preassembled part
-            if not self.A1 is None:
-                M.axpy(1., self.A1, True)
-            self.prm['reset_sparsity'] = False
+            if self.prm['cache_arrays']:
+                if self.a in _arrays:
+                    self.A = _arrays[self.a]
+                else:            
+                    M = assemble(self.a, tensor=M,
+                            exterior_facet_domains=self.exterior_facet_domains,
+                            reset_sparsity=self.prm['reset_sparsity'])
+                    # It is possible to preassemble parts of the matrix in A1. In that case just add the preassembled part
+                    if not self.A1 is None:
+                        M.axpy(1., self.A1, True)
+                    self.prm['reset_sparsity'] = False
+                    _arrays[self.a] = M
+            else:
+                M = assemble(self.a, tensor=M,
+                        exterior_facet_domains=self.exterior_facet_domains,
+                        reset_sparsity=self.prm['reset_sparsity'])
+                # It is possible to preassemble parts of the matrix in A1. In that case just add the preassembled part
+                if not self.A1 is None:
+                    M.axpy(1., self.A1, True)
+                self.prm['reset_sparsity'] = False
+                
         elif isinstance(M, Vector):
             M = assemble(self.L, tensor=M,
                      exterior_facet_domains=self.exterior_facet_domains)       
@@ -235,7 +251,7 @@ class PDESubSystemBase:
         """Return linear solver. 
         """
         if self.prm['linear_solver'] == 'lu':
-            return LUSolver()
+            return LUSolver("mumps")
         else:
             sol = KrylovSolver(self.prm['linear_solver'], self.prm['precond'])
             sol.preconditioned_solve = False

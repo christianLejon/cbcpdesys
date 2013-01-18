@@ -80,17 +80,18 @@ info_red('Memory use of plain dolfin = ' + dolfin_memory_use)
 
 ################### Problem dependent parameters ####################
 
-mesh = UnitSquare(45, 45)
+mesh = UnitSquareMesh(45, 45)
 nu = Constant(1.e-3)          # Viscosity
 t = 0                         # time
 tstep = 0                     # Timestep
-T = 0.5                       # End time
+T = 50                       # End time
 #T = 2*dt(0)
 max_iter = 5                  # Iterations on timestep
 max_error = 1e-6
 #dt = Constant(0.012254901960784314)
-dt = Constant(T/ceil(T/0.2/mesh.hmin())) # timestep
-check = 1                     # print out info every check timestep 
+#dt = Constant(T/ceil(T/0.2/mesh.hmin())) # timestep
+dt = Constant(0.1)
+check = 10                     # print out info every check timestep 
 T0 = Constant(294.)
 T1 = Constant(317.)
 beta = Constant(200.e-6)
@@ -146,7 +147,6 @@ bcs['c']  = [DirichletBC(V, T0, walls), DirichletBC(V, T1, bottom)]
 
 # Normalize pressure or not?
 #normalize = False
-normalize = dolfin_normalize(Q)
 
 # Specify body force
 C_ = 0.5*(c_ + c_1)
@@ -307,9 +307,9 @@ while t < (T - tstep*DOLFIN_EPS):
     for ui in uc_comp:
         x_1[ui][:] = x_ [ui][:]
         
-    #if tstep % check == 0:
-        #plot(project(u_, Vv))
-        #plot(c_)
+    if tstep % check == 0:
+        plot(project(u_, Vv))
+        plot(c_)
         
     # Print some information
     if tstep % check == 0:

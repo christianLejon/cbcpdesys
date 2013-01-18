@@ -51,15 +51,15 @@ class channel(NSProblem):
         
     def gen_mesh(self):
         self.L = problem_parameters['L']
-        m = Rectangle(0., -1., self.L, 1., self.prm['Nx'], self.prm['Ny'])
+        m = RectangleMesh(0., 0., self.L, 1., self.prm['Nx'], self.prm['Ny'])
         # Create stretched mesh in y-direction
         x = m.coordinates()        
-        x[:, 1] = arctan(pi*(x[:, 1]))/arctan(pi) 
+        x[:, 1] = arctan(0.5*pi*(x[:, 1]))/arctan(0.5*pi) 
         #x[:, 1] = 0.5*x[:, 1]
         return m        
         
     def create_boundaries(self):
-        self.mf = FacetFunction("uint", self.mesh) # Facets
+        self.mf = FacetFunction("size_t", self.mesh) # Facets
         self.mf.set_all(0)
                         
         walls = FlowSubDomain(lambda x, on_boundary: ((near(x[1], -1.) or 
@@ -68,9 +68,9 @@ class channel(NSProblem):
                               bc_type = 'Wall',
                               mf = self.mf)
 
-        #symmetry = FlowSubDomain(lambda x, on_boundary: near(x[1], 0.) and on_boundary,
-                                #bc_type = 'Symmetry',
-                                #mf = self.mf)
+        symmetry = FlowSubDomain(lambda x, on_boundary: near(x[1], 0.) and on_boundary,
+                                bc_type = 'Symmetry',
+                                mf = self.mf)
 
         if self.prm['periodic']:
             
@@ -171,7 +171,7 @@ if __name__ == '__main__':
     problem_parameters['max_iter'] = 1
     problem_parameters['max_err'] = 1e-10
     problem_parameters['plot_velocity'] = True # plot velocity at end of timestep
-    problem_parameters['periodic'] = False      # Use or not periodic boundary conditions
+    problem_parameters['periodic'] = True      # Use or not periodic boundary conditions
     problem_parameters['L'] = 5.
     problem_parameters['dt'] = 1.
     solver_parameters = recursive_update(solver_parameters, 
@@ -185,14 +185,14 @@ if __name__ == '__main__':
     NS_problem = channel(problem_parameters)
     
     # Choose Navier-Stokes solver
-    NS_solver = icns.NSFullySegregated(NS_problem, solver_parameters)
+    #NS_solver = icns.NSFullySegregated(NS_problem, solver_parameters)
     #NS_solver = icns.NSSegregated(NS_problem, solver_parameters)
-    #NS_solver = icns.NSCoupled(NS_problem, solver_parameters)
+    NS_solver = icns.NSCoupled(NS_problem, solver_parameters)
     
-    for name in NS_solver.system_names:
-        NS_solver.pdesubsystems[name].prm['monitor_convergence'] = True
-        NS_solver.pdesubsystems[name].linear_solver.parameters['relative_tolerance'] = 1e-14
-        NS_solver.pdesubsystems[name].linear_solver.parameters['absolute_tolerance'] = 1e-14
+    #for name in NS_solver.system_names:
+        #NS_solver.pdesubsystems[name].prm['monitor_convergence'] = True
+        #NS_solver.pdesubsystems[name].linear_solver.parameters['relative_tolerance'] = 1e-10
+        #NS_solver.pdesubsystems[name].linear_solver.parameters['absolute_tolerance'] = 1e-10
     #solver.pdesubsystems['u0_update'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['u1_update'].prm['monitor_convergence'] = True
     #solver.pdesubsystems['u2_update'].prm['monitor_convergence'] = True

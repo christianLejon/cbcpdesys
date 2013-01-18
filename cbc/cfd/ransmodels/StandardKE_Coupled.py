@@ -24,7 +24,7 @@ class StandardKE_Coupled(StandardKE):
         # Overload default Wall behavior using wallfunctions
         for i, bc in enumerate(bcs):
             if bc.type() == 'Wall':
-                bcu['ke'].insert(i+1, QWall['ke'](bc, self.y, self.nu(0)))
+                bcu['ke'].insert(i+1, QWall['ke'](self.V['ke'], bc, self.y, self.nu(0)))
                 bcu['ke'][i+1].type = bc.type
         return bcu
                 

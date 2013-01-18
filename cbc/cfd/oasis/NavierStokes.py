@@ -68,7 +68,7 @@ info_red('Memory use of plain dolfin = ' + dolfin_memory_use)
 
 ################### Problem dependent parameters ####################
 
-mesh = UnitSquare(100, 100)
+mesh = UnitSquareMesh(91, 91)
 nu = Constant(0.001)          # Viscosity
 t = 0                         # time
 tstep = 0                     # Timestep
@@ -130,10 +130,22 @@ bc01 = DirichletBC(V, 0., lid)
 bcs['u0'] = [bc00, bc0]
 bcs['u1'] = [bc01, bc0]
 
+coor = mesh.coordinates()[2000, :]
+def lefttop(x, on_boundary):
+    return (abs(x[0] - coor[0]) < 1e-12 and abs(x[1] - coor[1]) < 1e-12)
+    
+bcs['p'] = [DirichletBC(Q, 100., lefttop, "pointwise")]
+
 # Normalize pressure or not?
-#normalize = False
+normalize = False
 
 #####################################################################
+
+# Preassemble constant pressure gradient matrix
+P = dict((ui, assemble(v*p.dx(i)*dx)) for i, ui in enumerate(u_components))
+
+# Preassemble velocity divergence matrix
+R = dict((ui, assemble(q*u.dx(i)*dx)) for i, ui in  enumerate(u_components))
 
 # Preassemble some constant in time matrices
 M = assemble(inner(u, v)*dx)                    # Mass matrix
@@ -141,12 +153,22 @@ K = assemble(nu*inner(grad(u), grad(v))*dx)     # Diffusion matrix
 Ap = assemble(inner(grad(q), dt*grad(p))*dx)    # Pressure Laplacian
 A = Matrix()                                    # Coefficient matrix (needs reassembling)
 
-# Apply boundary conditions on M and Ap that are used directly in solve
-[bc.apply(M)  for bc in bcs['u0']]
+# Velocity update uses lumping of the mass matrix for P1-elements
+# Compute inverse of the lumped diagonal mass matrix 
+if V.ufl_element().degree() == 1:
+    ones = Vector(q_['u0'].vector())
+    ones[:] = 1.
+    ML = M * ones
+    MP = Vector(ML)
+    ML.set_local(1. / ML.array())
+else:
+    # Use regular mass matrix for velocity update
+    [bc.apply(M) for bc in bcs['u0']]
+
+# Apply boundary conditions on Ap that is used directly in solve
 [bc.apply(Ap) for bc in bcs['p']]
-
 Ap.compress()
-
+    
 # Adams Bashforth projection of velocity at t - dt/2
 U_ = 1.5*u_1 - 0.5*u_2
 
@@ -157,15 +179,6 @@ a  = 0.5*inner(v, dot(U_, nabla_grad(u)))*dx
 assert(isinstance(f, Constant))
 b0 = dict((ui, assemble(v*f[i]*dx)) for i, ui in enumerate(u_components))
 
-# Preassemble constant pressure gradient matrix
-P = dict((ui, assemble(v*p.dx(i)*dx)) for i, ui in enumerate(u_components))
-
-# Preassemble velocity divergence matrix
-if V.ufl_element().degree() == Q.ufl_element().degree():
-    R = P
-else:
-    R = dict((ui, assemble(q*u.dx(i)*dx)) for i, ui in  enumerate(u_components))
-
 # Set up linear solvers
 #u_sol = LUSolver()
 
@@ -174,25 +187,27 @@ else:
 
 #p_sol = LUSolver()
 #p_sol.parameters['reuse_factorization'] = True
-list_timings()
 
 u_sol = KrylovSolver('gmres', 'jacobi')
 u_sol.parameters['error_on_nonconvergence'] = False
 u_sol.parameters['nonzero_initial_guess'] = True
 u_sol.parameters['monitor_convergence'] = True
+u_sol.parameters['maximum_iterations'] = 50
 reset_sparsity = True
-
-du_sol = KrylovSolver('gmres', 'hypre_amg')
-du_sol.parameters['error_on_nonconvergence'] = False
-du_sol.parameters['nonzero_initial_guess'] = True
-du_sol.parameters['preconditioner']['reuse'] = True
-du_sol.parameters['monitor_convergence'] = True
 
 p_sol = KrylovSolver('gmres', 'hypre_amg')
 p_sol.parameters['error_on_nonconvergence'] = False
 p_sol.parameters['nonzero_initial_guess'] = True
 p_sol.parameters['preconditioner']['reuse'] = True
 p_sol.parameters['monitor_convergence'] = True
+p_sol.parameters['maximum_iterations'] = 50
+
+if V.ufl_element().degree() > 1:
+    du_sol = KrylovSolver('gmres', 'hypre_amg')
+    du_sol.parameters['error_on_nonconvergence'] = False
+    du_sol.parameters['nonzero_initial_guess'] = True
+    du_sol.parameters['preconditioner']['reuse'] = True
+    du_sol.parameters['monitor_convergence'] = True
 
 x_  = dict((ui, q_ [ui].vector()) for ui in sys_comp)     # Solution vectors t
 x_1 = dict((ui, q_1[ui].vector()) for ui in u_components) # Solution vectors t - dt
@@ -222,7 +237,7 @@ while t < (T - tstep*DOLFIN_EPS):
             # Only on the first iteration because nothing here is changing in time
             # Set up coefficient matrix for computing the rhs:
             A = assemble(a, tensor=A, reset_sparsity=reset_sparsity) 
-            reset_sparsity = False   # Warning! Must be true for periodic boundary conditions
+            reset_sparsity = False   
             A._scale(-1.)            # Negative convection on the rhs 
             A.axpy(1./dt_, M, True)  # Add mass
             A.axpy(-0.5, K, True)    # Add diffusion                
@@ -239,11 +254,11 @@ while t < (T - tstep*DOLFIN_EPS):
         
         for ui in u_components:
             bold[ui][:] = b[ui][:] 
-            b[ui].axpy(-1., P[ui]*x_['p'])
+            b[ui].axpy(-1., P[ui]*x_['p'])       # Add pressure gradient
             [bc.apply(b[ui]) for bc in bcs[ui]]
             work[:] = x_[ui][:]
             u_sol.solve(A, x_[ui], b[ui])
-            b[ui][:] = bold[ui][:]  # preassemble part
+            b[ui][:] = bold[ui][:]  # store preassemble part
             err += norm(work - x_[ui])
             
         ### Solve pressure ###
@@ -254,20 +269,29 @@ while t < (T - tstep*DOLFIN_EPS):
         [bc.apply(b['p']) for bc in bcs['p']]
         rp = residual(Ap, x_['p'], b['p'])
         p_sol.solve(Ap, x_['p'], b['p'])
-        #if normalize: normalize(x_['p'])
+        if normalize: normalize(x_['p'])
         dp_.vector()[:] = x_['p'][:] - dp_.vector()[:]
         if tstep % check == 0:
             if num_iter > 1:
                 if j == 1: info_blue('                 error u  error p')
                 info_blue('    Iter = {0:4d}, {1:2.2e} {2:2.2e}'.format(j, err, rp))
-
+    
     ### Update velocity ###
-    for ui in u_components:
-        b[ui][:] = M*x_[ui][:]        
-        b[ui].axpy(-dt_, P[ui]*dp_.vector())
-        [bc.apply(b[ui]) for bc in bcs[ui]]        
-        du_sol.solve(M, x_[ui], b[ui])
-
+    if V.ufl_element().degree() == 1:
+        # Update velocity using lumped mass matrix
+        for ui in u_components:
+            MP[:] = (P[ui] * dp_.vector()) * ML
+            x_[ui].axpy(-dt_, MP)
+            [bc.apply(x_[ui]) for bc in bcs[ui]]
+    else:
+        # Otherwise use regular mass matrix
+        for ui in u_components:
+            b[ui][:] = M*x_[ui][:]        
+            b[ui].axpy(-dt_, P[ui]*dp_.vector())
+            [bc.apply(b[ui]) for bc in bcs[ui]]        
+            du_sol.solve(M, x_[ui], b[ui])
+        
+    plot(p_, rescale=True)
     # Update to a new timestep
     for ui in u_components:
         x_2[ui][:] = x_1[ui][:]
@@ -287,5 +311,10 @@ list_timings()
 from cbc.cfd.tools.Streamfunctions import StreamFunction
 psi = StreamFunction(u_, [], use_strong_bc=True)
 plot(psi)
+
+plot(p_)
+
+interactive()
+
 
 

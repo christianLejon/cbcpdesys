@@ -33,7 +33,7 @@ class V2F_FullyCoupled(V2F):
         # Set wall functions
         for bc in bcs:
             if bc.type() == 'Wall':
-                bcu['kev2f'].append(V2FWall(bc, self.y, self.nu(0), 
+                bcu['kev2f'].append(V2FWall(self.V['kev2f'], bc, self.y, self.nu(0), 
                                     self.kev2f_))
                 bcu['kev2f'][-1].type = bc.type
         return bcu
@@ -42,9 +42,13 @@ class V2FBase(TurbModel):
     
     def update(self):
         """ Only v2 that is bounded by zero """
-        dim = self.solver_namespace['V']['f'].dim()
+        k_dofs = self.bcs[2].dofs[0]
+        e_dofs = self.bcs[2].dofs[1]
+        v2_dofs = self.bcs[2].dofs[2]
         x = self.x.array()
-        x[:-dim] = minimum(maximum(1e-12, x[:-dim]), 1e6)
+        x[k_dofs] = minimum(maximum(1e-12, x[k_dofs]), 1e6)
+        x[e_dofs] = minimum(maximum(1e-12, x[e_dofs]), 1e6)
+        x[v2_dofs] = minimum(maximum(1e-12, x[v2_dofs]), 1e6)
         self.x.set_local(x)
 
 # No implicit coupling between k/e and v2/f systems.  

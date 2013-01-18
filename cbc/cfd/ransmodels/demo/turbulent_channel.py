@@ -24,12 +24,16 @@ from cbc.cfd import icns                    # Navier-Stokes solvers
 from cbc.cfd import ransmodels              # RANS models
 from cbc.cfd.icns import solver_parameters  # parameters for NS
 from cbc.cfd.ransmodels import solver_parameters as rans_parameters # parameters for RANS model
+from cbc.cfd.tools.Wall import Yplus
+
 set_log_active(True)
 
 from time import time
 from scipy.interpolate import InterpolatedUnivariateSpline as ius
 from pylab import zeros, linspace
 import cPickle
+
+parameters['reorder_dofs_serial'] = True
 
 # Postprocessing
 def tospline(problem): 
@@ -68,9 +72,8 @@ if __name__=='__main__':
     problem_parameters['time_integration'] = 'Steady'
     problem_parameters['Re_tau'] = Re_tau= 395.
     problem_parameters['utau'] = utau = 0.05
-    problem_parameters['plot_velocity'] = True
-    problem_parameters['Ny'] = 100
-    problem_parameters['Nx'] = 10
+    problem_parameters['Ny'] = 60
+    problem_parameters['Nx'] = 8
     problem = channel(problem_parameters)
     problem.prm['viscosity'] = utau/Re_tau
     problem.pressure_gradient = Constant((utau**2, 0.)) # turbulent pressure gradient
@@ -87,20 +90,33 @@ if __name__=='__main__':
     ## Set up Navier-Stokes solver ##
     solver_parameters['degree']['u'] = 1
     solver_parameters['omega'].default_factory = lambda : 0.8
+    solver_parameters['plot_velocity'] = True
     NS_solver = icns.NSCoupled(problem, solver_parameters)
 
-    ## Set up turbulence model ##
-    problem_parameters['turbulence_model'] = 'OriginalV2F'
-    rans_parameters['omega'].default_factory = lambda : 0.7
-    Turb_solver = ransmodels.V2F_2Coupled(problem, rans_parameters,
-                            model=problem_parameters['turbulence_model'])
+    # Set up turbulence model ##
+    rans_parameters['omega'].default_factory = lambda : 0.6
+    #problem_parameters['turbulence_model'] = 'OriginalV2F'
+    #problem_parameters['turbulence_model'] = 'LienKalizin'
+    #Turb_solver = ransmodels.V2F_2Coupled(problem, rans_parameters,
+    #                        model=problem_parameters['turbulence_model'])
+    
+    #problem_parameters['turbulence_model'] = 'StandardKE'
+    #Turb_solver = ransmodels.StandardKE_Coupled(problem, rans_parameters,
+                            #model=problem_parameters['turbulence_model'])
 
+    problem_parameters['turbulence_model'] = "LaunderSharma"
+    Turb_solver = ransmodels.LowReynolds_Segregated(problem, rans_parameters,
+                            model=problem_parameters['turbulence_model'])
+                        
+    #Turb_solver = ransmodels.SpalartAllmaras(problem, rans_parameters)
+                            
     ## solve the problem ##    
     t0 = time()
-    problem_parameters['max_iter'] = 100
+    problem_parameters['max_iter'] = 200
     problem.solve()
     print 'time = ', time()-t0
     print list_timings()
     plot(NS_solver.u_)
     tospline(problem)
+    yp = Yplus(NS_solver.boundaries[0], NS_solver.u_, NS_solver.p_, Turb_solver.y, NS_solver.nuM)
 

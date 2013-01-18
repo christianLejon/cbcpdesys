@@ -50,8 +50,8 @@ class NSFullySegregated(NSSolver):
                 
         p_subsystem = self.prm['time_integration'] + '_Pressure_' + \
                       str(self.prm['pdesubsystem']['p'])
-        self.normalize['p'] = extended_normalize(self.V['p'], part='whole')
-        #self.normalize['p'] = dolfin_normalize
+        #self.normalize['p'] = extended_normalize(self.V['p'], part='whole')
+        self.normalize['p'] = normalize
         
         self.add_pdesubsystem(eval(p_subsystem), ['p'], bcs=self.bc['p'],
                               normalize=self.normalize['p'])

@@ -6,10 +6,10 @@ __license__  = "GNU Lesser GPL version 3 or any later version"
 This module contains functionality for Lagrangian tracking of particles 
 """
 #from cbc.pdesys import *
-from dolfin import Point, Cell, cells, project, grad, Rectangle, UnitSquare, FunctionSpace, VectorFunctionSpace, TensorFunctionSpace, interpolate, Expression, parameters
+from dolfin import Point, Cell, cells, project, grad, RectangleMesh, UnitSquareMesh, FunctionSpace, VectorFunctionSpace, TensorFunctionSpace, interpolate, Expression, parameters
 import ufc
 from numpy import linspace, pi, squeeze, eye, outer, zeros, ones, where, array, ndarray, squeeze, load, sin, cos, arcsin, sqrt, arctan, resize, dot as ndot
-from pylab import figure, scatter, show, quiver
+from pylab import figure, scatter, show, quiver, axis, axes, savefig
 from copy import copy, deepcopy
 import time
 from mpi4py import MPI as nMPI
@@ -570,8 +570,8 @@ def circle(x0, radius=0.15, N=100, normal=False, dndx=False):
     
 #def main():
 if __name__=='__main__':    
-    #mesh = Rectangle(0, 0, 100, 100, 50, 50)
-    mesh = UnitSquare(100, 100)
+    #mesh = RectangleMesh(0, 0, 100, 100, 50, 50)
+    mesh = UnitSquareMesh(100, 100)
     V = VectorFunctionSpace(mesh, 'CG', 2)
     
     #u = interpolate(Expression(('pi/314.*(50.-x[1])', 
@@ -629,15 +629,20 @@ if __name__=='__main__':
     lp.scatter()
     t0 = time.time()
     tstep = 0
+    count = 0
     while t < 1.5:
         t = t + dt
         tstep += 1
         lp.step(u, dt, duidxj=duidxj)  
-        if tstep % 50 == 0:
+        if tstep % 20 == 0:
             if lp.myrank == 0: 
                 print 'Plotting at ', t
             figure()
             lp.scatter(factor=10., skip=1)    
+            count += 1
+            axis([0.1, 1, 0.1, 1])
+            #axis('equal')
+            #savefig('zalesak_' + str(count) + '.jpg')
             
     figure()
     lp.scatter(skip=1, factor=10.)    

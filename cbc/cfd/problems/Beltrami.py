@@ -9,8 +9,8 @@ from NSProblem import *
 
 # Specify the initial velocity field
 
-u_params = {'a': pi/4.0, 'd': pi/2.0, 'E': e,             'etabyrho': 1.0, 't': 0.0}
-p_params = {'a': pi/4.0, 'd': pi/2.0, 'E': e, 'rho': 1.0, 'etabyrho': 1.0, 't': 0.0}
+u_params = {'a': pi/2.0, 'd': pi/2.0, 'E': e,             'etabyrho': 1.0, 't': 0.0}
+p_params = {'a': pi/2.0, 'd': pi/2.0, 'E': e, 'rho': 1.0, 'etabyrho': 1.0, 't': 0.0}
 
 exact = dict( 
     u=('-(({a}*(pow({E},{a}*x[2])*cos({a}*x[0] + {d}*x[1]) + pow({E},{a}*x[0])*sin({a}*x[1] +  {d}*x[2])))/pow({E},pow({d},2)*{t}*{etabyrho}))',
@@ -47,24 +47,60 @@ class Beltrami(NSProblem):
         self.mesh = self.gen_mesh()
         # Set viscosity
         self.prm['viscosity'] = 1.0/self.prm['Re']
-        self.prm['dt'] = self.prm['T']/int(self.prm['T']/0.2/self.mesh.hmin() + 1.0)
+        self.prm['dt'] = 0.1*self.prm['T']/int(self.prm['T']/0.2/self.mesh.hmin() + 1.0)
         #self.prm['dt'] = self.prm['T']/ceil(self.prm['T']/0.25/self.mesh.hmin())
         self.boundaries = self.create_boundaries()
         self.q0 = initial_velocity
     
     def gen_mesh(self):
-        m = UnitCube(self.prm['Nx'], self.prm['Ny'], self.prm['Nz'])
+        m = UnitCubeMesh(self.prm['Nx'], self.prm['Ny'], self.prm['Nz'])        
         scale = 2*(m.coordinates() - 0.5)
         m.coordinates()[:, :] = scale
+
+        #class Bottom(SubDomain):
+            #def inside(self, x, on_bnd):
+                #return near(x[1], -1.) and on_bnd
+                
+            #def map(self, x, y):
+                #y[0] = x[0] 
+                #y[1] = x[1] - 2
+                #y[2] = x[2]
+
+        #class Left(SubDomain):
+            #def inside(self, x, on_bnd):
+                #return near(x[0], -1.) and on_bnd
+
+            #def map(self, x, y):
+                #y[0] = x[0] - 2
+                #y[1] = x[1]
+                #y[2] = x[2]
+
+        #class South(SubDomain):
+
+            #def inside(self, x, on_bnd):
+                #return near(x[2], -1.) and on_bnd
+
+            #def map(self, x, y):
+                #y[0] = x[0]
+                #y[1] = x[1]
+                #y[2] = x[2] - 2
+        
+        #bottom = Bottom()
+        #left = Left()
+        #south = South()
+        #m.add_periodic_direction(left)
+        #m.add_periodic_direction(bottom)
+        #m.add_periodic_direction(south)
+
         return m
                 
-    def create_boundaries(self):
-        
+    def create_boundaries(self):        
         domain = FlowSubDomain(lambda x, on_bnd: on_bnd,
                                bc_type = 'VelocityInlet', # Dirichlet on u, nothing on p
                                func = exact_velocity)
                                 
         return [domain]
+        #return []
         
     def prepare(self):
         for val in exact_velocity.itervalues():
@@ -78,9 +114,9 @@ class Beltrami(NSProblem):
     def functional(self):
         # errornorm doesn't work with the ListTensor u_ of the segregated solver
         if hasattr(self.NS_solver, 'u0_'):
-            f  = sqr(errornorm(exact_velocity['u0'], self.NS_solver.u0_)/norm(exact_velocity['u0'], mesh=self.mesh))
-            f += sqr(errornorm(exact_velocity['u1'], self.NS_solver.u1_)/norm(exact_velocity['u1'], mesh=self.mesh))
-            f += sqr(errornorm(exact_velocity['u2'], self.NS_solver.u2_)/norm(exact_velocity['u2'], mesh=self.mesh))
+            f  = sqr(errornorm(exact_velocity['u0'], self.NS_solver.u0_, degree_rise=2)/norm(exact_velocity['u0'], mesh=self.mesh))
+            f += sqr(errornorm(exact_velocity['u1'], self.NS_solver.u1_, degree_rise=2)/norm(exact_velocity['u1'], mesh=self.mesh))
+            f += sqr(errornorm(exact_velocity['u2'], self.NS_solver.u2_, degree_rise=2)/norm(exact_velocity['u2'], mesh=self.mesh))
         else:
             f = errornorm(self.NS_solver.u_, exact_velocity['u'])
         error = sqrt(f/3.)
@@ -99,7 +135,7 @@ if __name__ == '__main__':
     #set_log_active(True)
     #set_log_level(5)
     
-    mesh_sizes = [5, 8, 11, 16, 23, 32, 64]
+    mesh_sizes = [2, 8, 11, 16, 23, 32, 64]
     try:
         N = eval(sys.argv[-1])
     except:
@@ -109,11 +145,11 @@ if __name__ == '__main__':
     problem_parameters['Ny'] = mesh_sizes[N]
     problem_parameters['Nz'] = mesh_sizes[N]
     problem_parameters['Re'] = 1.
-    problem_parameters['T'] = 0.5
+    problem_parameters['T'] = 0.0001
     solver_parameters = recursive_update(solver_parameters, 
-    dict(degree=dict(u=2, u0=1, u1=1, u2=1),
-         pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 
-         linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
+    dict(degree=dict(u=2, u0=2, u1=2, u2=2),
+         pdesubsystem=dict(u=101, pc=101, velocity_update=101, up=1), 
+         linear_solver=dict(u='bicgstab', pc='gmres', velocity_update='bicgstab'), 
          precond=dict(u='jacobi', p='hypre_amg', velocity_update='ilu'))
          )
     
@@ -122,20 +158,20 @@ if __name__ == '__main__':
     #solver = icns.NSSegregated(problem, solver_parameters)
     #solver = icns.NSCoupled(problem, solver_parameters)
     
-    for name in ['u0', 'u1', 'u2', 'p', 'u0_update', 'u1_update', 'u2_update']:
+    for name in ['u0', 'u1', 'u2', 'pc', 'u0_update', 'u1_update', 'u2_update']:
         solver.pdesubsystems[name].prm['monitor_convergence'] = True
-        solver.pdesubsystems[name].linear_solver.parameters['relative_tolerance'] = 1e-12
-        solver.pdesubsystems[name].linear_solver.parameters['absolute_tolerance'] = 1e-25
+        solver.pdesubsystems[name].linear_solver.parameters['relative_tolerance'] = 1e-10
+        solver.pdesubsystems[name].linear_solver.parameters['absolute_tolerance'] = 1e-10
     
     t0 = time.time()
     problem.solve()
-    error = problem.functional()
+    #error = problem.functional()
     t1 = time.time()-t0
     print 'time = ', t1
     print list_timings()
     
-    dump_result(problem, solver, t1, error)
+    #dump_result(problem, solver, t1, error)
     
-    #plot(solver.u_)
-    #interactive()
+    plot(solver.u_)
+    interactive()
     
