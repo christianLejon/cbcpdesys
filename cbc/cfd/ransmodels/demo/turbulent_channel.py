@@ -94,20 +94,24 @@ if __name__=='__main__':
     NS_solver = icns.NSCoupled(problem, solver_parameters)
 
     # Set up turbulence model ##
+
+    problem_parameters['turbulence_model'] = 'OriginalV2F'
     rans_parameters['omega'].default_factory = lambda : 0.6
-    #problem_parameters['turbulence_model'] = 'OriginalV2F'
     #problem_parameters['turbulence_model'] = 'LienKalizin'
+    #rans_parameters['omega'].default_factory = lambda : 0.25 # LienKalizin requires lower omega
     #Turb_solver = ransmodels.V2F_2Coupled(problem, rans_parameters,
-    #                        model=problem_parameters['turbulence_model'])
+                           #model=problem_parameters['turbulence_model'])
     
     #problem_parameters['turbulence_model'] = 'StandardKE'
     #Turb_solver = ransmodels.StandardKE_Coupled(problem, rans_parameters,
                             #model=problem_parameters['turbulence_model'])
 
     problem_parameters['turbulence_model'] = "LaunderSharma"
-    Turb_solver = ransmodels.LowReynolds_Segregated(problem, rans_parameters,
+    #Turb_solver = ransmodels.LowReynolds_Segregated(problem, rans_parameters,
+                            #model=problem_parameters['turbulence_model'])
+    Turb_solver = ransmodels.LowReynolds_Coupled(problem, rans_parameters,
                             model=problem_parameters['turbulence_model'])
-                        
+                            
     #Turb_solver = ransmodels.SpalartAllmaras(problem, rans_parameters)
                             
     ## solve the problem ##    
@@ -118,5 +122,5 @@ if __name__=='__main__':
     print list_timings()
     plot(NS_solver.u_)
     tospline(problem)
-    yp = Yplus(NS_solver.boundaries[0], NS_solver.u_, NS_solver.p_, Turb_solver.y, NS_solver.nuM)
+    yp = Yplus(NS_solver.boundaries[0], NS_solver.u_, NS_solver.p_, Turb_solver.y, NS_solver.nuM, constrained_domain=NS_solver.prm['constrained_domain'])
 

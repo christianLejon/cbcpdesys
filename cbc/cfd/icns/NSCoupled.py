@@ -41,8 +41,6 @@ class NSCoupled(NSSolver):
             elif bc.type() in ('ConstantPressure', 'Outlet', 'Symmetry', 'Slip'):
                 # This bc is weakly enforced
                 bcu['up'].append(bc)
-            elif bc.type() == 'Periodic':
-                add_BC(bcu['up'], self.V['up'], bc, None)
             else:
                 info("No assigned boundary condition for %s -- skipping..."      
                      %(bc.__class__.__name__))

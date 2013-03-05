@@ -164,8 +164,8 @@ if __name__ == '__main__':
     from cbc.cfd.icns import solver_parameters  # parameters to NS solver
     set_log_active(True)
     problem_parameters['time_integration'] = 'Transient'
-    problem_parameters['Nx'] = 16
-    problem_parameters['Ny'] = 16
+    problem_parameters['Nx'] = 20
+    problem_parameters['Ny'] = 20
     problem_parameters['T'] = 100.
     problem_parameters['Re'] = 20.
     problem_parameters['max_iter'] = 1

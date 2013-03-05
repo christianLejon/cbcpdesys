@@ -61,9 +61,6 @@ class NSSegregated(NSSolver):
             elif bc.type() in ('Outlet', 'Symmetry'):
                 bcu['u'].append(bc)
                 add_BC(bcu['p'], self.V['p'], bc, bc.func['p'])
-            elif bc.type() == 'Periodic':
-                add_BC(bcu['u'], self.V['u'], bc, None)
-                add_BC(bcu['p'], self.V['p'], bc, None)
             else:
                 info("No assigned boundary condition for %s -- skipping..." \
                      %(bc.__class__.__name__))

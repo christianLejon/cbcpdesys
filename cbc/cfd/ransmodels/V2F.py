@@ -42,7 +42,7 @@ class V2F(TurbSolver):
         model = self.prm['model']
         info('Setting parameters for %s V2F model ' %(model))
         self.problem.NS_solver.prm['apply']['S2'] = 'project'
-        for dq in ['T', 'L', 'nut', 'P']:
+        for dq in ['T', 'L', 'nut']:
             # Specify projection as default
             # (remaining DQs are use_formula by default)
             self.prm['apply'][dq] = self.prm['apply'].get(dq, 'project')
@@ -75,8 +75,9 @@ class V2F(TurbSolver):
 
     def create_BCs(self, bcs):
         # Compute distance to nearest wall
-        self.distance = Eikonal(self.mesh, self.boundaries)
-        self.y = self.distance.y_
+        distance = Eikonal(self.problem)
+        self.y = distance.y_
+        self.problem.remove_pdesystem("Eikonal")
         return TurbSolver.create_BCs(self, bcs)
         
     # Use a nonlinear V2F model
@@ -127,10 +128,7 @@ class Ce1(DerivedQuantity):
             ke_vector = self.solver_namespace['x_']['ke']
             v2f_vector = self.solver_namespace['x_']['v2f']
         for bc in bcs:
-            if bc.type() == 'Periodic':
-                bcu.append(PeriodicBC(self.V, bc))
-                bcu[-1].type = bc.type
-            elif bc.type() == 'Wall':
+            if bc.type() == 'Wall':
                 qe = Wallfunction(self.solver_namespace['V']['ke'], bc)
                 k_dofs = qe.dofs_inside_boundary[0]
                 v2_dofs = qe.dofs_inside_boundary[1]                

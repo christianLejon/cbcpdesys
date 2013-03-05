@@ -47,6 +47,7 @@ class StandardKE(TurbSolver):
     
     def create_BCs(self, bcs):
         # Compute distance to nearest wall
-        self.distance = Eikonal(self.mesh, self.boundaries)
-        self.y = self.distance.y_
+        distance = Eikonal(self.problem)
+        self.y = distance.y_
+        self.problem.remove_pdesystem("Eikonal")
         return TurbSolver.create_BCs(self, bcs)

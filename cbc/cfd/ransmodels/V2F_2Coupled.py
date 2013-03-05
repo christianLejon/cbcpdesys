@@ -61,13 +61,17 @@ class V2FBase(TurbModel):
     def __init__(self, solver_namespace, sub_system, bcs=[], normalize=None, **kwargs):
         TurbModel.__init__(self, solver_namespace, sub_system, bcs, normalize, **kwargs)
     
-        self.v2_dofs = self.V.sub(1).dofmap().dofs()
+        if self.solver_namespace['prm']['model'] == 'OriginalV2F':
+            self.v2_dofs = self.V.sub(0).dofmap().dofs()
     
     def update(self):
         """ Only v2 that is bounded by zero """
-        x = self.x.array()
-        x[self.v2_dofs] = minimum(maximum(1e-12, x[self.v2_dofs]), 1e6)
-        self.x.set_local(x)
+        if self.solver_namespace['prm']['model'] == 'LienKalizin':
+            bound(self.x, 1e8)
+        else:
+            x = self.x.array()
+            x[self.v2_dofs] = minimum(maximum(1e-12, x[self.v2_dofs]), 1e6)
+            self.x.set_local(x)
             
 class Steady_ke_1(TurbModel):
     def form(self, k, e, v_k, v_e, k_, e_, nu, nut_, u_, Ce1_, P_, T_, Ce2, 

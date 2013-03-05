@@ -14,7 +14,7 @@ class LowReynolds_Coupled(LowReynolds):
     def __init__(self, problem, parameters, model='LaunderSharma'):
         parameters['model'] = model
         LowReynolds.__init__(self, 
-                             system_composition=[['k','e']],
+                             system_composition=[['k', 'e']],
                              problem=problem,
                              parameters=parameters)
                         

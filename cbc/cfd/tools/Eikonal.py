@@ -13,14 +13,15 @@ solver_parameters = recursive_update(solver_parameters, {
     'eps' : Constant(0.02),
     'iteration_type': 'Newton',
     'time_integration': 'Steady',
-    'max_iter': 100
+    'max_iter': 100,
+    'familyname': 'Eikonal'
 })
 
 class Eikonal(PDESystem):
-    def __init__(self, mesh, boundaries, parameters=solver_parameters):
-        PDESystem.__init__(self, [['y']], mesh, parameters)
+    def __init__(self, problem, parameters=solver_parameters):
+        PDESystem.__init__(self, [['y']], problem, parameters)
         self.f = f = Constant(1.0)
-        self.bc['y'] = self.create_BCs(boundaries, self.V['y'])
+        self.bc['y'] = self.create_BCs(problem.boundaries)
         
         # Initialize by solving similar elliptic problem
         u, v = self.qt['y'], self.vt['y']
@@ -35,14 +36,14 @@ class Eikonal(PDESystem):
         self.pdesubsystems['y'] = eval('Eikonal_' + str(self.prm['pdesubsystem']['y'])) \
                                       (vars(self), ['y'], bcs=self.bc['y'])
                 
-    def create_BCs(self, bcs, V):
+    def create_BCs(self, bcs):
         """Create boundary conditions for Eikonal's equation based on 
         boundaries in list bcs. Assigns homogeneous Dirichlet boundary 
         conditions on walls. """
         bcu = []
         for bc in bcs:
             if bc.type() in ('Wall'):
-                add_BC(bcu, V, bc, Constant(0.))
+                add_BC(bcu, self.V['y'], bc, Constant(0.))
         return bcu
         
 class Eikonal_1(PDESubSystem):

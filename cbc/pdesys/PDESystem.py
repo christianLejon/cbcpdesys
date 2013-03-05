@@ -10,7 +10,8 @@ default_solver_parameters = {
     'degree': defaultdict(lambda: 1),
     'family': defaultdict(lambda: 'CG'),
     'space' : defaultdict(lambda: FunctionSpace),
-    'symmetry': defaultdict(lambda: {}),
+    'constrained_domain': None,
+    'constriction': defaultdict(lambda: dict(constrained_domain=None)),
     'pdesubsystem': defaultdict(lambda: 1),
     'iteration_type': 'Picard',   # or 'Newton'
     'linear_solver': defaultdict(lambda: 'lu'),
@@ -113,13 +114,16 @@ class PDESystem:
         # VectorFunctionSpace and TensorFunctionSpace do not take the same 
         # arguments. symmetry need to be {} for the first two and 
         # {'symmetry': symmetry[name]} for the TensorFunctionSpace
-        symmetry = self.prm['symmetry']
-        for name in self.names:
-            if self.prm['space'][name] == TensorFunctionSpace:
-                symmetry[name] = dict(symmetry=symmetry[name])
-        
+        cons = self.prm['constriction']
+        constrained_domain = None
+        for bc in self.problem.boundaries:
+            if bc.bc_type == 'Periodic':
+                self.prm['constrained_domain'] = bc
+                for name in self.names + ['dq']:
+                    cons[name]['constrained_domain'] = bc
+
         self.define_function_spaces(self.mesh, self.prm['degree'], 
-                              self.prm['space'], self.prm['family'], symmetry)        
+                              self.prm['space'], self.prm['family'], cons)
         self.setup_subsystems()
         if self.prm['time_integration'] == 'Steady':
             self.add_function_on_timestep()
@@ -131,10 +135,10 @@ class PDESystem:
         if hasattr(self.problem, 'add_pdesystem'):
             self.problem.add_pdesystem(self, self.prm['familyname'])
 
-    def define_function_spaces(self, mesh, degree, space, family, symmetry):
+    def define_function_spaces(self, mesh, degree, space, family, cons):
         """Define functionspaces for names and system_names"""
         V = self.V = dict((name, space[name](mesh, family[name], degree[name], 
-                           **symmetry[name])) for name in self.names + ['dq'])
+                           **cons[name])) for name in self.names + ['dq'])
 
         # Add function space for compound functions for the sub systems
         V.update(dict(
@@ -154,7 +158,7 @@ class PDESystem:
         """
         V, sys_names, sys_comp = \
                self.V, self.system_names, self.system_composition
-               
+                               
         for timestep in timesteps:
             funcname = 'q_' + timestep
             
@@ -256,8 +260,6 @@ class PDESystem:
                 elif bc.type() in ('ConstantPressure', 'Outlet'):
                     # This bc could be weakly enforced
                     bcu[name].append(bc)
-                elif bc.type() == 'Periodic':
-                    add_BC(bcu[name], V, bc, None)
                 else:
                     info("No assigned boundary condition for %s -- skipping..."
                          %(bc.__class__.__name__))

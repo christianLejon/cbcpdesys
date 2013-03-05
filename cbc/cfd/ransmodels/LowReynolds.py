@@ -66,7 +66,7 @@ class LowReynolds(TurbSolver):
             sigma_e = 1.30,
             sigma_k = 1.0,
             e_nut = 1.0,
-            e_d = 0.,
+            e_d = 0.5,
             f1 = 1.0)
         Ce1_Ce2 = dict(
             LaunderSharma=dict(Ce1 = 1.44, Ce2 = 1.92),
@@ -81,6 +81,7 @@ class LowReynolds(TurbSolver):
 
     def create_BCs(self, bcs):
         # Compute distance to nearest wall
-        self.distance = Eikonal(self.mesh, self.boundaries)
-        self.y = self.distance.y_
+        distance = Eikonal(self.problem)
+        self.y = distance.y_
+        self.problem.remove_pdesystem("Eikonal")
         return TurbSolver.create_BCs(self, bcs)

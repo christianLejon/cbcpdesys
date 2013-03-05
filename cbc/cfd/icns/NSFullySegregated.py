@@ -96,10 +96,6 @@ class NSFullySegregated(NSSolver):
                 for ui in self.u_components:
                     bcu[ui].append(bc)
                 add_BC(bcu['p'], self.V['p'], bc, bc.func['p'])
-            elif bc.type() == 'Periodic':
-                for ui in self.u_components:
-                    add_BC(bcu[ui], self.V[ui], bc, None)
-                add_BC(bcu['p'], self.V['p'], bc, None)
             else:
                 info("No assigned boundary condition for %s -- skipping..." \
                      %(bc.__class__.__name__))
@@ -231,10 +227,7 @@ class VelocityUpdate_101(VelocityUpdateBase):
     def assemble(self, M):
         # Use the assembled matrix of u0 or reuse M from momentum equation
         if self.index == 0:
-            if any([bc.type() in ['Periodic'] for bc in self.bcs]):
-                self.A = self.solver_namespace['pdesubsystems']['u0'].M.copy()
-            else:
-                self.A = self.solver_namespace['pdesubsystems']['u0'].M
+            self.A = self.solver_namespace['pdesubsystems']['u0'].M
             self.A.initialized = True
         else:
             self.A = self.solver_namespace['pdesubsystems']['u0_update'].A
@@ -407,9 +400,6 @@ class Transient_Velocity_101(VelocityBase):
             self.A.axpy(2./self.dt, self.M, True)
             self.prm['reset_sparsity'] = False 
             self.A.initialized = True
-            ## FixMe. For some reason reset_sparsity must be True for periodic bcs ?? Perhaps the modified sparsity pattern in (1 -1) rows??
-            if any([bc.type() == 'Periodic' for bc in self.bcs]):
-                self.prm['reset_sparsity'] = True 
         else:
             self.A = self.pdes['u0'].A
 

@@ -184,7 +184,7 @@ class Yplus(Wallfunction):
     y is the distance to the walls
     nu is viscosity
     """
-    def __init__(self, bc, u, p, y, nu):
+    def __init__(self, bc, u, p, y, nu, constrained_domain=None):
         V = u.function_space()
         Wallfunction.__init__(self, y.function_space(), bc)
         mesh = V.mesh()
@@ -202,8 +202,8 @@ class Yplus(Wallfunction):
         
         # Define functionspaces
         #vector = V
-        vector = VectorFunctionSpace(V.mesh(), V.sub(0).ufl_element().family(), V.ufl_element().degree())
-        scalar = FunctionSpace(mesh , "CG", 1)  # Need CG=1 for this to work.
+        vector = VectorFunctionSpace(V.mesh(), V.sub(0).ufl_element().family(), V.ufl_element().degree(), constrained_domain=constrained_domain)
+        scalar = FunctionSpace(mesh , "CG", 1, constrained_domain=constrained_domain)  # Need CG=1 for this to work.
         
         # Use the velocity functionspace to compute the distance to the wall. 
         # If y is different from u, then project onto velocity space to get 

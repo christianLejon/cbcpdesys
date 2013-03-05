@@ -37,7 +37,7 @@ class Problem:
         self.pdesystems[name] = pdesystem
         
     def remove_pdesystem(self, name):
-        del self.pdesystem[name]
+        del self.pdesystems[name]
         self.pdesystemlist.remove(name)
         
     def solve(self, pdesystems=None, func = 'advance', logging=True, **kwargs):

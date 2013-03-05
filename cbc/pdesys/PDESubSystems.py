@@ -571,7 +571,7 @@ class DerivedQuantity(PDESubSystemBase):
         """Create boundary conditions for derived quantity based on boundaries 
         in list bcs. Assigned boundary conditions for Walls is set to 
         prm['wall_value']. VelocityInlets, ConstantPressure, Outlet and
-        Symmetry are do-nothing. Periodic boundaries are handled as always.
+        Symmetry are do-nothing.
         """
         bcu = []
         val = self.prm['wall_value']
@@ -587,8 +587,6 @@ class DerivedQuantity(PDESubSystemBase):
                 else:
                     raise NotImplementedError
                 add_BC(bcu, self.V, bc, func)
-            elif bc.type() == 'Periodic':
-                add_BC(bcu, self.V, bc, None)
             else:
                 info("No assigned boundary condition for %s -- skipping..." %
                      (bc.__class__.__name__))
@@ -606,20 +604,8 @@ class DerivedQuantity_NoBC(DerivedQuantity):
     Derived quantity where default is no assigned boundary conditions.
     """
     def create_BCs(self, bcs):
-        bcu = []
-        for bc in bcs:
-            if bc.type() == 'Periodic':
-                bcu.append(PeriodicBC(self.V, bc))
-                bcu[-1].type = bc.type
-        return bcu
+        return []
 
-#class DerivedQuantity_NoBC(DerivedQuantity):
-    #"""
-    #Derived quantity where default is no assigned boundary conditions.
-    #"""
-    #def create_BCs(self, bcs):
-        #return []
-        
 class DerivedQuantity_grad(DerivedQuantity):
     """Derived quantity using the gradient of the test function."""
     def projection_form(self, dq, v, formula):
@@ -714,14 +700,13 @@ class FlowSubDomain(AutoSubDomain):
             bc_type = type of boundary. Currently recognized:
                         VelocityInlet 
                         Wall          
-                        Periodic      
                         Weak boundary conditions that require meshfunction:
                         Outlet        
                         ConstantPressure
                         (Symmetry)
                         (Slip)
                         
-        periodic_map = Method that contains periodicity (see PeriodicBC). 
+        periodic_map = Method that contains periodicity. 
                         Example:
                         def periodic_map(x, y):
                             y[0] = x[0] - 1
@@ -777,14 +762,13 @@ class MeshSubDomain(SubDomain):
             bc_type = type of boundary. Currently recognized:
                         VelocityInlet
                         Wall         
-                        Periodic     
                         Weak boundary conditions:
                         Outlet          
                         ConstantPressure
                         (Symmetry)       
                         (Slip)           
                         
-        periodic_map = Method that contains periodicity (see PeriodicBC). 
+        periodic_map = Method that contains periodicity. 
                         Example:
                         def periodic_map(x, y):
                             y[0] = x[0] - 1
@@ -904,8 +888,6 @@ def add_BC(bc_list, V, bc, func):
             bc_list.append(DirichletBC(V, func, bc.bid))
         else:
             bc_list.append(DirichletBC(V, func, bc))
-    elif bc.type() == 'Periodic':
-        bc_list.append(PeriodicBC(V, bc))
         
     bc_list[-1].type = bc.type
 

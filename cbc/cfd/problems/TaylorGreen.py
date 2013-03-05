@@ -35,7 +35,7 @@ class TaylorGreen(NSProblem):
     
     def gen_mesh(self):
         #m = UnitCube(self.prm['Nx'], self.prm['Ny'], self.prm['Nz'])
-        m = Box(0, 0, 0, 1, 1, 1, self.prm['Nx'], self.prm['Ny'], self.prm['Nz'])
+        m = BoxMesh(0, 0, 0, 1, 1, 1, self.prm['Nx'], self.prm['Ny'], self.prm['Nz'])
         scale = 2*(m.coordinates() - 0.5)*pi
         m.coordinates()[:, :] = scale
         return m
@@ -45,38 +45,36 @@ class TaylorGreen(NSProblem):
         self.mf = FacetFunction("uint", self.mesh) # Facets
         self.mf.set_all(0)
         
-        def periodic_mapX(x, y):
-            y[0] = x[0] - 2.0*DOLFIN_PI
-            y[1] = x[1]
-            y[2] = x[2]
-            
-        def periodic_mapY(x, y):
-            y[0] = x[0] 
-            y[1] = x[1] - 2.0*DOLFIN_PI
-            y[2] = x[2]
-            
-        def periodic_mapZ(x, y):
-            y[0] = x[0] 
-            y[1] = x[1]
-            y[2] = x[2] - 2.0*DOLFIN_PI
-                
-        periodicX = FlowSubDomain(lambda x, on_boundary: near(x[0], -DOLFIN_PI) and on_boundary,
-                                bc_type = 'Periodic',
-                                mf = self.mf,
-                                periodic_map = periodic_mapX)
+        def inside(x, on_boundary):
+            # return True if on left or bottom boundary AND NOT on one of the two corners (0, 1) and (1, 0)
+            return bool((near(x[0], -pi) or near(x[1], -pi) or near(x[2], -pi)) and 
+                    (not ((near(x[0], -pi) and near(x[1], pi) and near(x[2], pi)) or 
+                          (near(x[0], pi) and near(x[1], -pi) and near(x[2], pi)) or
+                          (near(x[0], -pi) and near(x[1], pi) and near(x[2], -pi)) or 
+                          (near(x[0], pi) and near(x[1], -pi) and near(x[2], -pi)))) and on_boundary)
 
-        periodicY = FlowSubDomain(lambda x, on_boundary: near(x[1], -DOLFIN_PI) and on_boundary,
-                                bc_type = 'Periodic',
-                                mf = self.mf,
-                                periodic_map = periodic_mapY)
-                                
-        periodicZ = FlowSubDomain(lambda x, on_boundary: near(x[2], -DOLFIN_PI) and on_boundary,
-                                bc_type = 'Periodic',
-                                mf = self.mf,
-                                periodic_map = periodic_mapZ)
-                                
-        return [periodicX, periodicY, periodicZ]        
-        #return [periodicX, periodicY]
+        def periodic_map(x, y):
+            if near(x[0], pi) and near(x[1], pi):
+                y[0] = x[0] - 2.0*pi
+                y[1] = x[1] - 2.0*pi
+                y[2] = x[2] - 2.0*pi
+            elif near(x[0], pi):
+                y[0] = x[0] - 2.0*pi
+                y[1] = x[1]
+                y[2] = x[2]
+            elif near(x[1], pi):
+                y[0] = x[0]
+                y[1] = x[1] - 2.0*pi
+                y[2] = x[2]
+            elif near(x[2], pi):
+                y[0] = x[0]
+                y[1] = x[1]
+                y[2] = x[2] - 2.0*pi
+                
+        periodic = FlowSubDomain(inside, bc_type='Periodic',
+                                mf=self.mf, periodic_map=periodic_map)
+
+        return [periodic]
        
     def update(self):
         if (self.tstep-1) % self.NS_solver.prm['save_solution'] == 0:
@@ -92,10 +90,10 @@ if __name__ == '__main__':
     from cbc.cfd.icns import solver_parameters  # parameters to NS solver
     set_log_active(True)
     problem_parameters['time_integration']='Transient'
-    problem_parameters['Nx'] = 12
-    problem_parameters['Ny'] = 12
-    problem_parameters['Nz'] = 12
-    problem_parameters['T'] = 10.
+    problem_parameters['Nx'] = 1
+    problem_parameters['Ny'] = 1
+    problem_parameters['Nz'] = 1
+    problem_parameters['T'] = 0.1
     solver_parameters = recursive_update(solver_parameters, 
     dict(degree=dict(u=1),
          pdesubsystem=dict(u=101, p=101, velocity_update=101, up=1), 

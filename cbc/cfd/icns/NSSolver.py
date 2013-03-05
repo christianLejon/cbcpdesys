@@ -121,11 +121,10 @@ class NSSolver(PDESystem):
         PDESystem.setup_subsystems(self)
         self.dim = self.problem.mesh.geometry().dim()
         # Symmetric tensorfunction space for stresses Sij
-        self.prm['symmetry']['Sij'] = dict(((i,j), (j,i)) 
-            for i in range(self.dim) for j in range(self.dim) if i > j )
+        self.prm['constriction']['Sij']['constrained_domain'] = self.prm['constrained_domain']
+        self.prm['constriction']['Sij']['symmetry'] = True
         self.V['Sij'] = TensorFunctionSpace(self.mesh, 
-            self.prm['family']['Sij'], self.prm['degree']['Sij'], 
-            symmetry=self.prm['symmetry']['Sij'])
+            self.prm['family']['Sij'], self.prm['degree']['Sij'], **self.prm['constriction']['Sij'])
         self.S = self.V['Sij']
         self.qt['Sij'] = TrialFunction(self.S)
         self.vt['Sij'] = TestFunction(self.S)        
