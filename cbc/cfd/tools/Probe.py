@@ -5,10 +5,15 @@ __license__  = "GNU Lesser GPL version 3 or any later version"
 """
 This module contains functionality for efficiently probing a Function many times. 
 """
-#from dolfin import Point, Cell
 from dolfin import *
 import ufc
-from numpy import zeros, array, squeeze, load, linspace, dot as ndot
+from numpy import zeros, array, repeat, resize, squeeze, load, linspace, dot as ndot
+from numpy.linalg import norm as numpy_norm
+from scitools.basics import meshgrid
+from scitools.std import surfc
+import pyvtk
+from mpi4py import MPI as nMPI
+comm = nMPI.COMM_WORLD
 
 class Probe:
     """Compute one single probe efficiently when it needs to be called repeatedly.
@@ -88,40 +93,107 @@ class CppProbe(cpp.Probe):
         """Load the probe previously stored in filename"""
         return load(filename)
     
-class CppProbes(list):
+class Probes(list):
     """List of probes. Each processor is appended with a new 
-    CppProbe class only when the probe is found on that processor.
+    Probe class only when the probe is found on that processor.
     """
-    def __init__(self, list_of_probes, V):
+    def __init__(self, list_of_probes, V, max_probes=None, use_python=False):
         for i, p in enumerate(list_of_probes):
             try:
-                self.append((i, CppProbe(array(p), V)))
+                if hasattr(cpp, "Probe") and not use_python: # Use fast C++ version if available
+                    self.append((i, CppProbe(array(p), V)))
+                else:
+                    self.append((i, Probe(array(p), V, max_probes=max_probes)))
             except RuntimeError:
-                pass
+                pass    
         print len(self), "of ", len(list_of_probes), " probes found on processor ", MPI.process_number()
-    
+
     def __call__(self, u):
         """eval for all probes"""
         u.update()
         for i, p in self:
             p(u)
 
-class Probes(list):
-    """List of probes. Each processor is appended with a new 
-    Probe class only when the probe is found on that processor.
-    """
-    def __init__(self, list_of_probes, V, max_probes=None):
-        for i, p in enumerate(list_of_probes):
-            try:
-                self.append((i, Probe(array(p), V, max_probes=max_probes)))
-            except RuntimeError:
-                pass    
-    
-    def __call__(self, u):
-        """eval for all probes"""
-        u.update()
+    def dump(self, filename):
         for i, p in self:
-            p(u)
+            p.dump(filename + '_' + str(i) + '.probe')
+            
+class StructuredGrid(Probes):
+    """A Structured grid of probe points. A slice of a 3D (possibly 2D if needed) 
+    domain can be created with any orientation using two tangent vectors to span 
+    a local coordinatesystem.
+    
+          dims = [N1, N2] number of points in each direction
+          origin = (x, y, z) origin of slice 
+          dX = [[dx1, dy1, dz1], [dx2, dy2, dz2]] tangent vectors (need not be orthogonal)
+          dL = extent of each direction
+          V  = FunctionSpace to probe in
+    """
+    def __init__(self, dims, origin, dX, dL, V):
+        self.N1, self.N2 = dims
+        num_sub = V.num_sub_spaces()
+        self.value_size = num_sub if num_sub > 0 else 1 
+        self.dL = array(dL)
+        self.dX = array(dX)
+        self.origin = origin
+        Probes.__init__(self, self.create_grid(), V)
+        
+    def create_grid(self):
+        o1, o2, o3 = self.origin
+        dX0 = self.dX[0] / numpy_norm(self.dX[0]) * self.dL[0] / self.N1
+        dX1 = self.dX[1] / numpy_norm(self.dX[1]) * self.dL[1] / self.N2
+        x1 = linspace(o1, o1+dX0[0]*self.N1, self.N1)
+        y1 = linspace(o2, o2+dX0[1]*self.N1, self.N1)
+        z1 = linspace(o3, o3+dX0[2]*self.N1, self.N1)
+        x2 = linspace(0, dX1[0]*self.N2, self.N2)
+        y2 = linspace(0, dX1[1]*self.N2, self.N2)
+        z2 = linspace(0, dX1[2]*self.N2, self.N2)
+        x = zeros((self.N1*self.N2, 3))
+        x[:, 0] = repeat(x1, self.N2)[:] + resize(x2, self.N1*self.N2)[:]
+        x[:, 1] = repeat(y1, self.N2)[:] + resize(y2, self.N1*self.N2)[:]
+        x[:, 2] = repeat(z1, self.N2)[:] + resize(z2, self.N1*self.N2)[:]
+        return x
+
+    def surf(self, N, value_size_num=0):
+        """surf plot of scalar or one component (value_size_num) of vector"""
+        if comm.Get_size() > 1:
+            print "No surf for multiple processors"
+            return
+        z = zeros((self.N1, self.N2))
+        for i in range(self.N1):
+            for j in range(self.N2):
+                val = self[i*self.N2 + j][1].get_probe(value_size_num)
+                z[i, j] = val[N]
+        # Use local coordinates
+        xx, yy = meshgrid(linspace(0, dL[0], self.N2), 
+                          linspace(0, dL[1], self.N1))        
+        surfc(xx, yy, z[:, :], indexing='xy')
+
+    def tovtk(self, N, filename="dump.vtk"):
+        """Dump data in slice to VTK format"""
+        z = zeros((self.N1*self.N2, self.value_size))
+        xx = zeros((self.N1*self.N2, 3))
+        if len(self) > 0:
+            val = zeros(self.value_size)
+            for index, probe in self:
+                for k in range(self.value_size):
+                    val[k] = probe.get_probe(k)[N]
+                z[index, :] = val[:]
+                xx[index, :] = probe.coordinates()
+        z0 = zeros((self.N1*self.N2, self.value_size))
+        x0 = zeros((self.N1*self.N2, 3))
+        comm.Reduce(z, z0, op=nMPI.MAX, root=0)
+        comm.Reduce(xx, x0, op=nMPI.MAX, root=0)            
+        if comm.Get_rank() == 0:
+            grid = pyvtk.StructuredGrid((self.N2, self.N1, 1), x0)
+            v = pyvtk.VtkData(grid)
+            if self.value_size == 1:
+                v.point_data.append(pyvtk.Scalars(z0))
+            elif self.value_size == 3:
+                v.point_data.append(pyvtk.Vectors(z0))
+            else:
+                raise TypeError("Only vector or scalar data supported for VTK")
+            v.tofile(filename)
 
 class Probedict(dict):
     """Dictionary of probes. The keys are the names of the functions 
@@ -141,100 +213,72 @@ class Probedict(dict):
 # Test the probe functions:
 if __name__=='__main__':
     import time
-    import h5py
     mesh = UnitCubeMesh(10, 10, 10)
+    #mesh = UnitSquareMesh(10, 10)
     V = FunctionSpace(mesh, 'CG', 1)
     Vv = VectorFunctionSpace(mesh, 'CG', 1)
     W = V * Vv
+    
+    # Just create some random data to be used for probing
     u0 = interpolate(Expression('x[0]'), V)
+    y0 = interpolate(Expression('x[1]'), V)
+    z0 = interpolate(Expression('x[2]'), V)
     u1 = interpolate(Expression('x[0]*x[0]'), V)
     v0 = interpolate(Expression(('x[0]', 'x[1]', 'x[2]')), Vv)
-    w0 = interpolate(Expression(('x[0]', 'x[1]', 'x[2]', 'x[1]*x[2]')), W)
-    #x = [array([0.56, 0.27, 0.5]),
-         #array([0.26, 0.27, 0.5]),
-         #array([0.99, 0.01, 0.5])]
-
-    # Create a range of probes for a UnitSquare
-    N = 5
-    xx = linspace(0, 1, N)
-    xx = xx.repeat(5).reshape((N, N)).transpose()
-    yy = linspace(0, 1, N)
-    yy = yy.repeat(N).reshape((N, N))
-    x = zeros((N*N, 3))    
-    for i in range(N):
-        for j in range(N):
-            x[i*N + j, 0 ] = xx[i, j]   #  x-value
-            x[i*N + j, 1 ] = yy[i, j]   #  y-value
-         
-    probesV = Probes(x, V, 1000)
+    w0 = interpolate(Expression(('x[0]', 'x[1]', 'x[2]', 'x[1]*x[2]')), W)    
     
-    t0 = time.time()
-    for j in range(1000):
-        probesV(u0)
-    print 'Time to Python eval ', j+1 ,' probes = ', time.time() - t0
-
-    cpprobesV = CppProbes(x, V)
-    t0 = time.time()
-    for j in range(1000):
-        cpprobesV(u0)
-    print 'Time to Cpp eval ', j+1 ,' probes = ', time.time() - t0
-
-    #probesV = Probes(x, V, 2)
-    #probesVv = Probes(x, Vv, 1)
-    #probesW = Probes(x, W, 1)
+    # Test StructuredGrid
+    origin = [0.4, 0.4, 0.5]             # origin of slice
+    tangents = [[1, 0, 1], [0, 1, 1]]    # directional tangent directions (scaled in StructuredGrid)
+    dL = [0.2, 0.3]                      # extent of slice in both directions
+    N  = [25, 20]                           # number of points in each direction
     
-    #for i, probe in probesV:
-        #print 'Process rank that contains the probe = ', MPI.process_number()
-        #print 'Probe of u0 at ({0}, {1}, {2}) = {3}'.format(probe.x[0], probe.x[1], probe.x[2], *probe(u0))
-        #print 'Probe of u1 at ({0}, {1}, {2}) = {3}'.format(probe.x[0], probe.x[1], probe.x[2], *probe(u1))
-    #for i, probe in probesVv:
-        #print 'Process rank that contains the probe = ', MPI.process_number()
-        #print 'Probe v at ({0}, {1}, {2}) = {3}, {4}, {5}'.format(probe.x[0], probe.x[1], probe.x[2], *probe(v0))
-    #for i, probe in probesW:
-        #print 'Process rank that contains the probe = ', MPI.process_number()
-        #print 'Probe v at ({0}, {1}, {2}) = {3}, {4}, {5}, {6}'.format(probe.x[0], probe.x[1], probe.x[2], *probe(w0))
+    # Test scalar first
+    sl = StructuredGrid(N, origin, tangents, dL, V)
+    sl(u0)     # probe once
+    sl(u0)     # probe once more
+    sl.surf(0) # check first probe
+    sl.tovtk(0, filename="dump_scalar.vtk")
+    # then vector
+    sl2 = StructuredGrid(N, origin, tangents, dL, Vv)
+    for i in range(5): 
+        sl2(v0)     # probe a few times
+    sl2.surf(3)     # Check the fourth probe instance
+    sl2.tovtk(3, filename="dump_vector.vtk")
+
+    
+    
         
-    ## Test Probedict
-    q_ = {'u0':u0, 'u1':u1}
-    VV = {'u0':V, 'u1':V}
+    #### Some more tests.
+    ### Create a range of probes for a UnitSquare
+    #N = 5
+    #xx = linspace(0.25, 0.75, N)
+    #xx = xx.repeat(N).reshape((N, N)).transpose()
+    #yy = linspace(0.25, 0.75, N)
+    #yy = yy.repeat(N).reshape((N, N))
+    #x = zeros((N*N, 3))    
+    #for i in range(N):
+        #for j in range(N):
+            #x[i*N + j, 0 ] = xx[i, j]   #  x-value
+            #x[i*N + j, 1 ] = yy[i, j]   #  y-value
+         
+    #probesV = Probes(x, V, 1000, use_python=True)    
+    #t0 = time.time()
+    #for j in range(1000):
+        #probesV(u0)
+    #print 'Time to Python eval ', j+1 ,' probes = ', time.time() - t0
+
+    #if hasattr(cpp, "Probe"):
+        #cpprobesV = Probes(x, V)
+        #t0 = time.time()
+        #for j in range(1000):
+            #cpprobesV(u0)
+        #print 'Time to Cpp eval ', j+1 ,' probes = ', time.time() - t0
+        
+    ### Test Probedict
+    #q_ = {'u0':u0, 'u1':u1}
+    #VV = {'u0':V, 'u1':V}
     #pd = Probedict((ui, Probes(x, VV[ui])) for ui in ['u0', 'u1'])
-    pd = Probedict((ui, CppProbes(x, VV[ui])) for ui in ['u0', 'u1'])
-    pd(q_)
-    pd.dump('testV')
-    
-    dd = zeros((10, 10, 10))
-    for i in range(1,10):
-        dd[i, :, :] = i*1.
-    
-    f = h5py.File("mydata.hdf5", "w")
-    f.create_dataset("mydata", dtype="Float32", data=dd)
-    f.close()
-
-    
-    #q_ = {'v0':v0}
-    #VV = {'v0':Vv}
-    #pd2 = Probedict((ui, CppProbes(x, VV[ui])) for ui in ['v0'])
-    ##pd2 = Probedict((ui, Probes(x, VV[ui])) for ui in ['v0'])
-    #pd2.probe(q_)
-    #pd2.probe(q_)
-    #pd2.probe(q_)
-    #pd2.probe(q_)
-    #pd2.dump('testVv')
-    
-    #p = CppProbes(x, V)
-    
-    #print "MPI ", MPI.process_number(), p
-    
-
-    
-    
-    #p = cpp.Probe(x[0], V)
-    #p2= cpp.Probe(x[0], Vv)
-    #"Probe ok"
-    #p.probe(u0); p.probe(u0)
-    #p2.probe(v0); p2.probe(v0)
-    #"Probe.probe ok"
-    #print p.get_probe(0)
-    #print p2.get_probe(0)
-    #print p2.get_probe(1)
-   
+    #pd(q_)
+    #pd.dump('testV')
+        
