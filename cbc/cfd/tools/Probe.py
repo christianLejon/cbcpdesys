@@ -136,7 +136,8 @@ class StructuredGrid(Probes):
         self.dL = array(dL)
         self.dX = array(dX)
         self.origin = origin
-        Probes.__init__(self, self.create_grid(), V)
+        self.x = self.create_grid()
+        Probes.__init__(self, self.x, V)
         
     def create_grid(self):
         o1, o2, o3 = self.origin
@@ -172,20 +173,16 @@ class StructuredGrid(Probes):
     def tovtk(self, N, filename="dump.vtk"):
         """Dump data in slice to VTK format"""
         z = zeros((self.N1*self.N2, self.value_size))
-        xx = zeros((self.N1*self.N2, 3))
         if len(self) > 0:
             val = zeros(self.value_size)
             for index, probe in self:
                 for k in range(self.value_size):
                     val[k] = probe.get_probe(k)[N]
                 z[index, :] = val[:]
-                xx[index, :] = probe.coordinates()
         z0 = zeros((self.N1*self.N2, self.value_size))
-        x0 = zeros((self.N1*self.N2, 3))
         comm.Reduce(z, z0, op=nMPI.MAX, root=0)
-        comm.Reduce(xx, x0, op=nMPI.MAX, root=0)            
         if comm.Get_rank() == 0:
-            grid = pyvtk.StructuredGrid((self.N2, self.N1, 1), x0)
+            grid = pyvtk.StructuredGrid((self.N2, self.N1, 1), self.x)
             v = pyvtk.VtkData(grid)
             if self.value_size == 1:
                 v.point_data.append(pyvtk.Scalars(z0))
@@ -246,7 +243,6 @@ if __name__=='__main__':
     sl2.surf(3)     # Check the fourth probe instance
     sl2.tovtk(3, filename="dump_vector.vtk")
 
-    
     
         
     #### Some more tests.
