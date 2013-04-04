@@ -6,234 +6,229 @@ __license__  = "GNU Lesser GPL version 3 or any later version"
 This module contains functionality for efficiently probing a Function many times. 
 """
 from dolfin import *
-import ufc
-from numpy import zeros, array, repeat, resize, squeeze, load, linspace, dot as ndot
+from numpy import zeros, array, repeat, resize, linspace
 from numpy.linalg import norm as numpy_norm
 from scitools.basics import meshgrid
 from scitools.std import surfc
-import pyvtk
+import pyvtk, os, copy
 from mpi4py import MPI as nMPI
 comm = nMPI.COMM_WORLD
 
-class Probe:
-    """Compute one single probe efficiently when it needs to be called repeatedly.
-    Pure Python implementation (less efficient than the C++ version)
-    """
-    def __init__(self, x, V, max_probes=None):
-        mesh = V.mesh()
-        c = mesh.intersected_cell(Point(*x))
-        if c == -1:
-            raise RuntimeError('Probe not found on processor')
-        
-        # If you get here then the processor contains the probe. 
-        # Allocate variables that are used repeatedly 
-        self.ufc_cell = ufc.cell()
-        self.x = x
-        self.cell = Cell(mesh, c)
-        self.element = V.dolfin_element()
-        self.num_tensor_entries = 1
-        for i in range(self.element.value_rank()):
-            self.num_tensor_entries *= self.element.value_dimension(i)
-        self.coefficients = zeros(self.element.space_dimension())
-        basis = zeros(self.num_tensor_entries)
-        if max_probes == None:
-            self.probes = [[]]*self.num_tensor_entries
-        else:
-            # Preallocated number of probes
-            self.probes = zeros((self.num_tensor_entries, max_probes))
-        self.counter = 0
-        self.basis_matrix = zeros((self.num_tensor_entries, self.element.space_dimension()))
-        for i in range(self.element.space_dimension()):
-            self.element.evaluate_basis(i, basis, x, self.cell)
-            self.basis_matrix[:, i] = basis[:]
-        
-    def __call__(self, u):
-        """Probe the Function u and store result in self.probes.""" 
-        u.restrict(self.coefficients, self.element, self.cell, self.ufc_cell)
-        value = ndot(self.basis_matrix, self.coefficients)
-        if type(self.probes) == list:
-            for p, val in zip(self.probes, value):
-                p.append(val)
-        else:
-            self.probes[:, self.counter] = value
-        self.counter += 1
-        return value
-        
-    def value_size(self):
-        return self.num_tensor_entries
-            
-    def coordinates(self):
-        return self.x
-        
-    def get_probe(self, i):
-        return self.probes[i]
-        
-    def get_probes(self, i):
-        return array(self.probes)[:, i]
-        
-    def number_of_evaluations(self):
-        return self.counter
-        
-    def dump(self, filename):
-        """Dump probes to filename."""
-        squeeze(self.probes).dump(filename)
-        
-    def load(self, filename):
-        """Load the probe previously stored in filename"""
-        return load(filename)
-        
-try:
-    class CppProbe(cpp.Probe):
+def strip_essential_code(filenames):
+    code = ""
+    for name in filenames:
+        f = open(name, 'r').read()
+        code += f[f.find("namespace dolfin\n{\n"):f.find("#endif")]
+    return code
+
+dolfin_folder = "Probe"
+sources = ["Probe.cpp", "Probes.cpp", "StatisticsProbe.cpp", "StatisticsProbes.cpp"]
+headers = map(lambda x: os.path.join(dolfin_folder, x), ['Probe.h', 'Probes.h', 'StatisticsProbe.h', 'StatisticsProbes.h'])
+code = strip_essential_code(headers)
+compiled_module = compile_extension_module(code=code, source_directory=os.path.abspath(dolfin_folder),
+                                           sources=sources, include_dirs=[".", os.path.abspath(dolfin_folder)])
+ 
+# Give compiled classes some additional pythonic functionality
+class Probe(compiled_module.Probe):
     
-        def __call__(self, *args):
-            return self.eval(args[0])
-                
-        def dump(self, filename):
-            """Dump probes to filename."""
-            p = zeros((self.value_size(), self.number_of_evaluations()))
-            for i in range(self.value_size()):
-                p[i, :] = self.get_probe(i)
-            #squeeze(p).dump(filename)
-            p.dump(filename)
-            
-        def load(self, filename):
-            """Load the probe previously stored in filename"""
-            return load(filename)
-            
-    class TurbulenceProbe(cpp.TurbulenceProbe):
-    
-        def __call__(self, *args):
-            self.eval(*args)
+    def __call__(self, *args):
+        return self.eval(*args)
 
-        def dump(self, filename):
-            """Dump probes to filename."""
-            umean = self.umean()
-            rs = self.reynoldsstress()
-            umean.dump("umean_"+filename)
-            rs.dump("rs_"+filename)
-            
-        def load(self, filename):
-            """Load the probe previously stored in filename"""
-            umean = load("umean_"+filename)
-            rs = load("rs_"+filename)
-            return umean, rs
+    def __len__(self):
+        return self.value_size()
 
-except:
-    print "No C++ Probe"
-
-class Probes(list):
-    """List of probes. Each processor is appended with a new 
-    Probe class only when the probe is found on that processor.
-    """
-    def __init__(self, list_of_probes, V, max_probes=None, turbulence=False, use_python=False):
-        for i, p in enumerate(list_of_probes):
-            try:
-                if hasattr(cpp, "Probe") and not use_python: # Use fast C++ version if available
-                    if turbulence:
-                        self.append((i, TurbulenceProbe(array(p), V)))
-                    else:                        
-                        self.append((i, CppProbe(array(p), V)))
-                else:
-                    self.append((i, Probe(array(p), V, max_probes=max_probes)))
-            except RuntimeError:
-                pass    
-        print len(self), "of ", len(list_of_probes), " probes found on processor ", MPI.process_number()
-        self.total_number_of_probes = len(list_of_probes)
-        self.value_size = self[0][1].value_size()
+class Probes(compiled_module.Probes):
 
     def __call__(self, *args):
-        """eval for all probes"""
-        for a in args:
-            a.update()
-        for i, p in self:
-            p(*args)
+        return self.eval(*args)
+        
+    def __len__(self):
+        return self.local_size()
 
-    def dump(self, filename):
-        for i, p in self:
-            p.dump(filename + '_' + str(i) + '.probe')
-            
-    def tonumpy(self, N, filename=None):
-        """Dump data in to numpy format"""
-        z = zeros((self.total_number_of_probes, self.value_size))
+    def __iter__(self): 
+        self.i = 0
+        return self
+
+    def __getitem__(self, i):
+        return self.get_probe_id(i), self.get_probe(i)
+
+    def next(self):
+        try:
+            p =  self[self.i]
+        except:
+            raise StopIteration
+        self.i += 1
+        return p    
+
+    def array(self, N=None, filename=None):
+        """Dump data to numpy format for all or one snapshot"""
+        if N:
+            z  = zeros((self.get_total_number_probes(), self.value_size()))
+            z0 = zeros((self.get_total_number_probes(), self.value_size()))
+        else:
+            z  = zeros((self.get_total_number_probes(), self.value_size(), self.number_of_evaluations()))
+            z0 = zeros((self.get_total_number_probes(), self.value_size(), self.number_of_evaluations()))
         if len(self) > 0:
             for index, probe in self:
-                z[index, :] = probe.get_probes(N)
-        z0 = zeros((self.total_number_of_probes, self.value_size))
-        num_evals = probe.number_of_evaluations()
+                if N:
+                    z[index, :] = probe.get_probes_at_snapshot(N)
+                else:
+                    for k in range(self.value_size()):
+                        z[index, k, :] = probe.get_probe_sub(k)    
         comm.Reduce(z, z0, op=nMPI.MAX, root=0)
         if comm.Get_rank() == 0:
             if filename:
-                z0.dump(filename)
+                if N:
+                    z0.dump(filename+"_snapshot_"+str(N)+".probes")
+                else:
+                    z0.dump(filename+"_all.probes")
             return z0
-            
-class StructuredGrid(Probes):
+
+class StatisticsProbe(compiled_module.StatisticsProbe):
+    
+    def __call__(self, *args):
+        return self.eval(*args)
+
+    def __len__(self):
+        return self.value_size()
+
+class StatisticsProbes(compiled_module.StatisticsProbes):
+
+    def __call__(self, *args):
+        return self.eval(*args)
+        
+    def __len__(self):
+        return self.local_size()
+
+    def __iter__(self): 
+        self.i = 0
+        return self
+
+    def __getitem__(self, i):
+        return self.get_probe_id(i), self.get_probe(i)
+
+    def next(self):
+        try:
+            p = self[self.i]
+        except:
+            raise StopIteration
+        self.i += 1
+        return p   
+        
+    def array(self, filename=None):
+        """Dump data to numpy format for all or one snapshot"""
+        z  = zeros((self.get_total_number_probes(), self.value_size()))
+        z0 = zeros((self.get_total_number_probes(), self.value_size()))
+        if len(self) > 0:
+            for index, probe in self:
+                umean = probe.mean()
+                z[index, :len(umean)] = umean[:]
+                z[index, len(umean):] = probe.variance()
+        comm.Reduce(z, z0, op=nMPI.MAX, root=0)
+        if comm.Get_rank() == 0:
+            if filename:
+                z0.dump(filename+"_statistics.probes")
+            return z0
+
+class StructuredGrid:
     """A Structured grid of probe points. A slice of a 3D (possibly 2D if needed) 
     domain can be created with any orientation using two tangent vectors to span 
-    a local coordinatesystem.
+    a local coordinatesystem. Likewise, a Box in 3D is created by supplying three
+    basis vectors.
     
-          dims = [N1, N2] number of points in each direction
+          dims = [N1, N2 (, N3)] number of points in each direction
           origin = (x, y, z) origin of slice 
-          dX = [[dx1, dy1, dz1], [dx2, dy2, dz2]] tangent vectors (need not be orthogonal)
+          dX = [[dx1, dy1, dz1], [dx2, dy2, dz2] (, [dx3, dy3, dz3])] tangent vectors (need not be orthogonal)
           dL = extent of each direction
           V  = FunctionSpace to probe in
+          statistics = True  => Compute statistics in probe points (mean/covariance).
+                       False => Store instantaneous snapshots of probepoints. 
     """
-    def __init__(self, dims, origin, dX, dL, V, max_probes=None, turbulence=False, use_python=False):
-        self.N1, self.N2 = dims
-        num_sub = V.num_sub_spaces()
-        self.dL = array(dL)
-        self.dX = array(dX)
+    def __init__(self, dims, origin, dX, dL, V, statistics=False):
+        self.dims = dims
+        self.dL, self.dX = array(dL, float), array(dX, float)
         self.origin = origin
         self.x = self.create_grid()
-        Probes.__init__(self, self.x, V, max_probes, turbulence, use_python)
+        if statistics:
+            self.probes = StatisticsProbes(self.x.flatten(), V, V.num_sub_spaces()==0)
+        else:
+            self.probes = Probes(self.x.flatten(), V)
         
+    def __call__(self, *args):
+        self.probes.eval(*args)
+        
+    def __getitem__(self, i):
+        return self.probes[i]
+
     def create_grid(self):
-        o1, o2, o3 = self.origin
-        dX0 = self.dX[0] / numpy_norm(self.dX[0]) * self.dL[0] / self.N1
-        dX1 = self.dX[1] / numpy_norm(self.dX[1]) * self.dL[1] / self.N2
-        x1 = linspace(o1, o1+dX0[0]*self.N1, self.N1)
-        y1 = linspace(o2, o2+dX0[1]*self.N1, self.N1)
-        z1 = linspace(o3, o3+dX0[2]*self.N1, self.N1)
-        x2 = linspace(0, dX1[0]*self.N2, self.N2)
-        y2 = linspace(0, dX1[1]*self.N2, self.N2)
-        z2 = linspace(0, dX1[2]*self.N2, self.N2)
-        x = zeros((self.N1*self.N2, 3))
-        x[:, 0] = repeat(x1, self.N2)[:] + resize(x2, self.N1*self.N2)[:]
-        x[:, 1] = repeat(y1, self.N2)[:] + resize(y2, self.N1*self.N2)[:]
-        x[:, 2] = repeat(z1, self.N2)[:] + resize(z2, self.N1*self.N2)[:]
+        """Create 2D slice or 3D box"""
+        origin = self.origin
+        dX, dL = self.dX, self.dL
+        dims = array(self.dims)
+        for i, N in enumerate(dims):
+            dX[i, :] = dX[i, :] / numpy_norm(dX[i, :]) * dL[i] / N
+        
+        xs = [linspace(origin[0], origin[0]+dX[0][0]*dims[0], dims[0])]
+        ys = [linspace(origin[1], origin[1]+dX[0][1]*dims[0], dims[0])]
+        zs = [linspace(origin[2], origin[2]+dX[0][2]*dims[0], dims[0])]
+        for k in range(1, len(dims)):
+            xs.append(linspace(0, dX[k][0]*dims[k], dims[k]))
+            ys.append(linspace(0, dX[k][1]*dims[k], dims[k]))
+            zs.append(linspace(0, dX[k][2]*dims[k], dims[k]))
+        
+        dim = dims.prod()
+        x = zeros((dim, 3))
+        if len(dims) == 3:
+            x[:, 0] = repeat(xs[2], dims[0]*dims[1])[:] + resize(repeat(xs[1], dims[0]), dim)[:] + resize(xs[0], dim)[:]
+            x[:, 1] = repeat(ys[2], dims[0]*dims[1])[:] + resize(repeat(ys[1], dims[0]), dim)[:] + resize(ys[0], dim)[:]
+            x[:, 2] = repeat(zs[2], dims[0]*dims[1])[:] + resize(repeat(zs[1], dims[0]), dim)[:] + resize(zs[0], dim)[:]
+        else:
+            x[:, 0] = repeat(xs[1], dims[0])[:] + resize(xs[0], dim)[:]
+            x[:, 1] = repeat(ys[1], dims[0])[:] + resize(ys[0], dim)[:]
+            x[:, 2] = repeat(zs[1], dims[0])[:] + resize(zs[0], dim)[:]
+
         return x
 
-    def surf(self, N, value_size_num=0):
-        """surf plot of scalar or one component (value_size_num) of vector"""
+    def surf(self, N, component=0):
+        """surf plot of scalar or one component of tensor"""
         if comm.Get_size() > 1:
             print "No surf for multiple processors"
             return
-        z = zeros((self.N1, self.N2))
-        for i in range(self.N1):
-            for j in range(self.N2):
-                val = self[i*self.N2 + j][1].get_probe(value_size_num)
+        if len(self.dims) == 3:
+            print "No surf for 3D cube"
+            return
+        z = zeros((self.dims[0], self.dims[1]))
+        for j in range(self.dims[1]):
+            for i in range(self.dims[0]):
+                val = self.probes[j*self.dims[0] + i][1].get_probe_sub(component)
                 z[i, j] = val[N]
         # Use local coordinates
-        xx, yy = meshgrid(linspace(0, dL[0], self.N2), 
-                          linspace(0, dL[1], self.N1))        
-        surfc(xx, yy, z, indexing='xy')
+        yy, xx = meshgrid(linspace(0, dL[1], self.dims[1]),
+                          linspace(0, dL[0], self.dims[0]))        
+        surfc(yy, xx, z, indexing='xy')
 
     def tovtk(self, N, filename="dump.vtk"):
-        """Dump data in slice to VTK format"""
-        z = zeros((self.N1*self.N2, self.value_size))
-        if len(self) > 0:
-            for index, probe in self:
-                z[index, :] = probe.get_probes(N)
-        z0 = zeros((self.N1*self.N2, self.value_size))
-        num_evals = probe.number_of_evaluations()
+        """Dump data to VTK file"""
+        z  = zeros((self.probes.get_total_number_probes(), self.probes.value_size()))
+        z0 = zeros((self.probes.get_total_number_probes(), self.probes.value_size()))
+        if len(self.probes) > 0:
+            for index, probe in self.probes:
+                z[index, :] = probe.get_probes_at_snapshot(N)
+        # Put solution on process 0
         comm.Reduce(z, z0, op=nMPI.MAX, root=0)
+        
+        # Store in vtk-format
         if comm.Get_rank() == 0:
-            grid = pyvtk.StructuredGrid((self.N2, self.N1, 1), self.x)
+            d = self.dims
+            d = (d[0], d[1], d[2]) if len(d) > 2 else (d[0], d[1], 1)
+            grid = pyvtk.StructuredGrid(d, self.x)
             v = pyvtk.VtkData(grid)
-            if self.value_size == 1:
+            if self.probes.value_size() == 1:
                 v.point_data.append(pyvtk.Scalars(z0))
-            elif self.value_size == 3:
+            elif self.probes.value_size() == 3:
                 v.point_data.append(pyvtk.Vectors(z0))
-            elif self.value_size == 9: # Turbulence data
+            elif self.probes.value_size() == 9: # StatisticsProbes
+                num_evals = probe.number_of_evaluations()
                 v.point_data.append(pyvtk.Vectors(z0[:, :3]/num_evals, name="UMEAN"))
                 rs = ["uu", "vv", "ww", "uv", "uw", "vw"]
                 for i in range(3, 9):
@@ -248,44 +243,59 @@ class Probedict(dict):
     the function Probes.
     """
     def __call__(self, q_):
-        for ui in self.keys():
-            for i, p in self[ui]:
-                p(q_[ui])
+        for ui, p in self.iteritems():
+            p(q_[ui])
                 
     def dump(self, filename):
-        for ui in self.keys():
-            for i, p in self[ui]:
-                p.dump(filename + '_' + ui + '_' + str(i) + '.probe')
+        for ui, p in self.iteritems():
+            p.dump(filename+"_"+ui)
 
 # Test the probe functions:
 if __name__=='__main__':
     import time
     mesh = UnitCubeMesh(10, 10, 10)
     #mesh = UnitSquareMesh(10, 10)
-    V = FunctionSpace(mesh, 'CG', 1)
+    V = FunctionSpace(mesh, 'CG', 2)
     Vv = VectorFunctionSpace(mesh, 'CG', 1)
     W = V * Vv
     
     # Just create some random data to be used for probing
-    u0 = interpolate(Expression('x[0]'), V)
+    x0 = interpolate(Expression('x[0]'), V)
     y0 = interpolate(Expression('x[1]'), V)
     z0 = interpolate(Expression('x[2]'), V)
-    u1 = interpolate(Expression('x[0]*x[0]'), V)
-    v0 = interpolate(Expression(('x[0]', 'x[1]', 'x[2]')), Vv)
+    s0 = interpolate(Expression('exp(-(pow(x[0]-0.5, 2)+ pow(x[1]-0.5, 2) + pow(x[2]-0.5, 2)))'), V)
+    v0 = interpolate(Expression(('x[0]', '2*x[1]', '3*x[2]')), Vv)
     w0 = interpolate(Expression(('x[0]', 'x[1]', 'x[2]', 'x[1]*x[2]')), W)    
-    
+        
+    x = array([[1.5, 0.5, 0.5], [0.2, 0.3, 0.4], [0.8, 0.9, 1.0]])
+    p = Probes(x.flatten(), W)
+    for i in range(6):
+        p(w0)
+        
+    print p.array(2, "testarray")         # dump snapshot 2
+    print p.array(filename="testarray")   # dump all snapshots
+    print p.dump("testarray")
+
     # Test StructuredGrid
-    origin = [0.4, 0.4, 0.5]             # origin of slice
-    tangents = [[1, 0, 1], [0, 1, 1]]    # directional tangent directions (scaled in StructuredGrid)
-    dL = [0.2, 0.3]                      # extent of slice in both directions
-    N  = [25, 20]                           # number of points in each direction
+    # 3D box
+    #origin = [0.1, 0.1, 0.1]               # origin of box
+    #tangents = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]    # directional tangent directions (scaled in StructuredGrid)
+    #dL = [0.2, 0.4, 0.6]                      # extent of slice in both directions
+    #N  = [5, 20, 40]                           # number of points in each direction
     
+    # 2D slice
+    origin = [0., 0., 0.5]               # origin of slice
+    tangents = [[1, 0, 0], [0, 1, 0]]    # directional tangent directions (scaled in StructuredGrid)
+    dL = [0.5, 0.9]                      # extent of slice in both directions
+    N  = [8, 20]                           # number of points in each direction
+   
     # Test scalar first
-    sl = StructuredGrid(N, origin, tangents, dL, V, use_python=True)
-    sl(u0)     # probe once
-    sl(u0)     # probe once more
+    sl = StructuredGrid(N, origin, tangents, dL, V)
+    sl(s0)     # probe once
+    sl(s0)     # probe once more
     sl.surf(0) # check first probe
     sl.tovtk(0, filename="dump_scalar.vtk")
+    
     # then vector
     sl2 = StructuredGrid(N, origin, tangents, dL, Vv)
     for i in range(5): 
@@ -293,50 +303,18 @@ if __name__=='__main__':
     sl2.surf(3)     # Check the fourth probe instance
     sl2.tovtk(3, filename="dump_vector.vtk")
 
-    # Test mean
-    sl3 = StructuredGrid(N, origin, tangents, dL, V, turbulence=True)
+    # Test statistics
+    sl3 = StructuredGrid(N, origin, tangents, dL, V, statistics=True)
     for i in range(10): 
-        sl3(u0, u0, u0)     # probe a few times
+        sl3(x0, y0, z0)     # probe a few times
+        #sl3(v0)
     sl3.surf(0)     # Check 
     sl3.tovtk(0, filename="dump_mean_vector.vtk")
-
-    x = array([[0.5, 0.5, 0.5], [0.2, 0.3, 0.4], [0.8, 0.9, 1.0]])
-    p = Probes(x, Vv, use_python=True)
-    p(v0)
-    p(v0)
-    p.dump("testing")
-    print p.tonumpy(0)
-    
-    #### Some more tests.
-    ### Create a range of probes for a UnitSquare
-    #N = 5
-    #xx = linspace(0.25, 0.75, N)
-    #xx = xx.repeat(N).reshape((N, N)).transpose()
-    #yy = linspace(0.25, 0.75, N)
-    #yy = yy.repeat(N).reshape((N, N))
-    #x = zeros((N*N, 3))    
-    #for i in range(N):
-        #for j in range(N):
-            #x[i*N + j, 0 ] = xx[i, j]   #  x-value
-            #x[i*N + j, 1 ] = yy[i, j]   #  y-value
-         
-    #probesV = Probes(x, V, 1000, use_python=True)    
-    #t0 = time.time()
-    #for j in range(1000):
-        #probesV(u0)
-    #print 'Time to Python eval ', j+1 ,' probes = ', time.time() - t0
-
-    #if hasattr(cpp, "Probe"):
-        #cpprobesV = Probes(x, V)
-        #t0 = time.time()
-        #for j in range(1000):
-            #cpprobesV(u0)
-        #print 'Time to Cpp eval ', j+1 ,' probes = ', time.time() - t0
-        
-    ### Test Probedict
-    #q_ = {'u0':u0, 'u1':u1}
-    #VV = {'u0':V, 'u1':V}
-    #pd = Probedict((ui, Probes(x, VV[ui])) for ui in ['u0', 'u1'])
-    #pd(q_)
-    #pd.dump('testV')
-        
+            
+    ## Test Probedict
+    q_ = {'u0':v0, 'u1':x0}
+    VV = {'u0':Vv, 'u1':V}
+    pd = Probedict((ui, Probes(x.flatten(), VV[ui])) for ui in ['u0', 'u1'])
+    for i in range(7):
+        pd(q_)
+    pd.dump('testdict')

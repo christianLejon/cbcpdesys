@@ -99,18 +99,18 @@ if __name__=='__main__':
     rans_parameters['omega'].default_factory = lambda : 0.6
     #problem_parameters['turbulence_model'] = 'LienKalizin'
     #rans_parameters['omega'].default_factory = lambda : 0.25 # LienKalizin requires lower omega
-    #Turb_solver = ransmodels.V2F_2Coupled(problem, rans_parameters,
-                           #model=problem_parameters['turbulence_model'])
+    Turb_solver = ransmodels.V2F_2Coupled(problem, rans_parameters,
+                           model=problem_parameters['turbulence_model'])
     
     #problem_parameters['turbulence_model'] = 'StandardKE'
     #Turb_solver = ransmodels.StandardKE_Coupled(problem, rans_parameters,
                             #model=problem_parameters['turbulence_model'])
 
-    problem_parameters['turbulence_model'] = "LaunderSharma"
+    #problem_parameters['turbulence_model'] = "LaunderSharma"
     #Turb_solver = ransmodels.LowReynolds_Segregated(problem, rans_parameters,
                             #model=problem_parameters['turbulence_model'])
-    Turb_solver = ransmodels.LowReynolds_Coupled(problem, rans_parameters,
-                            model=problem_parameters['turbulence_model'])
+    #Turb_solver = ransmodels.LowReynolds_Coupled(problem, rans_parameters,
+    #                        model=problem_parameters['turbulence_model'])
                             
     #Turb_solver = ransmodels.SpalartAllmaras(problem, rans_parameters)
                             

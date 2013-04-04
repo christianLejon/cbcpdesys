@@ -1,0 +1,40 @@
+#ifndef __STATISTICSPROBE_H
+#define __STATISTICSPROBE_H
+
+#include "Probe.h"
+
+namespace dolfin
+{
+
+  class StatisticsProbe : public Probe
+  {
+  // Create a probe that computes mean and variance of the Function in a point
+  public:
+      
+    StatisticsProbe(const Array<double>& x, const FunctionSpace& V, bool segregated=false); 
+        
+    // For segregated velocity components 
+    void eval(const Function& u); 
+    void eval(const Function& u, const Function& v); // 2D
+    void eval(const Function& u, const Function& v, const Function& w); // 3D
+   
+    void erase_snapshot(std::size_t i) {cout << "Cannot erase snapshot for StatisticsProbe" << endl;};
+    
+    // Return mean of Function probed for
+    std::vector<double> mean();
+    
+    // Return the covariance of all components in Function 
+    std::vector<double> variance();
+    
+  protected:
+    
+    // value_size of the Function being probed
+    std::size_t value_size_loc_function;
+    
+    // True for segregated solvers
+    std::size_t segregated;
+    
+  };
+}
+
+#endif
