@@ -82,4 +82,13 @@ void StatisticsProbes::eval(const Function& u, const Function& v, const Function
   }
   _num_evals++;
 }
+void StatisticsProbes::clear()
+{
+  for (std::size_t i = 0; i < local_size(); i++)
+  {
+    StatisticsProbe* probe = (StatisticsProbe*) _allprobes[i].second;
+    probe->clear();
+  }
+  _num_evals = 0;
+}
 //

@@ -133,3 +133,9 @@ std::vector<double> StatisticsProbe::variance()
     x[j-N] = _probes[j][0] / _num_evals;  
   return x;
 }
+void StatisticsProbe::clear()
+{
+  for (std::size_t j = 0; j < _value_size_loc; j++)
+    _probes[j][0] = 0.;
+  _num_evals = 0;
+}

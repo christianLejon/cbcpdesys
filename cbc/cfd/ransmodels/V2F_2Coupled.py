@@ -61,8 +61,12 @@ class V2FBase(TurbModel):
     def __init__(self, solver_namespace, sub_system, bcs=[], normalize=None, **kwargs):
         TurbModel.__init__(self, solver_namespace, sub_system, bcs, normalize, **kwargs)
     
-        if self.solver_namespace['prm']['model'] == 'OriginalV2F':
-            self.v2_dofs = self.V.sub(0).dofmap().dofs()
+        if solver_namespace['prm']['model'] == 'OriginalV2F':
+            dofs = set(self.V.sub(0).dofmap().collapse(solver_namespace['mesh'])[1].values())
+            off_dofs = self.V.sub(0).dofmap().off_process_owner()
+            dofs.difference_update(off_dofs.keys())
+            self.v2_dofs = array(list(dofs))
+            
     
     def update(self):
         """ Only v2 that is bounded by zero """

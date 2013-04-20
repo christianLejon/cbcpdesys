@@ -228,7 +228,7 @@ class StructuredGrid:
             elif self.probes.value_size() == 3:
                 v.point_data.append(pyvtk.Vectors(z0))
             elif self.probes.value_size() == 9: # StatisticsProbes
-                num_evals = probe.number_of_evaluations()
+                num_evals = self.probes.number_of_evaluations()
                 v.point_data.append(pyvtk.Vectors(z0[:, :3]/num_evals, name="UMEAN"))
                 rs = ["uu", "vv", "ww", "uv", "uw", "vw"]
                 for i in range(3, 9):
@@ -311,6 +311,7 @@ if __name__=='__main__':
     sl3.surf(0)     # Check 
     sl3.tovtk(0, filename="dump_mean_vector.vtk")
             
+    print sl3.probes.array()
     ## Test Probedict
     q_ = {'u0':v0, 'u1':x0}
     VV = {'u0':Vv, 'u1':V}
