@@ -78,7 +78,7 @@ class apbl(NSProblem):
         
         # Create stretched mesh in y-direction
         x = m.coordinates()
-        x[:, 1] = arctan(0.25*pi*(x[:, 1]))/arctan(0.25*pi) + 1. 
+        x[:, 1] = arctan(0.5*pi*(x[:, 1]))/arctan(0.5*pi) + 1. 
         
         # We have to mark the boundaries before modifying the mesh:
         self.mf = FacetFunction("size_t", m)

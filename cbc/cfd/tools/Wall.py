@@ -10,6 +10,26 @@ from numpy import array, zeros
 from numpy import sqrt as nsqrt
 from pylab import find
 
+code = \
+"""
+#include "dolfin.h"
+
+namespace dolfin{
+
+void allow_nonzero_allocation(GenericMatrix* A)
+{
+  #ifdef HAS_PETSC
+  if (A && has_type<PETScMatrix>(*A))
+  {
+    PETScMatrix& petsc_A = A->down_cast<PETScMatrix>();
+    MatSetOption(*petsc_A.mat(), MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
+  }
+  #endif
+}
+}
+"""
+compiled_module = compile_extension_module(code=code)
+
 class Wallfunction:
     """ 
     Compute the vertices located on and off a wall.
@@ -88,7 +108,7 @@ class Wallfunction:
     def handle_corners(self, V, dofs_on_boundary, 
                        dofs_inside_boundary, d2c_list, c2d_list):
         # Locate corner nodes that belong to cells without internal nodes
-        # This only applies to some corner-elementes using CG = 1.
+        # This only applies to some corner-elements using CG = 1.
         mesh = self.mesh
         corners = []
         corners_inner_node = []
@@ -257,6 +277,7 @@ class KEWall(Wallfunction):
         e_dofs_ib = array(list(self.dofs_inside_boundary[1]), 'intc')        
         for var in args:
             if isinstance(var, Matrix):
+                compiled_module.allow_nonzero_allocation(var)
                 var.ident(e_dofs_ob)
                 var.ident(e_dofs_ib)
                 for kj, ej, yj in zip(k_dofs_ob, e_dofs_ob, self.wf.dofs_on_boundary[0]):
@@ -290,6 +311,7 @@ class FWall(Wallfunction):
         f_dofs_ib  = array(list(self.dofs_inside_boundary[1]), 'intc')        
         for var in args:
             if isinstance(var, Matrix):
+                compiled_module.allow_nonzero_allocation(var)
                 var.ident(f_dofs_ob)
                 var.ident(f_dofs_ib)
                 for v2j, fj, yj in zip(v2_dofs_ob, f_dofs_ob, self.wf.dofs_on_boundary[0]):
@@ -366,6 +388,8 @@ class Ce1Wall(Wallfunction):
         self.v2f = v2f
         self.v2 = v2
         self.Ced = Ced
+        if parameters['reorder_dofs_serial'] == True or MPI.num_processes() > 1:
+            raise TypeError("Not implemented")
 
     def apply(self, *args):
         aro = array(list(self.dofs_on_boundary[0]), 'intc')
@@ -375,9 +399,10 @@ class Ce1Wall(Wallfunction):
                 var.ident(aro)
                 var.ident(ari)
             if isinstance(var, (Vector, GenericVector)):
-                for ki, vi, ci, co in zip(self.k, self.v2, self.dofs_inside_boundary[0], self.dofs_on_boundary[0]):
-                    v2ok = max(min(vi/ki, 2./3.), 0.001)
-                    var[ci] = 1.4*(1 + self.Ced*nsqrt(1./v2ok))
+                for co in self.dofs_on_boundary[0]:
+                    dib = self.bnd_to_in[0][co]
+                    v2ok = max(min(self.v2f[dib]/self.ke[dib], 2./3.), 0.001)
+                    var[dib] = 1.4*(1 + self.Ced*nsqrt(1./v2ok))
                     var[co] = 1.4*(1 + self.Ced*nsqrt(1./v2ok))
 
 class FIJWall_1(Wallfunction):

@@ -90,7 +90,7 @@ class diffusor(NSProblem):
         x = m.coordinates()
         # Create stretched mesh in y-direction
         x[:, 1] = arctan(1.*pi*(x[:, 1]))/arctan(1.*pi) 
-        self.mf = FacetFunction("sizet", m)     # Facets
+        self.mf = FacetFunction("size_t", m)     # Facets
         self.mf.set_all(0)
         # We mark the boundaries before modifying the mesh:
         walls  = FlowSubDomain(lambda x, on_boundary: (near(x[1], 1.) or near(x[1], -1.)

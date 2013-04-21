@@ -35,14 +35,14 @@ class V2F_2Coupled(V2F):
         # Set regular boundary conditions
         bcu = V2F.create_BCs(self, bcs)
         # Set wall functions
-        for bc in bcs:
+        for i, bc in enumerate(bcs):
             if bc.type() == 'Wall':
-                bcu['ke'].append(QWall['ke'](self.V['ke'], bc, self.y, self.nu(0))) 
-                bcu['ke'][-1].type = bc.type
+                bcu['ke'].insert(i+1, QWall['ke'](self.V['ke'], bc, self.y, self.nu(0))) 
+                bcu['ke'][i+1].type = bc.type
                 if self.prm['model'] == 'OriginalV2F':
-                    bcu['v2f'].append(QWall['v2f'](self.V['v2f'], bc, self.y, 
+                    bcu['v2f'].insert(i+1, QWall['v2f'](self.V['v2f'], bc, self.y, 
                                                    self.nu(0), self.ke_))
-                    bcu['v2f'][-1].type = bc.type
+                    bcu['v2f'][i+1].type = bc.type
         return bcu
         
     def solve_inner(self, max_iter=1, max_err=1e-7, logging=True):
@@ -65,8 +65,7 @@ class V2FBase(TurbModel):
             dofs = set(self.V.sub(0).dofmap().collapse(solver_namespace['mesh'])[1].values())
             off_dofs = self.V.sub(0).dofmap().off_process_owner()
             dofs.difference_update(off_dofs.keys())
-            self.v2_dofs = array(list(dofs))
-            
+            self.v2_dofs = array(list(dofs))            
     
     def update(self):
         """ Only v2 that is bounded by zero """
@@ -74,7 +73,7 @@ class V2FBase(TurbModel):
             bound(self.x, 1e8)
         else:
             x = self.x.array()
-            x[self.v2_dofs] = minimum(maximum(1e-12, x[self.v2_dofs]), 1e6)
+            x[self.v2_dofs] = minimum(maximum(1e-12, x[self.v2_dofs]), 1e8)
             self.x.set_local(x)
             
 class Steady_ke_1(TurbModel):

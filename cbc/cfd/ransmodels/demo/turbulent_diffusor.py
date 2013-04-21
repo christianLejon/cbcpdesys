@@ -89,30 +89,38 @@ if __name__=='__main__':
     problem_parameters['time_integration']='Steady'
     problem_parameters['Re_tau'] = Re_tau= 395.
     problem_parameters['utau'] = utau = 0.05
-    problem_parameters['plot_velocity'] = True
     problem_parameters['pressure_bc'] = False
-    problem_parameters['Nx'] = 10
-    problem_parameters['Ny'] = 100
+    problem_parameters['Nx'] = 40
+    problem_parameters['Ny'] = 40
     problem = diffusor(problem_parameters)
     problem.prm['viscosity'] = utau/Re_tau
+    parameters['reorder_dofs_serial'] = False
     problem_parameters['turbulence_model'] = 'OriginalV2F'
+    #problem_parameters['turbulence_model'] = "LaunderSharma"
     
     ## Set up Navier-Stokes solver ##
     solver_parameters['degree']['u'] = 1
-    solver_parameters['omega'].default_factory = lambda : 0.8
+    solver_parameters['plot_velocity'] = True
+    solver_parameters['stabilization_prm'] = 0.02
+    solver_parameters['omega'].default_factory = lambda : 0.6
     NS_solver = icns.NSCoupled(problem, solver_parameters)
     
     ## Set up turbulence model ##
-    rans_parameters['omega'].default_factory = lambda : 0.6
+    rans_parameters['omega'].default_factory = lambda : 0.4
     Turb_solver = ransmodels.V2F_2Coupled(problem, rans_parameters,
                                  model=problem_parameters['turbulence_model'])
-    
+
+    #Turb_solver = ransmodels.LowReynolds_Segregated(problem, rans_parameters,
+                            #model=problem_parameters['turbulence_model'])
+    #Turb_solver = ransmodels.LowReynolds_Coupled(problem, rans_parameters,
+                           #model=problem_parameters['turbulence_model'])
+
     ## solve the problem ##    
     t0 = time()
     problem_parameters['max_iter'] = 10
     problem.solve()
     print 'time = ', time()-t0
-    print summary()
+    list_timings()
     plot(NS_solver.u_)
     #interactive()
 

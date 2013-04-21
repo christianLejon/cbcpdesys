@@ -33,7 +33,7 @@ from scipy.interpolate import InterpolatedUnivariateSpline as ius
 from pylab import zeros, linspace
 import cPickle
 
-parameters['reorder_dofs_serial'] = True
+parameters['reorder_dofs_serial'] = False
 
 # Postprocessing
 def tospline(problem): 

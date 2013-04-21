@@ -26,10 +26,10 @@ class V2F(TurbSolver):
         self.S2_ = NS.S2_
         ns = vars(self)
         self.pdesubsystems['derived quantities'] = [
-            DQ (ns, 'v2ok', V, "v2_/k_"),
+            DQ (ns, 'v2ok', V, "max_(min_(v2_/k_, 2./3.), 1e-6)"),
             DQ_NoBC(ns, 'T' , V, "max_(min_(0.6/(Cmu*v2ok_*sqrt(6.*S2_)), k_*(1./e_)), 6.*sqrt(nu*(1./e_)))"),
             DQ_NoBC(ns, 'L' , V, "CL*max_(Ceta*(nu**3/e_)**(0.25), k_**(1.5)*min_(1./e_, 1./(Cmu*v2_*sqrt(6.*S2_))))"),
-            Ce1(ns, 'Ce1', V, "1.4*(1. + Ced*sqrt(1./v2ok_))"),
+            Ce1(ns, 'Ce1', V, "max_(min_(1.4*(1. + Ced*sqrt(1./v2ok_)), 10.), 1.)"),
             DQ (ns, 'nut', V, "Cmu*v2_*T_"),
             DQ (ns, 'P', V, "2.*inner(Sij_, grad(u_))*nut_", bounded=False)
         ]
@@ -42,7 +42,7 @@ class V2F(TurbSolver):
         model = self.prm['model']
         info('Setting parameters for %s V2F model ' %(model))
         self.problem.NS_solver.prm['apply']['S2'] = 'project'
-        for dq in ['T', 'L', 'nut']:
+        for dq in ['T', 'L']:
             # Specify projection as default
             # (remaining DQs are use_formula by default)
             self.prm['apply'][dq] = self.prm['apply'].get(dq, 'project')
@@ -55,7 +55,7 @@ class V2F(TurbSolver):
             sigma_e = Constant(1.3),
             sigma_k = Constant(1.0),
             sigma_v2 = Constant(1.0),
-            e_d = Constant(0.75)
+            e_d = Constant(0.5)
         )
         self.model_prm.update(
             dict(
@@ -131,11 +131,14 @@ class Ce1(DerivedQuantity):
             if bc.type() == 'Wall':
                 qe = Wallfunction(self.solver_namespace['V']['ke'], bc)
                 k_dofs = qe.dofs_inside_boundary[0]
-                v2_dofs = qe.dofs_inside_boundary[1]                
+                v2_dofs = qe.dofs_inside_boundary[0]                
                 bcu.append(QWall['Ce1'](bc, self.V, ke_vector, k_dofs, v2f_vector, v2_dofs,
                            self.solver_namespace['Ced'](0)))
                 bcu[-1].type = bc.type
         return bcu
+    
+    def update(self):
+        bound(self.x, 4., 1.)
             
 class Rij(DerivedQuantity):
     
