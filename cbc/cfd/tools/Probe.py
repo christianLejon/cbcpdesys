@@ -6,7 +6,7 @@ __license__  = "GNU Lesser GPL version 3 or any later version"
 This module contains functionality for efficiently probing a Function many times. 
 """
 from dolfin import *
-from numpy import zeros, array, repeat, resize, linspace
+from numpy import zeros, array, repeat, resize, linspace, abs, sign
 from numpy.linalg import norm as numpy_norm
 from scitools.basics import meshgrid
 from scitools.std import surfc
@@ -65,9 +65,11 @@ class Probes(compiled_module.Probes):
         if N:
             z  = zeros((self.get_total_number_probes(), self.value_size()))
             z0 = zeros((self.get_total_number_probes(), self.value_size()))
+            z1 = zeros((self.get_total_number_probes(), self.value_size()))
         else:
             z  = zeros((self.get_total_number_probes(), self.value_size(), self.number_of_evaluations()))
             z0 = zeros((self.get_total_number_probes(), self.value_size(), self.number_of_evaluations()))
+            z1 = zeros((self.get_total_number_probes(), self.value_size(), self.number_of_evaluations()))
         if len(self) > 0:
             for index, probe in self:
                 if N:
@@ -75,7 +77,11 @@ class Probes(compiled_module.Probes):
                 else:
                     for k in range(self.value_size()):
                         z[index, k, :] = probe.get_probe_sub(k)    
+        comm.Reduce(z, z0, op=nMPI.SUM, root=0)
+        zsign = sign(z0)
+        z = abs(z)
         comm.Reduce(z, z0, op=nMPI.MAX, root=0)
+        z0 *= zsign
         if comm.Get_rank() == 0:
             if filename:
                 if N:
@@ -124,7 +130,11 @@ class StatisticsProbes(compiled_module.StatisticsProbes):
                 umean = probe.mean()
                 z[index, :len(umean)] = umean[:]
                 z[index, len(umean):] = probe.variance()
+        comm.Reduce(z, z0, op=nMPI.SUM, root=0)
+        zsign = sign(z0)
+        z = abs(z)
         comm.Reduce(z, z0, op=nMPI.MAX, root=0)
+        z0 *= zsign
         if comm.Get_rank() == 0:
             if filename:
                 z0.dump(filename+"_statistics.probes")
@@ -215,8 +225,11 @@ class StructuredGrid:
             for index, probe in self.probes:
                 z[index, :] = probe.get_probes_at_snapshot(N)
         # Put solution on process 0
+        comm.Reduce(z, z0, op=nMPI.SUM, root=0)
+        zsign = sign(z0)
+        z = abs(z)
         comm.Reduce(z, z0, op=nMPI.MAX, root=0)
-        
+        z0 *= zsign
         # Store in vtk-format
         if comm.Get_rank() == 0:
             d = self.dims
@@ -263,9 +276,9 @@ if __name__=='__main__':
     W = V * Vv
     
     # Just create some random data to be used for probing
-    x0 = interpolate(Expression('x[0]'), V)
-    y0 = interpolate(Expression('x[1]'), V)
-    z0 = interpolate(Expression('x[2]'), V)
+    x0 = interpolate(Expression('-x[0]'), V)
+    y0 = interpolate(Expression('-x[1]'), V)
+    z0 = interpolate(Expression('-x[2]'), V)
     s0 = interpolate(Expression('exp(-(pow(x[0]-0.5, 2)+ pow(x[1]-0.5, 2) + pow(x[2]-0.5, 2)))'), V)
     v0 = interpolate(Expression(('x[0]', '2*x[1]', '3*x[2]')), Vv)
     w0 = interpolate(Expression(('x[0]', 'x[1]', 'x[2]', 'x[1]*x[2]')), W)    
@@ -287,10 +300,10 @@ if __name__=='__main__':
     #N  = [5, 20, 40]                           # number of points in each direction
     
     # 2D slice
-    origin = [0., 0., 0.5]               # origin of slice
+    origin = [0.1, 0.1, 0.5]               # origin of slice
     tangents = [[1, 0, 0], [0, 1, 0]]    # directional tangent directions (scaled in StructuredGrid)
-    dL = [0.5, 0.9]                      # extent of slice in both directions
-    N  = [8, 20]                           # number of points in each direction
+    dL = [0.5, 0.8]                      # extent of slice in both directions
+    N  = [5, 5]                           # number of points in each direction
    
     # Test scalar first
     sl = StructuredGrid(N, origin, tangents, dL, V)
@@ -315,11 +328,11 @@ if __name__=='__main__':
     sl3.tovtk(0, filename="dump_mean_vector.vtk")
     sl3.tovtk(1, filename="dump_latest_snapshot_vector.vtk")
             
-    print sl3.probes.array()
-    ## Test Probedict
-    q_ = {'u0':v0, 'u1':x0}
-    VV = {'u0':Vv, 'u1':V}
-    pd = Probedict((ui, Probes(x.flatten(), VV[ui])) for ui in ['u0', 'u1'])
-    for i in range(7):
-        pd(q_)
-    pd.dump('testdict')
+    #print sl3.probes.array()
+    ### Test Probedict
+    #q_ = {'u0':v0, 'u1':x0}
+    #VV = {'u0':Vv, 'u1':V}
+    #pd = Probedict((ui, Probes(x.flatten(), VV[ui])) for ui in ['u0', 'u1'])
+    #for i in range(7):
+        #pd(q_)
+    #pd.dump('testdict')
