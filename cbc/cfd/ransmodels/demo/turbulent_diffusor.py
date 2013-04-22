@@ -12,6 +12,7 @@ from cbc.cfd import icns                    # Navier-Stokes solvers
 from cbc.cfd import ransmodels              # RANS models
 from cbc.cfd.icns import solver_parameters  # parameters for NS
 from cbc.cfd.ransmodels import solver_parameters as rans_parameters # parameters for RANS model
+from cbc.cfd.tools.Wall import Yplus
 set_log_active(True)
 
 import cPickle
@@ -90,25 +91,30 @@ if __name__=='__main__':
     problem_parameters['Re_tau'] = Re_tau= 395.
     problem_parameters['utau'] = utau = 0.05
     problem_parameters['pressure_bc'] = False
-    problem_parameters['Nx'] = 40
-    problem_parameters['Ny'] = 40
+    problem_parameters['Nx'] = 60
+    problem_parameters['Ny'] = 30
     problem = diffusor(problem_parameters)
     problem.prm['viscosity'] = utau/Re_tau
     parameters['reorder_dofs_serial'] = False
     problem_parameters['turbulence_model'] = 'OriginalV2F'
+    #problem_parameters['turbulence_model'] = 'LienKalizin'
     #problem_parameters['turbulence_model'] = "LaunderSharma"
+    #problem_parameters['turbulence_model'] = 'StandardKE'
     
     ## Set up Navier-Stokes solver ##
-    solver_parameters['degree']['u'] = 1
+    solver_parameters['degree']['u'] = 2
     solver_parameters['plot_velocity'] = True
-    solver_parameters['stabilization_prm'] = 0.02
-    solver_parameters['omega'].default_factory = lambda : 0.6
+    #solver_parameters['stabilization_prm'] = 0.01
+    solver_parameters['omega'].default_factory = lambda : 0.8
     NS_solver = icns.NSCoupled(problem, solver_parameters)
     
     ## Set up turbulence model ##
-    rans_parameters['omega'].default_factory = lambda : 0.4
+    rans_parameters['omega'].default_factory = lambda : 0.6
     Turb_solver = ransmodels.V2F_2Coupled(problem, rans_parameters,
                                  model=problem_parameters['turbulence_model'])
+
+    #Turb_solver = ransmodels.StandardKE_Coupled(problem, rans_parameters,
+    #                        model=problem_parameters['turbulence_model'])
 
     #Turb_solver = ransmodels.LowReynolds_Segregated(problem, rans_parameters,
                             #model=problem_parameters['turbulence_model'])
@@ -117,7 +123,7 @@ if __name__=='__main__':
 
     ## solve the problem ##    
     t0 = time()
-    problem_parameters['max_iter'] = 10
+    problem_parameters['max_iter'] = 100
     problem.solve()
     print 'time = ', time()-t0
     list_timings()

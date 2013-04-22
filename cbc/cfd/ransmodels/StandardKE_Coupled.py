@@ -35,8 +35,12 @@ class StandardKE_Coupled(StandardKE):
                     str(self.prm['pdesubsystem']['ke'])
         self.pdesubsystems['ke'] = eval(classname)(vars(self), ['k', 'e'], 
                                                    bcs=self.bc['ke'])
-                        
-class Steady_ke_1(TurbModel):
+               
+class KEModel(TurbModel):
+    def update(self):
+        bound(self.x, 100., 1e-8)
+        
+class Steady_ke_1(KEModel):
     
     def form(self, k, e, v_k, v_e, k_, e_, nut_, u_, nu, e_d,
                    P_, T_, sigma_e, Ce1, Ce2, **kwargs):
@@ -53,7 +57,7 @@ class Steady_ke_1(TurbModel):
 
 ##+ (k_*e*e_d + k*e_*(1. - e_d))*(1./k_)*v_k*dx
 
-class Steady_ke_2(TurbModel):
+class Steady_ke_2(KEModel):
     
     def form(self, k, e, v_k, v_e, k_, e_, nut_, u_, Sij_, nu, dt, e_d, 
                    P_, sigma_k, sigma_e, Ce1, Ce2, **kwargs):
@@ -69,7 +73,7 @@ class Steady_ke_2(TurbModel):
         
         return Fk + Fe
 
-class Steady_ke_3(TurbModel):
+class Steady_ke_3(KEModel):
     """ Pseudo-transient """
     def form(self, k_, e_, k, e, v_k, v_e, nu, nut_, u_, Sij_, dt, e_d, 
                    sigma_k, sigma_e, Ce1, Ce2, **kwargs):
@@ -87,7 +91,7 @@ class Steady_ke_3(TurbModel):
         
         return Fk + Fe
         
-class Steady_ke_4(TurbModel):
+class Steady_ke_4(KEModel):
     
     def form(self, k_, e_, k, e, v_k, v_e, nu, nut_, u_, Sij_, dt, e_d, 
                    sigma_k, sigma_e, Ce1, Ce2, Pk_, T_, **kwargs):

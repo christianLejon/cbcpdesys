@@ -78,7 +78,7 @@ class apbl(NSProblem):
         
         # Create stretched mesh in y-direction
         x = m.coordinates()
-        x[:, 1] = arctan(0.5*pi*(x[:, 1]))/arctan(0.5*pi) + 1. 
+        x[:, 1] = arctan(1.0*pi*(x[:, 1]))/arctan(1.0*pi) + 1. 
         
         # We have to mark the boundaries before modifying the mesh:
         self.mf = FacetFunction("size_t", m)
@@ -132,7 +132,7 @@ if __name__ == '__main__':
     problem_parameters['Ny'] = 60
     problem_parameters['T'] = 10.
     problem_parameters['max_iter'] = 1
-    #problem_parameters['pressure_bc'] = True
+    #problem_parameters['pressure_bc'] = False
     problem_parameters['plot_velocity'] = True
     solver_parameters = recursive_update(solver_parameters, 
     dict(degree=dict(u=1),

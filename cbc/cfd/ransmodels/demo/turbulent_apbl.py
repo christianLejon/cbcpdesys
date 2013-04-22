@@ -89,7 +89,7 @@ if __name__ == '__main__':
     parameters['reorder_dofs_serial'] = False
     problem_parameters['time_integration']='Steady'
     problem_parameters['Nx'] = 100
-    problem_parameters['Ny'] = 40
+    problem_parameters['Ny'] = 60
     problem_parameters['Re_tau'] = Re_tau = 395.
     problem_parameters['utau'] = utau = 0.05
     problem_parameters['pressure_bc'] = False
@@ -98,20 +98,20 @@ if __name__ == '__main__':
     
     ## Set up Navier-Stokes solver ##
     solver_parameters['plot_velocity'] = True
-    solver_parameters['degree']['u'] = 1
-    solver_parameters['omega'].default_factory = lambda : 0.6
+    solver_parameters['degree']['u'] = 2
+    solver_parameters['omega'].default_factory = lambda : 0.2
     NS_solver = icns.NSCoupled(problem, solver_parameters)
     
     ## Set up turbulence model ##
-    rans_parameters['omega'].default_factory = lambda : 0.4
-    #problem_parameters['turbulence_model'] = 'OriginalV2F'
+    rans_parameters['omega'].default_factory = lambda : 0.1
+    problem_parameters['turbulence_model'] = 'OriginalV2F'
     #problem_parameters['turbulence_model'] = 'LienKalizin'
-    #Turb_solver = ransmodels.V2F_2Coupled(problem, rans_parameters,
-    #                        model=problem_parameters['turbulence_model'])
-
-    problem_parameters['turbulence_model'] = 'StandardKE'
-    Turb_solver = ransmodels.StandardKE_Coupled(problem, rans_parameters,
+    Turb_solver = ransmodels.V2F_2Coupled(problem, rans_parameters,
                             model=problem_parameters['turbulence_model'])
+
+    #problem_parameters['turbulence_model'] = 'StandardKE'
+    #Turb_solver = ransmodels.StandardKE_Coupled(problem, rans_parameters,
+    #                        model=problem_parameters['turbulence_model'])
 
     ## solve the problem ##    
     t0 = time()

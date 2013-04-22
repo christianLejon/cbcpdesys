@@ -86,10 +86,10 @@ class diffusor(NSProblem):
 
     def create_mesh_and_boundaries(self):
         self.L = 16.
-        m = RectangleMesh(0., -1., self.L, 1., self.prm['Nx'], self.prm['Ny'])
+        m = RectangleMesh(0., 0, self.L, 1., self.prm['Nx'], self.prm['Ny'])
         x = m.coordinates()
         # Create stretched mesh in y-direction
-        x[:, 1] = arctan(1.*pi*(x[:, 1]))/arctan(1.*pi) 
+        x[:, 1] = arctan(1.0*pi*(x[:, 1]))/arctan(1.0*pi) 
         self.mf = FacetFunction("size_t", m)     # Facets
         self.mf.set_all(0)
         # We mark the boundaries before modifying the mesh:
@@ -98,6 +98,9 @@ class diffusor(NSProblem):
                               bc_type = 'Wall',
                               mf  = self.mf)
             
+        symmetry = FlowSubDomain(lambda x, on_boundary: near(x[1], 0.) and on_boundary,
+                        bc_type = 'Symmetry',
+                        mf = self.mf)
         if self.prm['pressure_bc']:
             inlet  = FlowSubDomain(lambda x, on_boundary: near(x[0], 0.) and on_boundary,
                                 bc_type = 'ConstantPressure',
@@ -124,10 +127,11 @@ class diffusor(NSProblem):
         # Now that the boundaries are marked we can create the diffusor by 
         # expanding the mesh
         x[:,1] = x[:, 1]*self.dy(x[:, 0])        
-        return m, [walls, inlet, outlet]
+        return m, [walls, inlet, outlet, symmetry]
         
     def dy(self, x, N=6.):
         return (erf(x - self.L/2.) + N)/(N - 1.)
+        #return 1.
         
     def __info__(self):
         return 'Axial diffusior'

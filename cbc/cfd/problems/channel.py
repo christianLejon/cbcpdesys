@@ -54,7 +54,7 @@ class channel(NSProblem):
         m = RectangleMesh(0., 0., self.L, 1., self.prm['Nx'], self.prm['Ny'])
         # Create stretched mesh in y-direction
         x = m.coordinates()        
-        x[:, 1] = arctan(0.5*pi*(x[:, 1]))/arctan(0.5*pi) 
+        x[:, 1] = arctan(1.*pi*(x[:, 1]))/arctan(1.*pi) 
         #x[:, 1] = 0.5*x[:, 1]
         return m        
         
