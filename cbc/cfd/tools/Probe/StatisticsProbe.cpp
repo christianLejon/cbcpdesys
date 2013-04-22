@@ -18,10 +18,12 @@ StatisticsProbe::StatisticsProbe(const Array<double>& x, const FunctionSpace& V,
                  
   _probes.resize(_value_size_loc);
     
-  // Make room for exactly one value  
-  for (std::size_t j = 0; j < _value_size_loc; j++)
-    _probes[j].push_back(0.);
-
+  // Make room for exactly two values. The mean and the latest snapshot  
+  for (std::size_t i = 0; i < 2; i++)
+  {
+    for (std::size_t j = 0; j < _value_size_loc; j++)
+      _probes[j].push_back(0.);
+  }
 }
 
 void StatisticsProbe::eval(const Function& u)
@@ -41,6 +43,7 @@ void StatisticsProbe::eval(const Function& u)
   for (std::size_t j = 0; j < value_size_loc_function; j++)
   {
      _probes[j][0] += tmp[j];           // u, v, w
+     _probes[j][1]  = tmp[j];
   }
   for (std::size_t j = 0; j < value_size_loc_function; j++)
   {
@@ -77,6 +80,7 @@ void StatisticsProbe::eval(const Function& u, const Function& v, const Function&
   for (std::size_t j = 0; j < 3; j++)
   {
      _probes[j][0] += tmp[j];           // u, v, w
+     _probes[j][1]  = tmp[j];           
      _probes[j+3][0] += tmp[j]*tmp[j];  // uu, vv, ww
   }
   _probes[6][0] += tmp[0]*tmp[1];      // uv
@@ -95,7 +99,6 @@ void StatisticsProbe::eval(const Function& u, const Function& v)
   std::vector<double> tmp(2);
   // Restrict function to cell
   u.restrict(&coefficients[0], *_element, *dolfin_cell, *ufc_cell);
-  // Compute linear combination
   for (std::size_t i = 0; i < _element->space_dimension(); i++)
     tmp[0] += coefficients[i]*basis_matrix[0][i];    
   v.restrict(&coefficients[0], *_element, *dolfin_cell, *ufc_cell);
@@ -105,6 +108,7 @@ void StatisticsProbe::eval(const Function& u, const Function& v)
   for (std::size_t j = 0; j < 2; j++)
   {
      _probes[j][0] += tmp[j];           // u, v
+     _probes[j][1]  = tmp[j];
      _probes[j+2][0] += tmp[j]*tmp[j];  // uu, vv
   }
   _probes[4][0] += tmp[0]*tmp[1];       // uv

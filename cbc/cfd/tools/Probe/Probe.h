@@ -46,7 +46,7 @@ namespace dolfin
     virtual void erase_snapshot(std::size_t i);
     
     // Reset probe by deleting all previous evaluations
-    void clear();
+    virtual void clear();
     
   protected:
       

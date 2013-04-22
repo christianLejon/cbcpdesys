@@ -24,7 +24,10 @@ namespace dolfin
     
     // No snapshots for statistics, just averages.
     void erase_snapshot(std::size_t i) {cout << "Cannot erase snapshot for StatisticsProbes" << endl;};
-    
+
+    // Reset probe by deleting all previous evaluations
+    virtual void clear();
+
   };
 }
 

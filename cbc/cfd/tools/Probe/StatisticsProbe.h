@@ -20,6 +20,9 @@ namespace dolfin
    
     void erase_snapshot(std::size_t i) {cout << "Cannot erase snapshot for StatisticsProbe" << endl;};
     
+    // Reset probe by deleting all previous evaluations
+    void clear();
+
     // Return mean of Function probed for
     std::vector<double> mean();
     

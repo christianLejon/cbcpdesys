@@ -228,11 +228,14 @@ class StructuredGrid:
             elif self.probes.value_size() == 3:
                 v.point_data.append(pyvtk.Vectors(z0))
             elif self.probes.value_size() == 9: # StatisticsProbes
-                num_evals = self.probes.number_of_evaluations()
-                v.point_data.append(pyvtk.Vectors(z0[:, :3]/num_evals, name="UMEAN"))
-                rs = ["uu", "vv", "ww", "uv", "uw", "vw"]
-                for i in range(3, 9):
-                    v.point_data.append(pyvtk.Scalars(z0[:, i]/num_evals, name=rs[i-3])) 
+                if N == 0:
+                    num_evals = self.probes.number_of_evaluations()
+                    v.point_data.append(pyvtk.Vectors(z0[:, :3]/num_evals, name="UMEAN"))
+                    rs = ["uu", "vv", "ww", "uv", "uw", "vw"]
+                    for i in range(3, 9):
+                        v.point_data.append(pyvtk.Scalars(z0[:, i]/num_evals, name=rs[i-3])) 
+                else: # Just dump latest snapshot
+                    v.point_data.append(pyvtk.Vectors(z0[:, :3], name="U"))
             else:
                 raise TypeError("Only vector or scalar data supported for VTK")
             v.tofile(filename)
@@ -310,6 +313,7 @@ if __name__=='__main__':
         #sl3(v0)
     sl3.surf(0)     # Check 
     sl3.tovtk(0, filename="dump_mean_vector.vtk")
+    sl3.tovtk(1, filename="dump_latest_snapshot_vector.vtk")
             
     print sl3.probes.array()
     ## Test Probedict
