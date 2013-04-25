@@ -102,7 +102,7 @@ std::vector<double> Probe::get_probe_sub(std::size_t i)
   return _probes[i];
 }
 // Return probe values for entire tensor at snapshot
-std::vector<double> Probe::get_probes_at_snapshot(std::size_t i)
+std::vector<double> Probe::get_probe_at_snapshot(std::size_t i)
 {
   std::vector<double> x(_value_size_loc);
   for (std::size_t j = 0; j < _value_size_loc; j++)

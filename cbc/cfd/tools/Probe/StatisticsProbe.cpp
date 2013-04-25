@@ -143,3 +143,11 @@ void StatisticsProbe::clear()
     _probes[j][0] = 0.;
   _num_evals = 0;
 }
+// Reset probe values for entire tensor
+void StatisticsProbe::restart_probe(const Array<double>& u, std::size_t num_evals)
+{
+  for (std::size_t j = 0; j < _value_size_loc; j++)
+    _probes[j][0] = u[j]*num_evals;
+  
+  _num_evals = num_evals;
+}

@@ -48,7 +48,7 @@ namespace dolfin
     
     // Reset probe by deleting all previous evaluations
     virtual void clear();
-
+    
   protected:
       
     std::vector<std::pair<std::size_t, Probe*> > _allprobes;

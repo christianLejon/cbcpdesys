@@ -24,9 +24,12 @@ namespace dolfin
     
     // No snapshots for statistics, just averages.
     void erase_snapshot(std::size_t i) {cout << "Cannot erase snapshot for StatisticsProbes" << endl;};
-
+    
     // Reset probe by deleting all previous evaluations
-    virtual void clear();
+    void clear();
+    
+    // Reset probe values for entire tensor
+    void restart_probes(const Array<double>& u, std::size_t num_evals);
 
   };
 }
