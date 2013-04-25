@@ -55,8 +55,8 @@ class apbl(NSProblem):
         a2[1:-1, :] = a[:, :2]
         a2[1:-1, 0] += 10. # Bump starts at x = 10
         a2[-1, 0] = self.L
-        #self.bump = ius(a2[:, 0], a2[:, 1]) # Create bump-spline
-        self.bump = lambda x: 0.
+        self.bump = ius(a2[:, 0], a2[:, 1]) # Create bump-spline
+        #self.bump = lambda x: 0.
         
         # Use Expressions for 'complicated' profiles
         self.inlet_velocity = {'u': U0(self.bump),
