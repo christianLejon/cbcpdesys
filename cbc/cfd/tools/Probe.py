@@ -6,12 +6,11 @@ __license__  = "GNU Lesser GPL version 3 or any later version"
 This module contains functionality for efficiently probing a Function many times. 
 """
 from dolfin import *
-import cPickle
-from numpy import zeros, array, repeat, squeeze, reshape, resize, linspace, abs, sign
+from numpy import zeros, array, repeat, squeeze, reshape, resize, linspace, abs, sign, all
 from numpy.linalg import norm as numpy_norm
 from scitools.basics import meshgrid
 from scitools.std import surfc
-import pyvtk, os, copy
+import pyvtk, os, copy, cPickle, h5py, inspect
 from mpi4py import MPI as nMPI
 comm = nMPI.COMM_WORLD
 
@@ -22,7 +21,7 @@ def strip_essential_code(filenames):
         code += f[f.find("namespace dolfin\n{\n"):f.find("#endif")]
     return code
 
-dolfin_folder = "Probe"
+dolfin_folder = os.path.abspath(os.path.join(inspect.getfile(inspect.currentframe()), "../Probe"))
 sources = ["Probe.cpp", "Probes.cpp", "StatisticsProbe.cpp", "StatisticsProbes.cpp"]
 headers = map(lambda x: os.path.join(dolfin_folder, x), ['Probe.h', 'Probes.h', 'StatisticsProbe.h', 'StatisticsProbes.h'])
 code = strip_essential_code(headers)
@@ -147,8 +146,11 @@ class StructuredGrid:
           dX = [[dx1, dy1, dz1], [dx2, dy2, dz2] (, [dx3, dy3, dz3])] tangent vectors (need not be orthogonal)
           dL = extent of each direction
           V  = FunctionSpace to probe in
+          
           statistics = True  => Compute statistics in probe points (mean/covariance).
                        False => Store instantaneous snapshots of probepoints. 
+          
+          restart = vtk-file => Restart a statistics probe from previous computations.
     """
     def __init__(self, V, dims=None, origin=None, dX=None, dL=None, statistics=False, restart=False):
         if restart:
@@ -185,10 +187,13 @@ class StructuredGrid:
         return p   
     
     def load(self, filename='restart.vtk'):
-        """Load data stored previously using tovtk. Mainly intended for restarting statistics probes"""
+        """Load data stored previously using tovtk. Mainly intended for 
+        restarting statistics probes"""
         z = self.fromvtk(filename)
         self.dims = list(z['dims'])
-        x = squeeze(reshape(z['x'], self.dims + [3]))            
+        d = copy.deepcopy(self.dims)
+        d.reverse()
+        x = squeeze(reshape(z['x'], d + [3]))            
         if 1 in self.dims: self.dims.remove(1)
         self.origin = z['x'][0]
         if len(squeeze(array(self.dims))) == 2:
@@ -212,7 +217,7 @@ class StructuredGrid:
         return z['data']
 
     def create_grid(self):
-        """Create 2D slice or 3D box"""
+        """Create 2D slice or 3D box. A structured (i, j, k) mesh."""
         origin = self.origin
         dX, dL = self.dX, self.dL
         dims = array(self.dims)
@@ -259,10 +264,10 @@ class StructuredGrid:
         surfc(yy, xx, z, indexing='xy')
 
     def tovtk(self, N, filename="restart.vtk"):
-        """Dump probes to VTK file. The data can be used to restart
-        statistics probes."""
+        """Dump probes to VTK file. The data can be used both for visualization 
+        and to restart statistics probes."""
         z  = zeros((self.probes.get_total_number_probes(), self.probes.value_size()))
-        z0 = zeros((self.probes.get_total_number_probes(), self.probes.value_size()))
+        z0 = z.copy()
         if len(self.probes) > 0:
             for index, probe in self.probes:
                 z[index, :] = probe.get_probe_at_snapshot(N)
@@ -270,9 +275,9 @@ class StructuredGrid:
         comm.Reduce(z, z0, op=nMPI.SUM, root=0)
         zsign = sign(z0)
         comm.Reduce(abs(z), z0, op=nMPI.MAX, root=0)
-        z0 *= zsign
-        # Store in vtk-format
+        # Store probes in vtk-format
         if comm.Get_rank() == 0:
+            z0 *= zsign
             d = self.dims
             d = (d[0], d[1], d[2]) if len(d) > 2 else (d[0], d[1], 1)
             grid = pyvtk.StructuredGrid(d, self.x)
@@ -312,9 +317,10 @@ class StructuredGrid:
                 i += 3
             else:
                 i += 1        
+                
+        # Put all field data in dictionary         
         data = {'x': x, 'dims': dims, 'evals': num_evals,
                 'data': zeros((array(dims).prod(), i))}
-        # Put the field data in data
         i = 0
         for d in vtkdata:
             if hasattr(d, 'vectors'):
@@ -326,7 +332,8 @@ class StructuredGrid:
         return data
     
     def average(self, i):
-        """Contract results by averaging along axis"""
+        """Contract results by averaging along axis. Useful for homogeneous
+        turbulence geometries like channels or cylinders"""
         z = self.probes.array()
         z = reshape(z, self.dims + [z.shape[-1]])
         if isinstance(i, int):
@@ -340,6 +347,60 @@ class StructuredGrid:
                 j -= k
                 z = z.mean(j)
             return z
+        
+    def toh5(self, N, tstep, filename="restart.h5"):
+        """Dump probes to HDF5 file. The data can be used both for visualization 
+        and to restart statistics probes."""
+        z  = zeros((self.probes.get_total_number_probes(), self.probes.value_size()))
+        z0 = z.copy()
+        if len(self.probes) > 0:
+            for index, probe in self.probes:
+                z[index, :] = probe.get_probe_at_snapshot(N)
+        # Put solution on process 0
+        comm.Reduce(z, z0, op=nMPI.SUM, root=0)
+        zsign = sign(z0)
+        comm.Reduce(abs(z), z0, op=nMPI.MAX, root=0)
+        # Store probes in vtk-format
+        if comm.Get_rank() == 0:
+            z0 *= zsign
+            d = self.dims
+            d = (d[2], d[1], d[0])
+            f = h5py.File(filename)
+            if not 'origin' in f.attrs:
+                f.attrs.create('origin', self.origin)
+            if not 'dX' in f.attrs:
+                f.attrs.create('dX', self.dX)
+            if not 'num_evals' in f.attrs:
+                f.attrs.create('num_evals', self.probes.number_of_evaluations())
+            else:
+                f.attrs['num_evals'] = self.probes.number_of_evaluations()
+                
+            if not 'FEniCS' in f:
+                f.create_group('FEniCS')
+            loc = 'FEniCS/tstep'+str(tstep)
+            f.create_group(loc)
+            if self.probes.value_size() == 1:
+                f.create_dataset(loc+"/Scalar", shape=d, dtype='d', data=z0)
+            elif self.probes.value_size() == 3:
+                f.create_dataset(loc+"/Comp-X", shape=d, dtype='d', data=z0[:, 0])
+                f.create_dataset(loc+"/Comp-Y", shape=d, dtype='d', data=z0[:, 1])
+                f.create_dataset(loc+"/Comp-Z", shape=d, dtype='d', data=z0[:, 2])
+            elif self.probes.value_size() == 9: # StatisticsProbes
+                if N == 0:
+                    num_evals = self.probes.number_of_evaluations()
+                    f.create_dataset(loc+"/UMEAN", shape=d, dtype='d', data=z0[:, 0]/num_evals)
+                    f.create_dataset(loc+"/VMEAN", shape=d, dtype='d', data=z0[:, 1]/num_evals)
+                    f.create_dataset(loc+"/WMEAN", shape=d, dtype='d', data=z0[:, 2]/num_evals)
+                    rs = ["uu", "vv", "ww", "uv", "uw", "vw"]
+                    for i in range(3, 9):
+                        f.create_dataset(loc+"/"+rs[i-3], shape=d, dtype='d', data=z0[:, i]/num_evals)
+                else: # Just dump latest snapshot
+                    f.create_dataset(loc+"/U", shape=d, dtype='d', data=z0[:, 0])
+                    f.create_dataset(loc+"/V", shape=d, dtype='d', data=z0[:, 1])
+                    f.create_dataset(loc+"/W", shape=d, dtype='d', data=z0[:, 2])                    
+            else:
+                raise TypeError("Only vector or scalar data supported for HDF5")
+            f.close()
     
 class Probedict(dict):
     """Dictionary of probes. The keys are the names of the functions 
@@ -416,9 +477,15 @@ if __name__=='__main__':
     sl3.tovtk(0, filename="dump_mean_vector.vtk")
     sl3.tovtk(1, filename="dump_latest_snapshot_vector.vtk")
     
+    # Restart probes from sl3
     sl4 = StructuredGrid(V, restart='dump_mean_vector.vtk')
+    for i in range(10): 
+        sl4(x0, y0, z0)     # probe a few more times    
     sl4.tovtk(0, filename="dump_mean_vector_restart_vtk.vtk")
     sl4.surf(0)    
+    
+    # Check that result is the same
+    assert(all(abs(sl4.probes.array() - sl3.probes.array()) < 1e-12))
      
     #print sl3.probes.array()
     ### Test Probedict
