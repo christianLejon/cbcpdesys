@@ -6,8 +6,9 @@ __license__  = "GNU Lesser GPL version 3 or any later version"
 This module contains functionality for efficiently probing a Function many times. 
 """
 from dolfin import *
-from numpy import zeros, array, repeat, squeeze, reshape, resize, linspace, abs, sign, all
+from numpy import zeros, array, repeat, squeeze, cumsum, reshape, resize, linspace, abs, sign, all, float32
 from numpy.linalg import norm as numpy_norm
+from pylab import find
 from scitools.basics import meshgrid
 from scitools.std import surfc
 import pyvtk, os, copy, cPickle, h5py, inspect
@@ -349,9 +350,9 @@ class StructuredGrid:
             return z
         
     def toh5(self, N, tstep, filename="restart.h5"):
-        """Dump probes to HDF5 file. The data can be used both for visualization 
-        and to restart statistics probes."""
-        z  = zeros((self.probes.get_total_number_probes(), self.probes.value_size()))
+        """Dump probes to HDF5 file. The data can be used for 3D visualization
+        using voluviz"""
+        z  = zeros((self.probes.get_total_number_probes(), self.probes.value_size()), dtype=float32)
         z0 = z.copy()
         if len(self.probes) > 0:
             for index, probe in self.probes:
@@ -378,30 +379,178 @@ class StructuredGrid:
             if not 'FEniCS' in f:
                 f.create_group('FEniCS')
             loc = 'FEniCS/tstep'+str(tstep)
-            f.create_group(loc)
+            try:
+                f.create_group(loc)
+            except ValueError:
+                pass
             if self.probes.value_size() == 1:
-                f.create_dataset(loc+"/Scalar", shape=d, dtype='d', data=z0)
+                f.create_dataset(loc+"/Scalar", shape=d, dtype='f', data=z0)
             elif self.probes.value_size() == 3:
-                f.create_dataset(loc+"/Comp-X", shape=d, dtype='d', data=z0[:, 0])
-                f.create_dataset(loc+"/Comp-Y", shape=d, dtype='d', data=z0[:, 1])
-                f.create_dataset(loc+"/Comp-Z", shape=d, dtype='d', data=z0[:, 2])
+                f.create_dataset(loc+"/Comp-X", shape=d, dtype='f', data=z0[:, 0])
+                f.create_dataset(loc+"/Comp-Y", shape=d, dtype='f', data=z0[:, 1])
+                f.create_dataset(loc+"/Comp-Z", shape=d, dtype='f', data=z0[:, 2])
             elif self.probes.value_size() == 9: # StatisticsProbes
                 if N == 0:
                     num_evals = self.probes.number_of_evaluations()
-                    f.create_dataset(loc+"/UMEAN", shape=d, dtype='d', data=z0[:, 0]/num_evals)
-                    f.create_dataset(loc+"/VMEAN", shape=d, dtype='d', data=z0[:, 1]/num_evals)
-                    f.create_dataset(loc+"/WMEAN", shape=d, dtype='d', data=z0[:, 2]/num_evals)
+                    f.create_dataset(loc+"/UMEAN", shape=d, dtype='f', data=z0[:, 0]/num_evals)
+                    f.create_dataset(loc+"/VMEAN", shape=d, dtype='f', data=z0[:, 1]/num_evals)
+                    f.create_dataset(loc+"/WMEAN", shape=d, dtype='f', data=z0[:, 2]/num_evals)
                     rs = ["uu", "vv", "ww", "uv", "uw", "vw"]
                     for i in range(3, 9):
-                        f.create_dataset(loc+"/"+rs[i-3], shape=d, dtype='d', data=z0[:, i]/num_evals)
+                        f.create_dataset(loc+"/"+rs[i-3], shape=d, dtype='f', data=z0[:, i]/num_evals)
                 else: # Just dump latest snapshot
-                    f.create_dataset(loc+"/U", shape=d, dtype='d', data=z0[:, 0])
-                    f.create_dataset(loc+"/V", shape=d, dtype='d', data=z0[:, 1])
-                    f.create_dataset(loc+"/W", shape=d, dtype='d', data=z0[:, 2])                    
+                    f.create_dataset(loc+"/U", shape=d, dtype='f', data=z0[:, 0])
+                    f.create_dataset(loc+"/V", shape=d, dtype='f', data=z0[:, 1])
+                    f.create_dataset(loc+"/W", shape=d, dtype='f', data=z0[:, 2])                    
             else:
                 raise TypeError("Only vector or scalar data supported for HDF5")
             f.close()
-    
+
+    def toh5_lowmem(self, N, tstep, filename="restart.h5"):
+        """Dump probes to HDF5 file. The data can be used for 3D visualization
+        using voluviz. Each processor writes its own data directly to the hdf5 
+        file, thus saving memory use at the expense of speed.
+        """
+        f = h5py.File(filename)
+        if len(self.probes) > 0:
+            z  = zeros(self.probes.value_size(), dtype=float32)
+            d = self.dims
+            if not 'origin' in f.attrs:
+                f.attrs.create('origin', self.origin)
+            if not 'dX' in f.attrs:
+                f.attrs.create('dX', self.dX)
+            if not 'num_evals' in f.attrs:
+                f.attrs.create('num_evals', self.probes.number_of_evaluations())
+            else:
+                f.attrs['num_evals'] = self.probes.number_of_evaluations()                
+            try:
+                f.create_group('FEniCS')
+            except ValueError:
+                pass
+            loc = 'FEniCS/tstep'+str(tstep)
+            try:
+                f.create_group(loc)
+            except ValueError:
+                pass
+            
+            # Create datasets if not there already
+            dimT = (d[2], d[1], d[0])                
+            if self.probes.value_size() == 1:
+                try:
+                    f.create_dataset(loc+"/Scalar", shape=dimT, dtype='f')
+                except RuntimeError:
+                    pass
+            elif self.probes.value_size() == 3:
+                try:
+                    f.create_dataset(loc+"/Comp-X", shape=dimT, dtype='f')
+                    f.create_dataset(loc+"/Comp-Y", shape=dimT, dtype='f')
+                    f.create_dataset(loc+"/Comp-Z", shape=dimT, dtype='f')
+                except RuntimeError:
+                    pass
+            elif self.probes.value_size() == 9: # StatisticsProbes
+                if N == 0:
+                    try:
+                        num_evals = self.probes.number_of_evaluations()
+                        f.create_dataset(loc+"/UMEAN", shape=dimT, dtype='f')
+                        f.create_dataset(loc+"/VMEAN", shape=dimT, dtype='f')
+                        f.create_dataset(loc+"/WMEAN", shape=dimT, dtype='f')
+                        rs = ["uu", "vv", "ww", "uv", "uw", "vw"]
+                        for i in range(3, 9):
+                            f.create_dataset(loc+"/"+rs[i-3], shape=dimT, dtype='f')
+                    except RuntimeError:
+                        pass                    
+                else: # Just dump latest snapshot
+                    try:                        
+                        f.create_dataset(loc+"/U", shape=dimT, dtype='f')
+                        f.create_dataset(loc+"/V", shape=dimT, dtype='f')
+                        f.create_dataset(loc+"/W", shape=dimT, dtype='f')
+                    except RuntimeError:
+                        pass
+            else:
+                raise TypeError("Only vector or scalar data supported for HDF5")
+            
+            # We use MPI here to enable sharing of memory amongst procesors
+            # Otherwise, the maximum size of the computational box will be
+            # rather small, determined by the RAM memory of one single CPU.
+            #
+            # Last dimension of box is shared amongst processors
+            # In case d[2] % Nc is not zero the last planes are distributed
+            # between the processors starting with the highest rank and then lower
+            
+            MPI.barrier()
+            Nc = comm.Get_size()
+            Np = self.probes.get_total_number_probes()
+            planes_per_proc = d[2] / Nc
+            myrank = comm.Get_rank()
+            # Distribute remaining planes 
+            if Nc-myrank <= (d[2] % Nc):
+                planes_per_proc += 1
+                
+            # Let all processes know how many planes the different processors own
+            all_planes_per_proc = comm.allgather(planes_per_proc)
+            cum_last_id = cumsum(all_planes_per_proc)
+            owned_planes = zeros(Nc+1, 'I')
+            owned_planes[1:] = cum_last_id[:]
+            
+            # Store owned data in z0
+            z0 = zeros((d[0], d[1], planes_per_proc, self.probes.value_size()), dtype=float32)
+            zhere = zeros(self.probes.value_size(), dtype=float32)
+            zrecv = zeros(self.probes.value_size(), dtype=float32)
+            sendto = zeros(Nc, 'I')                                     
+            for i, (global_index, probe) in enumerate(self.probes):
+                plane = global_index / (d[0]*d[1])
+                owner = min(find(cum_last_id > plane))
+                zhere[:] = probe.get_probe_at_snapshot(N)
+                if owner != myrank:
+                    # Send data to owner
+                    sendto[owner] +=1
+                    comm.send(global_index, dest=owner, tag=101)
+                    comm.Send(zhere, dest=owner, tag=102)
+                else:
+                    # myrank owns the current probe and can simply store it
+                    i, j, k = global_index % d[0], (global_index % (d[0]*d[1])) / d[0], global_index / (d[0]*d[1]) 
+                    z0[i, j, k-owned_planes[myrank], :] = zhere[:]
+                    
+            # Let all processors know who they are receiving data from
+            recvfrom = zeros((Nc, Nc), 'I')
+            comm.Allgather(sendto, recvfrom)
+            
+            # Receive the data
+            for ii in range(Nc):
+                num_recv = recvfrom[ii, myrank]
+                for kk in range(num_recv):
+                    global_index = comm.recv(source=ii, tag=101)
+                    i, j, k = global_index % d[0], (global_index % (d[0]*d[1])) / d[0], global_index / (d[0]*d[1]) 
+                    comm.Recv(zrecv, source=ii, tag=102)
+                    z0[i, j, k-owned_planes[myrank], :] = zrecv[:]
+            
+            # Voluviz has weird ordering so transpose some axes
+            z0 = z0.transpose((2,1,0,3))
+            
+            # Write data to hdf5 file
+            owned = slice(owned_planes[myrank], owned_planes[myrank+1])
+            if self.probes.value_size() == 1:
+                f[loc+"/Scalar"][owned, :, :] = z0[:, :, :, 0]
+            elif self.probes.value_size() == 3:
+                f[loc+"/Comp-X"][owned, :, :] = z0[:, :, :, 0]
+                f[loc+"/Comp-Y"][owned, :, :] = z0[:, :, :, 1]
+                f[loc+"/Comp-Z"][owned, :, :] = z0[:, :, :, 2]
+            elif self.probes.value_size() == 9: # StatisticsProbes
+                if N == 0:
+                    num_evals = self.probes.number_of_evaluations()
+                    f[loc+"/UMEAN"][owned, :, :] = z0[:, :, :, 0] / num_evals
+                    f[loc+"/VMEAN"][owned, :, :] = z0[:, :, :, 1] / num_evals
+                    f[loc+"/WMEAN"][owned, :, :] = z0[:, :, :, 2] / num_evals
+                    rs = ["uu", "vv", "ww", "uv", "uw", "vw"]
+                    for ii in range(3, 9):
+                        f[loc+"/"+rs[ii-3]][owned, :, :] = z0[:, :, :, ii] / num_evals
+                else: # Just dump latest snapshot
+                    f[loc+"/U"][owned, :, :] = z0[:, :, :, 0]
+                    f[loc+"/V"][owned, :, :] = z0[:, :, :, 1]
+                    f[loc+"/W"][owned, :, :] = z0[:, :, :, 2]
+            
+            f.close()
+            
 class Probedict(dict):
     """Dictionary of probes. The keys are the names of the functions 
     we're probing and the values are lists of probes returned from 
@@ -415,6 +564,11 @@ class Probedict(dict):
         for ui, p in self.iteritems():
             p.dump(filename+"_"+ui)
 
+#ind = ii*i*j + jj*j + kk
+
+#kk = ind / (i*j)
+#jj = (ind % (i*j)) / i
+#ii = (ind % (i*j)) % i
 # Test the probe functions:
 if __name__=='__main__':
     import time
@@ -446,7 +600,7 @@ if __name__=='__main__':
     origin = [0.1, 0.1, 0.1]               # origin of box
     tangents = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]    # directional tangent directions (scaled in StructuredGrid)
     dL = [0.2, 0.4, 0.6]                      # extent of slice in both directions
-    N  = [5, 20, 40]                           # number of points in each direction
+    N  = [20, 25, 30]                           # number of points in each direction
     
     # 2D slice
     #origin = [0.1, 0.1, 0.5]               # origin of slice
@@ -469,6 +623,9 @@ if __name__=='__main__':
     sl2.tovtk(3, filename="dump_vector.vtk")
 
     # Test statistics
+    x0.update()
+    y0.update()
+    z0.update()
     sl3 = StructuredGrid(V, N, origin, tangents, dL, True)
     for i in range(10): 
         sl3(x0, y0, z0)     # probe a few times
@@ -476,6 +633,8 @@ if __name__=='__main__':
     sl3.surf(0)     # Check 
     sl3.tovtk(0, filename="dump_mean_vector.vtk")
     sl3.tovtk(1, filename="dump_latest_snapshot_vector.vtk")
+    #sl3.toh5(1, 0)
+    sl3.toh5_lowmem(0, 0, 'reslowmem2.h5')
     
     # Restart probes from sl3
     sl4 = StructuredGrid(V, restart='dump_mean_vector.vtk')
@@ -484,8 +643,22 @@ if __name__=='__main__':
     sl4.tovtk(0, filename="dump_mean_vector_restart_vtk.vtk")
     sl4.surf(0)    
     
-    # Check that result is the same
-    assert(all(abs(sl4.probes.array() - sl3.probes.array()) < 1e-12))
+    #f = h5py.File('test.h5')
+    #z = zeros((10, 10), float32)
+    #try:
+        #f.create_group('FEniCS')
+    #except ValueError:
+        #pass
+    #try:
+        #f.create_dataset('/FEniCS/1', shape=(2, 2), dtype='f')
+    #except RuntimeError:
+        #pass
+    #f['FEniCS/1'][MPI.process_number(), 0] = MPI.process_number() + 1    
+    #f.close()
+    
+    ## Check that result is the same
+    #if MPI.num_processes() == 0:
+        #assert(all(abs(sl4.probes.array() - sl3.probes.array()) < 1e-12))
      
     #print sl3.probes.array()
     ### Test Probedict
