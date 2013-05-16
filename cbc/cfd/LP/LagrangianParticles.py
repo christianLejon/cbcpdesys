@@ -175,7 +175,7 @@ class LagrangianParticlesPosition:
                 if self.num_processes > 1:
                     comm.Send(particle, dest=1, tag=101)
                     comm.send(c, dest=1, tag=102)
-                    c = comm.recv(source=self.num_processes-1, tag=102)                
+                    c = comm.recv(source=self.num_processes-1, tag=102)
                 if c == -1:
                     not_found += 1
                     #print 'Particle not found on any processor', particle
