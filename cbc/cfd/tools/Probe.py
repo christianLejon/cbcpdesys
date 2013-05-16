@@ -6,9 +6,8 @@ __license__  = "GNU Lesser GPL version 3 or any later version"
 This module contains functionality for efficiently probing a Function many times. 
 """
 from dolfin import *
-from numpy import zeros, array, repeat, squeeze, cumsum, reshape, resize, linspace, abs, sign, all, float32
+from numpy import zeros, array, repeat, squeeze, argmax, cumsum, reshape, resize, linspace, abs, sign, all, float32
 from numpy.linalg import norm as numpy_norm
-from pylab import find
 from scitools.basics import meshgrid
 from scitools.std import surfc
 import pyvtk, os, copy, cPickle, h5py, inspect
@@ -499,7 +498,7 @@ class StructuredGrid:
             sendto = zeros(Nc, 'I')                                     
             for i, (global_index, probe) in enumerate(self.probes):
                 plane = global_index / (d[0]*d[1])
-                owner = min(find(cum_last_id > plane))
+                owner = argmax(cum_last_id > plane)
                 zhere[:] = probe.get_probe_at_snapshot(N)
                 if owner != myrank:
                     # Send data to owner
