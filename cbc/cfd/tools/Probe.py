@@ -8,11 +8,8 @@ This module contains functionality for efficiently probing a Function many times
 from dolfin import *
 from numpy import zeros, array, repeat, squeeze, reshape, resize, linspace, abs, sign, all
 from numpy.linalg import norm as numpy_norm
-try:
-    from scitools.basics import meshgrid
-    from scitools.std import surfc
-except:
-    pass
+from scitools.basics import meshgrid
+from scitools.std import surfc
 import pyvtk, os, copy, cPickle, h5py, inspect
 from mpi4py import MPI as nMPI
 comm = nMPI.COMM_WORLD
