@@ -530,25 +530,26 @@ class StructuredGrid:
         z0 = z0.transpose((2,1,0,3))
         # Write owned data to hdf5 file
         owned = slice(owned_planes[myrank], owned_planes[myrank+1])
-        if self.probes.value_size() == 1:
-            f[loc+"/Scalar"][owned, :, :] = z0[:, :, :, 0]
-        elif self.probes.value_size() == 3:
-            f[loc+"/Comp-X"][owned, :, :] = z0[:, :, :, 0]
-            f[loc+"/Comp-Y"][owned, :, :] = z0[:, :, :, 1]
-            f[loc+"/Comp-Z"][owned, :, :] = z0[:, :, :, 2]
-        elif self.probes.value_size() == 9: # StatisticsProbes
-            if N == 0:
-                num_evals = self.probes.number_of_evaluations()
-                f[loc+"/UMEAN"][owned, :, :] = z0[:, :, :, 0] / num_evals
-                f[loc+"/VMEAN"][owned, :, :] = z0[:, :, :, 1] / num_evals
-                f[loc+"/WMEAN"][owned, :, :] = z0[:, :, :, 2] / num_evals
-                rs = ["uu", "vv", "ww", "uv", "uw", "vw"]
-                for ii in range(3, 9):
-                    f[loc+"/"+rs[ii-3]][owned, :, :] = z0[:, :, :, ii] / num_evals
-            else: # Just dump latest snapshot
-                f[loc+"/U"][owned, :, :] = z0[:, :, :, 0]
-                f[loc+"/V"][owned, :, :] = z0[:, :, :, 1]
-                f[loc+"/W"][owned, :, :] = z0[:, :, :, 2]
+        if owned.stop > owned.start:
+            if self.probes.value_size() == 1:
+                f[loc+"/Scalar"][owned, :, :] = z0[:, :, :, 0]
+            elif self.probes.value_size() == 3:
+                f[loc+"/Comp-X"][owned, :, :] = z0[:, :, :, 0]
+                f[loc+"/Comp-Y"][owned, :, :] = z0[:, :, :, 1]
+                f[loc+"/Comp-Z"][owned, :, :] = z0[:, :, :, 2]
+            elif self.probes.value_size() == 9: # StatisticsProbes
+                if N == 0:
+                    num_evals = self.probes.number_of_evaluations()
+                    f[loc+"/UMEAN"][owned, :, :] = z0[:, :, :, 0] / num_evals
+                    f[loc+"/VMEAN"][owned, :, :] = z0[:, :, :, 1] / num_evals
+                    f[loc+"/WMEAN"][owned, :, :] = z0[:, :, :, 2] / num_evals
+                    rs = ["uu", "vv", "ww", "uv", "uw", "vw"]
+                    for ii in range(3, 9):
+                        f[loc+"/"+rs[ii-3]][owned, :, :] = z0[:, :, :, ii] / num_evals
+                else: # Just dump latest snapshot
+                    f[loc+"/U"][owned, :, :] = z0[:, :, :, 0]
+                    f[loc+"/V"][owned, :, :] = z0[:, :, :, 1]
+                    f[loc+"/W"][owned, :, :] = z0[:, :, :, 2]
         f.close()
             
 class Probedict(dict):
@@ -602,7 +603,7 @@ if __name__=='__main__':
     origin = [0.1, 0.1, 0.1]               # origin of box
     tangents = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]    # directional tangent directions (scaled in StructuredGrid)
     dL = [0.2, 0.4, 0.6]                      # extent of slice in both directions
-    N  = [20, 25, 30]                           # number of points in each direction
+    N  = [20, 25, 3]                           # number of points in each direction
     
     # 2D slice
     #origin = [0.1, 0.1, 0.5]               # origin of slice
