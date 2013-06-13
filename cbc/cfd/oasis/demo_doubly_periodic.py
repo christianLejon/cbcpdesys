@@ -84,11 +84,11 @@ up Ar and then using the following to create A:
 
 """
 from cbc.cfd.oasis import *
-from numpy import arctan, array
 import random
 from os import getpid, path, makedirs, getcwd, listdir
 import time
 from cbc.cfd.tools.Probe import StructuredGrid
+from numpy import arctan, array, cos, pi
 
 parameters["form_compiler"]["optimize"]     = True   # I sometimes get memory access error with True here (MM)
 parameters["form_compiler"]["cpp_optimize"] = True
@@ -100,16 +100,18 @@ parameters['mesh_partitioner'] = "ParMETIS"
 
 ################### Problem dependent parameters ####################
 
-Lx = 4.
+Lx = 2.*pi
 Ly = 2.
-Lz = 2.
-Nx = 250
-Ny = 200
-Nz = 125
+Lz = pi
+Nx = 257
+Ny = 193
+Nz = 193
+
 mesh = BoxMesh(0., -Ly/2., -Lz/2., Lx, Ly/2., Lz/2., Nx, Ny, Nz)
 # Create stretched mesh in y-direction
-x = mesh.coordinates()        
-x[:, 1] = arctan(pi*(x[:, 1]))/arctan(pi) 
+x = mesh.coordinates() 
+x[:, 1] = cos(pi*(x[:, 1]-1.) / 2.)      
+#x[:, 1] = arctan(pi*(x[:, 1]))/arctan(pi) 
 normal = FacetNormal(mesh)
 
 class PeriodicDomain(SubDomain):
@@ -142,23 +144,23 @@ pd = PeriodicDomain()
 
 # Set parameters
 Re_tau = 395.
-nu = Constant(2.e-5)           # Viscosity
+nu = Constant(2.e-5)        # Viscosity
 utau = nu(0) * Re_tau
 t = 0.0                        # time
 tstep = 0                      # Timestep
-T = 500.                        # End time
+T = 1000.                      # End time
 max_iter = 1                   # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2    # Pressure velocity iterations on first timestep
 max_error = 1e-6
-check = 500                     # print out info and save solution every check timestep 
-save_vtk = 100000
-save_restart_file = 2000        # Saves two previous timesteps needed for a clean restart
+check = 1000                     # print out info and save solution every check timestep 
+save_restart_file = 5000        # Saves two previous timesteps needed for a clean restart
     
 # Specify body force
 dim = mesh.geometry().dim()
 
 # Set the timestep
-dt = Constant(0.05)
+#dt = Constant(0.2 / Re_tau / utau)
+dt = Constant(0.025)
 n = int(T / dt(0))
 
 # Give a folder for storing the results
@@ -185,13 +187,12 @@ if MPI.process_number() == 0:
         makedirs(statsfolder)
     except:
         pass
-vtk_file = File(path.join(vtkfolder, "u.pvd"))
 u_stats_file = File(path.join(statsfolder, "umean.xml.gz"))
 k_stats_file = File(path.join(statsfolder, "kmean.xml.gz"))
 
 #### Set a folder that contains xml.gz files of the solution. 
-#restart_folder = None        
-restart_folder = "/usit/abel/u1/mikaem/Fenics/cbcpdesys/cbc/cfd/channel_result/data/dt=5.0000e-02/4/timestep=12000/"    
+restart_folder = None        
+#restart_folder = "/usit/abel/u1/mikaem/Fenics/cbcpdesys/cbc/cfd/channel_result/data/dt=5.0000e-02/4/timestep=12000/"    
 #####################################################################
 # Declare solution Functions and FunctionSpaces
 V = FunctionSpace(mesh, 'CG', 1, constrained_domain=pd)
@@ -210,12 +211,18 @@ class ChannelGrid(StructuredGrid):
     def create_grid(self):
         """Create grid skewed towards the walls"""
         x = StructuredGrid.create_grid(self)
-        x[:, 1] = arctan(0.5*pi*(x[:, 1]))/arctan(0.5*pi)  
+        #x[:, 1] = arctan(0.5*pi*(x[:, 1]))/arctan(0.5*pi)  
+        x[:, 1] = cos(pi*(x[:, 1] - 1.) / 2.)
         return x
-        
-tol = 1e-12
-slx = ChannelGrid([250, 200], [tol, -Ly/2.+tol, tol],     [[1., 0., 0.], [0., 1., 0.]], [Lx-2*tol, Ly-2*tol], V, statistics=True)
-slz = ChannelGrid([200, 125], [2., -Ly/2.+tol, -Lz/2.+tol], [[0., 1., 0.], [0., 0., 1.]], [Ly-2*tol, Lz-2*tol], V, statistics=True)
+
+tol = 1.e-12
+#slx = ChannelGrid(V, [257, 193], [tol, -Ly/2.+tol, tol],     [[1., 0., 0.], [0., 1., 0.]], [Lx-2*tol, Ly-2*tol], statistics=True)
+#slz = ChannelGrid(V, [193, 193], [pi, -Ly/2.+tol, -Lz/2.+tol], [[0., 1., 0.], [0., 0., 1.]], [Ly-2*tol, Lz-2*tol], statistics=True)
+voluviz = StructuredGrid(V, [Nx, Ny, Nz], [tol, -Ly/2.+tol, -Lz/2.+tol],
+    [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]], [Lx-2*tol, Ly-2*tol, Lz-2*tol], statistics=False)
+
+stats = ChannelGrid(V, [Nx/5, Ny, Nz/5], [tol, -Ly/2.+tol, -Lz/2.+tol],
+    [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]], [Lx-2*tol, Ly-2*tol, Lz-2*tol], statistics=True)
 
 # Use dictionaries to hold all Functions and FunctionSpaces
 VV = dict((ui, V) for ui in u_components); VV['p'] = Q
@@ -234,9 +241,9 @@ class RandomStreamVector(Expression):
     def __init__(self):
         random.seed(2 + MPI.process_number())
     def eval(self, values, x):
-        values[0] = 0.002*random.random()
-        values[1] = 0.002*random.random()
-        values[2] = 0.002*random.random()
+        values[0] = 0.001*random.random()
+        values[1] = 0.001*random.random()
+        values[2] = 0.001*random.random()
     def value_shape(self):
         return (3,)        
 
@@ -268,9 +275,16 @@ dp_ = Function(Q)      # pressure correction
 
 bcs = dict((ui, []) for ui in sys_comp)
 
+def inlet(x, on_bnd):
+    return on_bnd and near(x[0], 0)
+
 def walls(x, on_bnd):
     return on_bnd and (near(x[1], -Ly/2.) or near(x[1], Ly/2.))
-    
+
+Inlet = AutoSubDomain(inlet)
+facets = FacetFunction('size_t', mesh)
+facets.set_all(0)
+Inlet.mark(facets, 1)    
 # Preassemble constant pressure gradient matrix
 P = dict((ui, assemble(v*p.dx(i)*dx)) for i, ui in enumerate(u_components))
 
@@ -322,15 +336,15 @@ u_sol.t = 0
 reset_sparsity = True
 
 #du_sol = LUSolver()
-du_sol = KrylovSolver('bicgstab', 'hypre_euclid')
-du_sol.parameters['error_on_nonconvergence'] = False
-du_sol.parameters['nonzero_initial_guess'] = True
-du_sol.parameters['preconditioner']['reuse'] = True
-du_sol.parameters['monitor_convergence'] = True
-du_sol.parameters['maximum_iterations'] = 50
+#du_sol = KrylovSolver('bicgstab', 'hypre_euclid')
+#du_sol.parameters['error_on_nonconvergence'] = False
+#du_sol.parameters['nonzero_initial_guess'] = True
+#du_sol.parameters['preconditioner']['reuse'] = True
+#du_sol.parameters['monitor_convergence'] = True
+#du_sol.parameters['maximum_iterations'] = 50
 #du_sol.parameters['relative_tolerance'] = 1e-9
 #du_sol.parameters['absolute_tolerance'] = 1e-10
-du_sol.t = 0
+#du_sol.t = 0
 
 #p_sol = LUSolver()
 p_sol = KrylovSolver('gmres', 'hypre_amg')
@@ -364,7 +378,6 @@ t0 = t1 = time.time()
 dt_ = dt(0)
 total_iters = 0
 tstep0 = tstep
-slx.t = 0
 ttot=time.time()
 while t < T + DOLFIN_EPS:
     t += dt_
@@ -456,7 +469,7 @@ while t < T + DOLFIN_EPS:
         MP[:] = (P[ui] * dp_.vector()) * ML
         x_[ui].axpy(-dt_, MP)
         bcs[ui][0].apply(x_[ui])
-    du_sol.t += (time.time()-t0)
+    #du_sol.t += (time.time()-t0)
     
     t0 = time.time()
     # Update solution to a new timestep
@@ -465,11 +478,7 @@ while t < T + DOLFIN_EPS:
         x_1[ui][:] = x_ [ui][:]
 
     # Update statistics
-    u0mean.vector().axpy(1.0, x_['u0'])
-    kmean.vector().axpy(1.0, 0.5*(x_['u0']*x_['u0'] + x_['u1']*x_['u1'] + x_['u2']*x_['u2']))
-    slx(q_['u0'], q_['u1'], q_['u2'])
-    slz(q_['u0'], q_['u1'], q_['u2'])
-    slx.t += time.time() - t0
+    stats(q_['u0'], q_['u1'], q_['u2'])
     #################################################################################################
     
     # Print some information and save intermediate solution
@@ -482,41 +491,45 @@ while t < T + DOLFIN_EPS:
             info_green('Time = {0:2.4e}, timestep = {1:6d}, End time = {2:2.4e}'.format(t, tstep, T)) 
         newfolder = path.join(folder, 'timestep='+str(tstep))        
         #plot(u_[0], rescale=True)
+        u1 = assemble(dot(u_, normal)*ds(1), exterior_facet_domains=facets)
+        
         if MPI.process_number() == 0:
-           try:
-               makedirs(newfolder)
-           except OSError:
-               pass
+	    print "Flux = ", u1
+            try:
+                makedirs(newfolder)
+            except OSError:
+                pass
         for ui in sys_comp:
-           newfile = File(path.join(newfolder, ui + '.xml.gz'))
-           newfile << q_[ui]        
+            newfile = File(path.join(newfolder, ui + '.xml.gz'))
+            newfile << q_[ui]        
         if tstep % save_restart_file == 0:
-           for ui in u_components:
-               newfile_1 = File(path.join(newfolder, ui + '_1.xml.gz'))
-               newfile_1 << q_1[ui]
-
-        slx.tovtk(0, filename=statsfolder+"/dump_mean_x_{}.vtk".format(tstep))
-        slz.tovtk(0, filename=statsfolder+"/dump_mean_z_{}.vtk".format(tstep))
-        slx.tovtk(1, filename=newfolder+"/snapshot_x_{}.vtk".format(tstep))
-        slz.tovtk(1, filename=newfolder+"/snapshot_z_{}.vtk".format(tstep))
+            for ui in u_components:
+                newfile_1 = File(path.join(newfolder, ui + '_1.xml.gz'))
+                newfile_1 << q_1[ui]
+	
+        stats.tovtk(0, filename=statsfolder+"/dump_mean_{}.vtk".format(tstep))
+	voluviz(q_['u0'])
+        voluviz.toh5_lowmem(0, tstep, filename=vtkfolder+"/snapshot_u0_{}.h5".format(tstep))
+	voluviz.probes.clear()
+	voluviz(q_['u1'])
+        voluviz.toh5_lowmem(0, tstep, filename=vtkfolder+"/snapshot_u1_{}.h5".format(tstep))
+	voluviz.probes.clear()
+	voluviz(q_['u2'])
+        voluviz.toh5_lowmem(0, tstep, filename=vtkfolder+"/snapshot_u2_{}.h5".format(tstep))
+	voluviz.probes.clear()
         t1 = time.time()
         if MPI.process_number()==0:
             ff = open(newfolder+"/timeprstep_{}.txt".format(tottime/check), "w")
             ff.close()
 
     ### Update ################################################################            
-u0mean.vector()._scale(1./(tstep-tstep0))
-kmean.vector()._scale(1./(tstep-tstep0))
-u_stats_file << u0mean
-k_stats_file << kmean
-slx.tovtk(0, filename=statsfolder+"/dump_mean_x.vtk")
-slz.tovtk(0, filename=statsfolder+"/dump_mean_z.vtk")
+stats.tovtk(0, filename=statsfolder+"/dump_mean_end.vtk")
 
 list_timings()
 if MPI.process_number()==0:
     info_red('Total computing time = {0:f}'.format(time.time()- ttot))
     print 'u_sol ', u_sol.t
-    print 'du_sol ', du_sol.t
+    #print 'du_sol ', du_sol.t
     print 'p_sol ', p_sol.t
 
 #plot(u_[0])

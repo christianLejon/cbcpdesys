@@ -85,7 +85,7 @@ T = 0.78e-4                        # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 1   # Pressure velocity iterations on first timestep
 max_error = 1e-6
-check = 1000                    # print out info and save solution every check timestep 
+check = 1                    # print out info and save solution every check timestep 
 save_restart_file = 2000       # Saves two previous timesteps needed for a clean restart
 probe_interval = 1
     
@@ -128,7 +128,7 @@ if MPI.process_number() == 0:
 
 #### Set a folder that contains xml.gz files of the solution. 
 #restart_folder = None        
-restart_folder = "/usit/abel/u1/mikaem/Fenics/cbcpdesys/cbc/cfd/csf_bryn/data/dt=7.8000e-05/5/timestep=30000/"    
+restart_folder = "/usit/abel/u1/mikaem/Fenics/cbcpdesys/cbc/cfd/csf_bryn/data/dt=7.8000e-05/5/timestep=24000/"    
 #### Use for initialization if not None
     
 #####################################################################
@@ -142,14 +142,23 @@ v = TestFunction(V)
 p = TrialFunction(Q)
 q = TestFunction(Q)
 
-if dim == 2:
-    u_components = ['u0', 'u1']
-else:
-    u_components = ['u0', 'u1', 'u2']
+u_components = ['u0', 'u1', 'u2']
 sys_comp =  u_components + ['p']
 
 # Use dictionaries to hold all Functions and FunctionSpaces
 VV = dict((ui, V) for ui in u_components); VV['p'] = Q
+
+def strain(u):
+    return 0.5*(grad(u)+ grad(u).T)
+
+def omega(u):
+    return 0.5*(grad(u) - grad(u).T)
+
+def Omega(u):
+    return inner(omega(u), omega(u))
+
+def Strain(u):
+    return inner(strain(u), strain(u))
 
 # Start from previous solution if restart_folder is given
 if restart_folder:
@@ -186,7 +195,9 @@ dp_ = Function(Q)               # pressure correction
 #      StructuredGrid(V, [250, 250], [0.008, 0.16, 0.02], [[1., 0., 0.], [0., 0., 1.]], [0.023, 0.022], statistics=True),
 #      StructuredGrid(V, [250, 250], [0.003, 0.17, 0.018], [[1., 0., 0.], [0., 0., 1.]], [0.031, 0.033], statistics=True)]
 
-box = StructuredGrid(V, [100, 200, 100], [0.004, 0.05, 0.0], [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]], [0.03, 0.06, 0.03], statistics=True)
+EnstrophyBox = StructuredGrid(V, [300, 900, 300], [0.004, 0.05, 0.0], [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]], [0.025, 0.075, 0.025])
+#EnstrophyLumpedBox = StructuredGrid(V, [150, 450, 150], [0.004, 0.05, 0.0], [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]], [0.025, 0.075, 0.025])
+
 #ypos = range(10, 180, 10)
 
 class RandomStreamFunction(Expression):
@@ -353,15 +364,15 @@ for key, val in mvc.values().iteritems():
 bcs['u0'] = [DirichletBC(V, Constant(0), 20)]
 
 # Find distance to wall
-F1 = inner(grad(u), grad(v))*dx - Constant(1)*v*dx
-y_ = Function(V)
-solve(lhs(F1) == rhs(F1), y_, bcs=bcs['u0'], solver_parameters={'linear_solver': 'bicgstab', 'preconditioner': 'hypre_euclid'})
-print 'Norm y_ = ', y_.vector().norm('l2')
-F2 = sqrt(inner(grad(y_), grad(y_)))*v*dx  -  Constant(1)*v*dx + \
-               Constant(0.01)*inner(grad(y_), grad(v))*dx
-solve(F2 == 0, y_, bcs=bcs['u0'], solver_parameters={'linear_solver': 'bicgstab', 'preconditioner': 'hypre_euclid'})
-y0 = assemble(y_*ds(19))
-print 'Norm y0 = ', y0
+#F1 = inner(grad(u), grad(v))*dx - Constant(1)*v*dx
+#y_ = Function(V)
+#solve(lhs(F1) == rhs(F1), y_, bcs=bcs['u0'], solver_parameters={'linear_solver': 'bicgstab', 'preconditioner': 'hypre_euclid'})
+#print 'Norm y_ = ', y_.vector().norm('l2')
+#F2 = sqrt(inner(grad(y_), grad(y_)))*v*dx  -  Constant(1)*v*dx + \
+#               Constant(0.01)*inner(grad(y_), grad(v))*dx
+#solve(F2 == 0, y_, bcs=bcs['u0'], solver_parameters={'linear_solver': 'bicgstab', 'preconditioner': 'hypre_euclid'})
+#y0 = assemble(y_*ds(19))
+#print 'Norm y0 = ', y0
 
 #u0_in = U0(mesh=mesh, d=0, y_=y_, y0=y0)
 #u1_in = U1(mesh=mesh, d=0, y_=y_, y0=y0)
@@ -422,12 +433,32 @@ normalize = False
 # Preassemble some constant in time matrices
 M = assemble(inner(u, v)*dx)                    # Mass matrix
 K = assemble(nu*inner(grad(u), grad(v))*dx)     # Diffusion matrix
-Ap = assemble(inner(grad(q), grad(p))*dx)      # Pressure Laplacian
+Ap = assemble(inner(grad(q), grad(p))*dx)       # Pressure Laplacian
 A = Matrix()                                    # Coefficient matrix (needs reassembling)
 
-# Apply boundary conditions on M and Ap that are used directly in solve
+###########
+# Declare some variables used for lumping of the mass matrix
+ones = Vector(q_['u0'].vector())
+ones[:] = 1.
+
+### Enstrophy will be probed using lumped mass matrix ###
+lumped_inverse = Function(V)
+LV = lumped_inverse.vector()
+LV[:] = M * ones
+LV.set_local(1. / LV.array())
+enstrophy_form = 0.5*dot(curl(u_), curl(u_))*v*dx
+enstrophy = Function(V)
+enstrophy_vec = enstrophy.vector()
+################################
+
+# Apply boundary conditions on Ap that is used directly in solve
 [bc.apply(Ap) for bc in bcs['p']]
-[bc.apply(M)  for bc in bcs['u0']]
+#[bc.apply(M)  for bc in bcs['u0']]
+
+# Lumping of mass matrix after applied boundary conditions
+ML = M * ones
+MP = Vector(ML)
+ML.set_local(1. / ML.array())
 
 # Adams Bashforth projection of velocity at t - dt/2
 U_ = 1.5*u_1 - 0.5*u_2
@@ -443,13 +474,6 @@ Rc = P
 #Rc = dict((ui, assemble(q*u.dx(i)*dx)) for i, ui in  enumerate(u_components))
 
 reset_sparsity = True
-
-# Declare some variables used for lumping of the mass matrix
-ones = Vector(q_['u0'].vector())
-ones[:] = 1.
-ML = M * ones
-MP = Vector(ML)
-ML.set_local(1. / ML.array())
 
 u_sol = KrylovSolver('bicgstab', 'jacobi')
 u_sol.parameters['error_on_nonconvergence'] = False
@@ -474,8 +498,6 @@ x_2 = dict((ui, q_2[ui].vector()) for ui in u_components) # Solution vectors t -
 b   = dict((ui, Vector(x_[ui])) for ui in sys_comp)       # rhs vectors
 bold= dict((ui, Vector(x_[ui])) for ui in sys_comp)       # rhs temp storage vectors
 work = Vector(x_['u0'])
-
-###########
 
 t0 = t1 = time.time()
 dt_ = dt(0)
@@ -513,7 +535,7 @@ while t < (T - tstep*DOLFIN_EPS):
             A._scale(-1.)            # Negative convection on the rhs 
             A.axpy(1./dt_, M, True)  # Add mass
             A.axpy(-0.5, K, True)    # Add diffusion                
-            # Compute rhs for all velocity components
+            # Compute rhs for all velocity and scalar components
             for ui in u_components:
                 b[ui][:] = A*x_1[ui]
             # Reset matrix for lhs
@@ -566,12 +588,23 @@ while t < (T - tstep*DOLFIN_EPS):
 
     if tstep % probe_interval == 0:
         tp = time.time()
-        box(q_['u0'], q_['u1'], q_['u2'])
-        box.tovtk(1, filename=vtkfolder+"/snapshot_box_{}.vtk".format(tstep))
-        box.toh5(1, tstep)
+        #enstrophy_vec[:] = assemble(enstrophy_form, tensor=enstrophy_vec)
+        #enstrophy_vec[:] = enstrophy_vec * LV
+        #EnstrophyLumpedBox(enstrophy)
+
+        enstrophy2 = project(0.5*dot(curl(u_), curl(u_)), V)
+        EnstrophyBox(enstrophy2)
+
+        #EnstrophyBox.tovtk(1, filename=vtkfolder+"/snapshot_box_{}.vtk".format(tstep))
+        #EnstrophyLumpedBox.toh5(0, tstep, filename=vtkfolder+"/enstrophyLumped.h5")
+        #EnstrophyLumpedBox.probes.clear()
+        EnstrophyBox.toh5_lowmem(0, tstep, filename=vtkfolder+"/enstrophy.h5")
+        EnstrophyBox.probes.clear()
+
         #for yp, sli in zip(ypos, sl):
         #    sli(q_['u0'], q_['u1'], q_['u2'])
         #    sli.tovtk(1, filename=vtkfolder+"/snapshot_{}_{}.vtk".format(yp, tstep))
+
         probe_time += time.time() - tp
 
     # Print some information and save intermediate solution

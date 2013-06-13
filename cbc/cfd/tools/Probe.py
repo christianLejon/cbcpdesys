@@ -9,8 +9,11 @@ from cbc.cfd.oasis import *
 #from dolfin import *
 from numpy import zeros, array, repeat, squeeze, argmax, cumsum, reshape, resize, linspace, abs, sign, all, float32
 from numpy.linalg import norm as numpy_norm
-from scitools.basics import meshgrid
-from scitools.std import surfc
+try:
+    from scitools.std import surfc
+    from scitools.basics import meshgrid
+except:
+    pass
 import pyvtk, os, copy, cPickle, h5py, inspect
 from mpi4py import MPI as nMPI
 comm = nMPI.COMM_WORLD
@@ -411,7 +414,7 @@ class StructuredGrid:
         using voluviz. Each processor writes its own data directly to the hdf5 
         file, thus saving memory use at the expense of speed.
         """
-        f = h5py.File(filename, 'a')
+        f = h5py.File(filename, 'w')
         d = self.dims
         if not 'origin' in f.attrs:
             f.attrs.create('origin', self.origin)
@@ -466,22 +469,21 @@ class StructuredGrid:
                     pass
         else:
             raise TypeError("Only vector or scalar data supported for HDF5")
-            
-        # We use MPI here to enable sharing of memory amongst procesors
+        # We use MPI here to enable sharing of memory amongst nodes
         # Otherwise, the maximum size of the computational box will be
         # rather small, determined by the RAM memory of one single CPU.
         #
         # Last dimension of box is shared amongst processors
         # In case d[2] % Nc is not zero the last planes are distributed
         # between the processors starting with the highest rank and then lower
-        MPI.barrier()            
-        d = self.dims
+        
+        MPI.barrier()
         loc = 'FEniCS/tstep'+str(tstep)
-        #f = h5py.File(filename, 'w')
         Nc = comm.Get_size()
+        myrank = comm.Get_rank()
+        d = self.dims
         Np = self.probes.get_total_number_probes()
         planes_per_proc = d[2] / Nc
-        myrank = comm.Get_rank()
         # Distribute remaining planes 
         if Nc-myrank <= (d[2] % Nc):
             planes_per_proc += 1
@@ -491,7 +493,7 @@ class StructuredGrid:
         cum_last_id = cumsum(all_planes_per_proc)
         owned_planes = zeros(Nc+1, 'I')
         owned_planes[1:] = cum_last_id[:]
-        
+                            
         # Store owned data in z0
         z0 = zeros((d[0], d[1], planes_per_proc, self.probes.value_size()), dtype=float32)
         zhere = zeros(self.probes.value_size(), dtype=float32)
@@ -512,12 +514,10 @@ class StructuredGrid:
                 # myrank owns the current probe and can simply store it
                 i, j, k = global_index % d[0], (global_index % (d[0]*d[1])) / d[0], global_index / (d[0]*d[1]) 
                 z0[i, j, k-owned_planes[myrank], :] = zhere[:]
-                
         # Let all processors know who they are receiving data from
         recvfrom = zeros((Nc, Nc), 'I')
         comm.Allgather(sendto, recvfrom)
-        
-        # Recieve the data
+        # Receive the data
         for ii in range(Nc):
             num_recv = recvfrom[ii, myrank]
             for kk in range(num_recv):
@@ -525,10 +525,9 @@ class StructuredGrid:
                 i, j, k = global_index % d[0], (global_index % (d[0]*d[1])) / d[0], global_index / (d[0]*d[1]) 
                 comm.Recv(zrecv, source=ii, tag=102)
                 z0[i, j, k-owned_planes[myrank], :] = zrecv[:]
-        
+                
         # Voluviz has weird ordering so transpose some axes
         z0 = z0.transpose((2,1,0,3))
-        
         # Write owned data to hdf5 file
         owned = slice(owned_planes[myrank], owned_planes[myrank+1])
         if self.probes.value_size() == 1:
@@ -550,7 +549,6 @@ class StructuredGrid:
                 f[loc+"/U"][owned, :, :] = z0[:, :, :, 0]
                 f[loc+"/V"][owned, :, :] = z0[:, :, :, 1]
                 f[loc+"/W"][owned, :, :] = z0[:, :, :, 2]
-        
         f.close()
             
 class Probedict(dict):
