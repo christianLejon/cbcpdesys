@@ -85,7 +85,7 @@ T = 0.78e-4                        # End time
 max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 1   # Pressure velocity iterations on first timestep
 max_error = 1e-6
-check = 1000                    # print out info and save solution every check timestep 
+check = 1                    # print out info and save solution every check timestep 
 save_restart_file = 2000       # Saves two previous timesteps needed for a clean restart
 probe_interval = 1
     
@@ -195,8 +195,8 @@ dp_ = Function(Q)               # pressure correction
 #      StructuredGrid(V, [250, 250], [0.008, 0.16, 0.02], [[1., 0., 0.], [0., 0., 1.]], [0.023, 0.022], statistics=True),
 #      StructuredGrid(V, [250, 250], [0.003, 0.17, 0.018], [[1., 0., 0.], [0., 0., 1.]], [0.031, 0.033], statistics=True)]
 
-EnstrophyBox = StructuredGrid(V, [100, 300, 100], [0.004, 0.05, 0.0], [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]], [0.025, 0.075, 0.025])
-EnstrophyLumpedBox = StructuredGrid(V, [100, 300, 100], [0.004, 0.05, 0.0], [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]], [0.025, 0.075, 0.025])
+EnstrophyBox = StructuredGrid(V, [300, 900, 300], [0.004, 0.05, 0.0], [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]], [0.025, 0.075, 0.025])
+#EnstrophyLumpedBox = StructuredGrid(V, [150, 450, 150], [0.004, 0.05, 0.0], [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]], [0.025, 0.075, 0.025])
 
 #ypos = range(10, 180, 10)
 
@@ -451,9 +451,9 @@ enstrophy = Function(V)
 enstrophy_vec = enstrophy.vector()
 ################################
 
-# Apply boundary conditions on M and Ap that are used directly in solve
+# Apply boundary conditions on Ap that is used directly in solve
 [bc.apply(Ap) for bc in bcs['p']]
-[bc.apply(M)  for bc in bcs['u0']]
+#[bc.apply(M)  for bc in bcs['u0']]
 
 # Lumping of mass matrix after applied boundary conditions
 ML = M * ones
@@ -535,7 +535,7 @@ while t < (T - tstep*DOLFIN_EPS):
             A._scale(-1.)            # Negative convection on the rhs 
             A.axpy(1./dt_, M, True)  # Add mass
             A.axpy(-0.5, K, True)    # Add diffusion                
-            # Compute rhs for all velocity components
+            # Compute rhs for all velocity and scalar components
             for ui in u_components:
                 b[ui][:] = A*x_1[ui]
             # Reset matrix for lhs
@@ -588,16 +588,16 @@ while t < (T - tstep*DOLFIN_EPS):
 
     if tstep % probe_interval == 0:
         tp = time.time()
-        enstrophy_vec[:] = assemble(enstrophy_form, tensor=enstrophy_vec)
-        enstrophy_vec[:] = enstrophy_vec * LV
-        EnstrophyLumpedBox(enstrophy)
+        #enstrophy_vec[:] = assemble(enstrophy_form, tensor=enstrophy_vec)
+        #enstrophy_vec[:] = enstrophy_vec * LV
+        #EnstrophyLumpedBox(enstrophy)
 
         enstrophy2 = project(0.5*dot(curl(u_), curl(u_)), V)
         EnstrophyBox(enstrophy2)
 
         #EnstrophyBox.tovtk(1, filename=vtkfolder+"/snapshot_box_{}.vtk".format(tstep))
-        EnstrophyLumpedBox.toh5_lowmem(0, tstep, filename=vtkfolder+"/enstrophyLumped.h5")
-        EnstrophyLumpedBox.probes.clear()
+        #EnstrophyLumpedBox.toh5(0, tstep, filename=vtkfolder+"/enstrophyLumped.h5")
+        #EnstrophyLumpedBox.probes.clear()
         EnstrophyBox.toh5_lowmem(0, tstep, filename=vtkfolder+"/enstrophy.h5")
         EnstrophyBox.probes.clear()
 
