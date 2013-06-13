@@ -22,8 +22,11 @@ namespace dolfin
     // dump component i of probes to filename
     void dump(std::size_t i, std::string filename);
     
-    // dump all probes to filename
+    // dump all probes to filename 
     void dump(std::string filename);
+    
+    // Add new probe positions
+    void add_positions(const Array<double>& x, const FunctionSpace& V);
     
     // Return an instance of probe i
     virtual Probe* get_probe(std::size_t i);

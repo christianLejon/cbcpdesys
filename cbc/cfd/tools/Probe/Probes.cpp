@@ -39,6 +39,31 @@ Probes::~Probes()
   _allprobes.clear();      
 }
 //
+void Probes::add_positions(const Array<double>& x, const FunctionSpace& V)
+{
+  const std::size_t gdim = V.mesh()->geometry().dim();
+  const std::size_t N = x.size() / gdim;
+  Array<double> _x(gdim);
+  const std::size_t old_N = total_number_probes;
+  total_number_probes += N;
+
+  for (std::size_t i=0; i<N; i++)
+  {
+    for (std::size_t j=0; j<gdim; j++)
+      _x[j] = x[i*gdim + j];
+    try
+    {
+      Probe* probe = new Probe(_x, V);
+      std::pair<std::size_t, Probe*> newprobe = std::make_pair(old_N+i, &(*probe));
+      _allprobes.push_back(newprobe);
+    } 
+    catch (std::exception &e)
+    { // do-nothing
+    }
+  }
+  cout << _allprobes.size() << " of " << N  << " probes found on processor " << MPI::process_number() << endl;
+}
+//
 void Probes::eval(const Function& u)
 {
   u.update();

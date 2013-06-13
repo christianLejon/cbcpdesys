@@ -16,7 +16,7 @@ To use this solver for a new problem you have to modify two sections.
 
     'Boundary conditions':
         Simply create the dictionary bcs, with keys 
-        'u0', 'u1', 'u2' and 'p' and value a list of 
+        'u0', 'u1', 'u2' and 'p' and values a list of 
         boundary conditions. 
         If necessary enable normalization of the pressure.
         
