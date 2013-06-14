@@ -34,11 +34,14 @@ namespace dolfin
     // Return id of probe i
     std::size_t get_probe_id(std::size_t i);
     
+    // Return ids of all probes
+    std::vector<std::size_t> get_probe_ids();
+    
     // Return the number of probes on this process
     std::size_t local_size() {return _allprobes.size();};
     
     // Return number of components probed for
-    std::size_t value_size() {return _value_size;};
+    std::size_t value_size() {return _value_size;};  
         
     // Return total number of probes on all processes combined
     std::size_t get_total_number_probes() {return total_number_probes;};

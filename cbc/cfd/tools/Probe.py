@@ -7,7 +7,7 @@ This module contains functionality for efficiently probing a Function many times
 """
 from cbc.cfd.oasis import *
 #from dolfin import *
-from numpy import zeros, array, repeat, squeeze, argmax, cumsum, reshape, resize, linspace, abs, sign, all, float32
+from numpy import cos, zeros, array, repeat, squeeze, argmax, cumsum, reshape, resize, linspace, abs, sign, all, float32
 from numpy.linalg import norm as numpy_norm
 try:
     from scitools.std import surfc
@@ -18,6 +18,7 @@ import pyvtk, os, copy, cPickle, h5py, inspect
 from mpi4py import MPI as nMPI
 comm = nMPI.COMM_WORLD
 
+# Compile Probe C++ code
 def strip_essential_code(filenames):
     code = ""
     for name in filenames:
@@ -32,7 +33,7 @@ code = strip_essential_code(headers)
 compiled_module = compile_extension_module(code=code, source_directory=os.path.abspath(dolfin_folder),
                                            sources=sources, include_dirs=[".", os.path.abspath(dolfin_folder)])
  
-# Give compiled classes some additional pythonic functionality
+# Give the compiled classes some additional pythonic functionality
 class Probe(compiled_module.Probe):
     
     def __call__(self, *args):
@@ -158,19 +159,36 @@ class StructuredGrid:
     """
     def __init__(self, V, dims=None, origin=None, dX=None, dL=None, statistics=False, restart=False):
         if restart:
-            z = self.load(restart)
+            self.read_restart_file(restart)
             statistics = True # Only restart of statistics probes. (Continue sampling statistics..)
         else:
             self.dims = dims
             self.dL, self.dX = array(dL, float), array(dX, float)
             self.origin = origin
-            self.x = self.create_grid()
+            self.dx, self.dy, self.dz = self.create_tangents()
         if statistics:
-            self.probes = StatisticsProbes(self.x.flatten(), V, V.num_sub_spaces()==0)
+            if len(self.dims) == 2:
+                raise TypeError("No sampling of turbulence statistics in 2D")
+            
+            # Add plane by plane to avoid excessive memory use
+            x = self.create_xy_slice(0)
+            self.probes = StatisticsProbes(x.flatten(), V, V.num_sub_spaces()==0)
+            for i in range(1, len(self.dz[2])):
+                x = self.create_xy_slice(i)
+                self.probes.add_positions(x.flatten(), V, V.num_sub_spaces()==0)
+                
             if restart:
-                self.probes.restart_probes(z.flatten(), self._num_eval)
+                self.set_data_from_restart(filename=restart)
         else:
-            self.probes = Probes(self.x.flatten(), V)
+            if len(self.dims) == 2:
+                x = self.create_dense_grid()
+                self.probes = Probes(x.flatten(), V)
+            else:
+                x = self.create_xy_slice(0)
+                self.probes = Probes(x.flatten(), V)
+                for i in range(1, len(self.dz[2])):
+                    x = self.create_xy_slice(i)
+                    self.probes.add_positions(x.flatten(), V)
                     
     def __call__(self, *args):
         self.probes(*args)
@@ -190,6 +208,13 @@ class StructuredGrid:
         self.i += 1
         return p   
     
+    def read_restart_file(self, filename):
+        if filename.endswith('.vtk'):
+            z = self.load(filename)
+        elif filename.endswith('.h5'):
+            z = self.fromh5(filename)
+        return z
+        
     def load(self, filename='restart.vtk'):
         """Load data stored previously using tovtk. Mainly intended for 
         restarting statistics probes"""
@@ -199,56 +224,81 @@ class StructuredGrid:
         d.reverse()
         x = squeeze(reshape(z['x'], d + [3]))            
         if 1 in self.dims: self.dims.remove(1)
-        self.origin = z['x'][0]
+        
         if len(squeeze(array(self.dims))) == 2:
-            self.dX = array([x[0, 1] - x[0, 0],
-                            x[1, 0] - x[0, 0]])
-            self.dL = array([numpy_norm(x[0, -1] - x[0, 0]),
-                            numpy_norm(x[-1, 0] - x[0, 0])])                            
+            xs = [x[0,:,0] - x[0,0,0]]
+            xs.append(x[:,0,0] - x[0,0,0])
+            ys = [x[0,:,1] - x[0,0,1]]
+            ys.append(x[:,0,1] - x[0,0,1])
+            zs = [x[0,:,2] - x[0,0,2]]
+            zs.append(x[:,0,2] - x[0,0,2])
         else:
-            self.dX = array([x[0, 0, 1] - x[0, 0, 0],
-                            x[0, 1, 0] - x[0, 0, 0],
-                            x[1, 0, 0] - x[0, 0, 0]])
-            self.dL = array([numpy_norm(x[0, 0, -1] - x[0, 0, 0]),
-                            numpy_norm(x[0, -1, 0] - x[0, 0, 0]),
-                            numpy_norm(x[-1, 0, 0] - x[0, 0, 0])])                
-        dX, dL = self.dX, self.dL
-        for i, N in enumerate(self.dims):
-            dX[i, :] = dX[i, :] / numpy_norm(dX[i, :]) * dL[i] / N
-
-        self.x = z['x']
+            xs = [x[0,0,:,0] - x[0,0,0,0]]
+            xs.append(x[0,:,0,0] - x[0,0,0,0])
+            xs.append(x[:,0,0,0] - x[0,0,0,0])
+            ys = [x[0,0,:,1] - x[0,0,0,1]]
+            ys.append(x[0,:,0,1] - x[0,0,0,1])
+            ys.append(x[:,0,0,1] - x[0,0,0,1])
+            zs = [x[0,0,:,2] - x[0,0,0,2]]
+            zs.append(x[0,:,0,2] - x[0,0,0,2])
+            zs.append(x[:,0,0,2] - x[0,0,0,2])
+            
+        self.dx, self.dy, self.dz = xs, ys, zs
+        self.origin = z['x'][0]
         self._num_eval = z['evals']
-        return z['data']
 
-    def create_grid(self):
-        """Create 2D slice or 3D box. A structured (i, j, k) mesh."""
+    def create_tangents(self):
         origin = self.origin
         dX, dL = self.dX, self.dL
         dims = array(self.dims)
         for i, N in enumerate(dims):
             dX[i, :] = dX[i, :] / numpy_norm(dX[i, :]) * dL[i] / N
         
-        xs = [linspace(origin[0], origin[0]+dX[0][0]*dims[0], dims[0])]
-        ys = [linspace(origin[1], origin[1]+dX[0][1]*dims[0], dims[0])]
-        zs = [linspace(origin[2], origin[2]+dX[0][2]*dims[0], dims[0])]
-        for k in range(1, len(dims)):
-            xs.append(linspace(0, dX[k][0]*dims[k], dims[k]))
-            ys.append(linspace(0, dX[k][1]*dims[k], dims[k]))
-            zs.append(linspace(0, dX[k][2]*dims[k], dims[k]))
+        dx, dy, dz = [],[],[]
+        for k in range(len(dims)):
+            dx.append(linspace(0, dX[k][0]*dims[k], dims[k]))
+            dy.append(linspace(0, dX[k][1]*dims[k], dims[k]))
+            dz.append(linspace(0, dX[k][2]*dims[k], dims[k]))
+                
+        dx, dy, dz = self.modify_mesh(dx, dy, dz)
+        return dx, dy, dz
+
+    def modify_mesh(self, dx, dy, dz):
+        """Use this function to for example skew a mesh towards a wall.
+        If you are looking at a channel flow with -1 < y < 1 and 
+        walls located at +-1, then you can skew the mesh using e.g.
         
+            dy[1][:] = arctan(pi*(dy[1][:]+origin[1]))/arctan(pi)-origin[1]
+            
+        before returning (Note: origin[1] will be -1 and 0 <= dy <= 2)
+        """
+        return dx, dy, dz
+    
+    def create_dense_grid(self):
+        """Create 2D slice or 3D box."""
+        dx, dy, dz = self.dx, self.dy, self.dz
+        dims = array(self.dims)
         dim = dims.prod()
         x = zeros((dim, 3))
         if len(dims) == 3:
-            x[:, 0] = repeat(xs[2], dims[0]*dims[1])[:] + resize(repeat(xs[1], dims[0]), dim)[:] + resize(xs[0], dim)[:]
-            x[:, 1] = repeat(ys[2], dims[0]*dims[1])[:] + resize(repeat(ys[1], dims[0]), dim)[:] + resize(ys[0], dim)[:]
-            x[:, 2] = repeat(zs[2], dims[0]*dims[1])[:] + resize(repeat(zs[1], dims[0]), dim)[:] + resize(zs[0], dim)[:]
+            x[:, 0] = repeat(dx[2], dims[0]*dims[1])[:] + resize(repeat(dx[1], dims[0]), dim)[:] + resize(dx[0], dim)[:] + origin[0]
+            x[:, 1] = repeat(dy[2], dims[0]*dims[1])[:] + resize(repeat(dy[1], dims[0]), dim)[:] + resize(dy[0], dim)[:] + origin[1]
+            x[:, 2] = repeat(dz[2], dims[0]*dims[1])[:] + resize(repeat(dz[1], dims[0]), dim)[:] + resize(dz[0], dim)[:] + origin[2]
         else:
-            x[:, 0] = repeat(xs[1], dims[0])[:] + resize(xs[0], dim)[:]
-            x[:, 1] = repeat(ys[1], dims[0])[:] + resize(ys[0], dim)[:]
-            x[:, 2] = repeat(zs[1], dims[0])[:] + resize(zs[0], dim)[:]
-
+            x[:, 0] = repeat(dx[1], dims[0])[:] + resize(dx[0], dim)[:] + origin[0]
+            x[:, 1] = repeat(dy[1], dims[0])[:] + resize(dy[0], dim)[:] + origin[1]
+            x[:, 2] = repeat(dz[1], dims[0])[:] + resize(dz[0], dim)[:] + origin[2]
         return x
 
+    def create_xy_slice(self, nz):
+        dims = array(self.dims)
+        dim = dims[0]*dims[1]
+        x = zeros((dim, 3))
+        x[:, 0] = resize(repeat(self.dx[1], dims[0]), dim)[:] + resize(self.dx[0], dim)[:] + origin[0] + self.dx[2][nz]
+        x[:, 1] = resize(repeat(self.dy[1], dims[0]), dim)[:] + resize(self.dy[0], dim)[:] + origin[1] + self.dy[2][nz]
+        x[:, 2] = resize(repeat(self.dz[1], dims[0]), dim)[:] + resize(self.dz[0], dim)[:] + origin[2] + self.dz[2][nz]
+        return x
+        
     def surf(self, N, component=0):
         """surf plot of scalar or one component of tensor"""
         if comm.Get_size() > 1:
@@ -261,15 +311,20 @@ class StructuredGrid:
         for j in range(self.dims[1]):
             for i in range(self.dims[0]):
                 val = self.probes[j*self.dims[0] + i][1].get_probe_sub(component)
+                print val
                 z[i, j] = val[N]
         # Use local coordinates
-        yy, xx = meshgrid(linspace(0, dL[1], self.dims[1]),
-                          linspace(0, dL[0], self.dims[0]))        
+        yy, xx = meshgrid(linspace(0, self.dL[1], self.dims[1]),
+                          linspace(0, self.dL[0], self.dims[0]))
         surfc(yy, xx, z, indexing='xy')
 
     def tovtk(self, N, filename="restart.vtk"):
         """Dump probes to VTK file. The data can be used both for visualization 
-        and to restart statistics probes."""
+        and to restart statistics probes.
+        ## FIXME
+        This function is quite memory demanding since dense matrices of
+        solution and position are created on each processor.
+        """
         z  = zeros((self.probes.get_total_number_probes(), self.probes.value_size()))
         z0 = z.copy()
         if len(self.probes) > 0:
@@ -284,7 +339,7 @@ class StructuredGrid:
             z0 *= zsign
             d = self.dims
             d = (d[0], d[1], d[2]) if len(d) > 2 else (d[0], d[1], 1)
-            grid = pyvtk.StructuredGrid(d, self.x)
+            grid = pyvtk.StructuredGrid(d, self.create_dense_grid())
             v = pyvtk.VtkData(grid, "Probe data. Evaluations = {}".format(self.probes.number_of_evaluations()))
             if self.probes.value_size() == 1:
                 v.point_data.append(pyvtk.Scalars(z0))
@@ -296,7 +351,7 @@ class StructuredGrid:
                     v.point_data.append(pyvtk.Vectors(z0[:, :3]/num_evals, name="UMEAN"))
                     rs = ["uu", "vv", "ww", "uv", "uw", "vw"]
                     for i in range(3, 9):
-                        v.point_data.append(pyvtk.Scalars(z0[:, i]/num_evals, name=rs[i-3])) 
+                        v.point_data.append(pyvtk.Scalars(z0[:, i]/num_evals, name=rs[i-3]))
                 else: # Just dump latest snapshot
                     v.point_data.append(pyvtk.Vectors(z0[:, :3], name="U"))
             else:
@@ -352,83 +407,71 @@ class StructuredGrid:
                 z = z.mean(j)
             return z
         
+    def fromh5(self, filename="fromh5.h5"):
+        """Reset probes using data in filename"""
+        f = h5py.File(filename, 'r')
+        self.origin = f.attrs['origin']
+        self.dL = f.attrs['dL']
+        self._num_eval = f.attrs['num_evals']
+        dx0 = f.attrs['dx0']
+        dx1 = f.attrs['dx1']
+        dx2 = f.attrs['dx2']
+        self.dx = [dx0[0], dx1[0], dx2[0]]
+        self.dy = [dx0[1], dx1[1], dx2[1]]
+        self.dz = [dx0[2], dx1[2], dx2[2]]
+        self.dims = map(len , self.dx)
+        f.close()
+        
+    def set_data_from_restart(self, filename="fromh5.h5", tstep=None):
+        if filename.endswith('.h5'):
+            f = h5py.File(filename, 'r')
+            ids = self.probes.get_probe_ids()        
+            nn = len(ids)
+            if tstep == None:
+                loc = 'FEniCS/stats'
+                rs = ["UMEAN", "VMEAN", "WMEAN", "uu", "vv", "ww", "uv", "uw", "vw"]
+                data = zeros((nn, 9))
+                for i, name in enumerate(rs):
+                    data[:, i] = f[loc][name].value.flatten()[ids]
+                    
+            else:
+                loc = 'FEniCS/tstep'+str(tstep)
+                data = zeros((nn, len(f[loc])))
+                if len(f[loc]) == 3:
+                    for i, name in enumerate(['Comp-X', 'Comp-Y', 'Comp-Z']):
+                        data[:, i] = f[loc][name].value.flatten()[ids]
+                elif len(f[loc]) == 1:
+                    data[:, 0] = f[loc]['Scalar'].value.flatten()[ids]
+            self.probes.set_probes_from_ids(data.flatten(), self._num_eval)
+            f.close()
+        else:
+            z = self.fromvtk(filename)
+            self.probes.restart_probes(z['data'].flatten(), self._num_eval)
+        
     def toh5(self, N, tstep, filename="restart.h5"):
         """Dump probes to HDF5 file. The data can be used for 3D visualization
-        using voluviz"""
-        z  = zeros((self.probes.get_total_number_probes(), self.probes.value_size()), dtype=float32)
-        z0 = z.copy()
-        if len(self.probes) > 0:
-            for index, probe in self.probes:
-                z[index, :] = probe.get_probe_at_snapshot(N)
-        # Put solution on process 0
-        comm.Reduce(z, z0, op=nMPI.SUM, root=0)
-        zsign = sign(z0)
-        comm.Reduce(abs(z), z0, op=nMPI.MAX, root=0)
-        # Store probes in vtk-format
-        if comm.Get_rank() == 0:
-            z0 *= zsign
-            d = self.dims
-            d = (d[2], d[1], d[0])
-            f = h5py.File(filename)
-            if not 'origin' in f.attrs:
-                f.attrs.create('origin', self.origin)
-            if not 'dX' in f.attrs:
-                f.attrs.create('dX', self.dX)
-            if not 'num_evals' in f.attrs:
-                f.attrs.create('num_evals', self.probes.number_of_evaluations())
-            else:
-                f.attrs['num_evals'] = self.probes.number_of_evaluations()
-                
-            if not 'FEniCS' in f:
-                f.create_group('FEniCS')
-            loc = 'FEniCS/tstep'+str(tstep)
-            try:
-                f.create_group(loc)
-            except ValueError:
-                pass
-            if self.probes.value_size() == 1:
-                f.create_dataset(loc+"/Scalar", shape=d, dtype='f', data=z0)
-            elif self.probes.value_size() == 3:
-                f.create_dataset(loc+"/Comp-X", shape=d, dtype='f', data=z0[:, 0])
-                f.create_dataset(loc+"/Comp-Y", shape=d, dtype='f', data=z0[:, 1])
-                f.create_dataset(loc+"/Comp-Z", shape=d, dtype='f', data=z0[:, 2])
-            elif self.probes.value_size() == 9: # StatisticsProbes
-                if N == 0:
-                    num_evals = self.probes.number_of_evaluations()
-                    f.create_dataset(loc+"/UMEAN", shape=d, dtype='f', data=z0[:, 0]/num_evals)
-                    f.create_dataset(loc+"/VMEAN", shape=d, dtype='f', data=z0[:, 1]/num_evals)
-                    f.create_dataset(loc+"/WMEAN", shape=d, dtype='f', data=z0[:, 2]/num_evals)
-                    rs = ["uu", "vv", "ww", "uv", "uw", "vw"]
-                    for i in range(3, 9):
-                        f.create_dataset(loc+"/"+rs[i-3], shape=d, dtype='f', data=z0[:, i]/num_evals)
-                else: # Just dump latest snapshot
-                    f.create_dataset(loc+"/U", shape=d, dtype='f', data=z0[:, 0])
-                    f.create_dataset(loc+"/V", shape=d, dtype='f', data=z0[:, 1])
-                    f.create_dataset(loc+"/W", shape=d, dtype='f', data=z0[:, 2])                    
-            else:
-                raise TypeError("Only vector or scalar data supported for HDF5")
-            f.close()
-
-    def toh5_lowmem(self, N, tstep, filename="restart.h5"):
-        """Dump probes to HDF5 file. The data can be used for 3D visualization
-        using voluviz. Each processor writes its own data directly to the hdf5 
-        file, thus saving memory use at the expense of speed.
+        using voluviz. 
         """
         f = h5py.File(filename, 'w')
         d = self.dims
         if not 'origin' in f.attrs:
             f.attrs.create('origin', self.origin)
-        if not 'dX' in f.attrs:
-            f.attrs.create('dX', self.dX)
+            f.attrs.create('dx0', array([self.dx[0], self.dy[0], self.dz[0]]))
+            f.attrs.create('dx1', array([self.dx[1], self.dy[1], self.dz[1]]))
+            f.attrs.create('dx2', array([self.dx[2], self.dy[2], self.dz[2]]))
+            f.attrs.create('dL', self.dL)
         if not 'num_evals' in f.attrs:
             f.attrs.create('num_evals', self.probes.number_of_evaluations())
         else:
-            f.attrs['num_evals'] = self.probes.number_of_evaluations()                
+            f.attrs['num_evals'] = self.probes.number_of_evaluations()
         try:
             f.create_group('FEniCS')
         except ValueError:
             pass
-        loc = 'FEniCS/tstep'+str(tstep)
+        if type(self.probes) == StatisticsProbes and N == 0:
+            loc = 'FEniCS/stats'
+        else:
+            loc = 'FEniCS/tstep'+str(tstep)
         try:
             f.create_group(loc)
         except ValueError:
@@ -478,7 +521,6 @@ class StructuredGrid:
         # between the processors starting with the highest rank and then lower
         
         MPI.barrier()
-        loc = 'FEniCS/tstep'+str(tstep)
         Nc = comm.Get_size()
         myrank = comm.Get_rank()
         d = self.dims
@@ -551,6 +593,11 @@ class StructuredGrid:
                     f[loc+"/V"][owned, :, :] = z0[:, :, :, 1]
                     f[loc+"/W"][owned, :, :] = z0[:, :, :, 2]
         f.close()
+        
+    def h5tovtk(self, filename):
+        """Take a HDF5 file and store results in vtk file with the same name"""
+        
+    
             
 class Probedict(dict):
     """Dictionary of probes. The keys are the names of the functions 
@@ -565,11 +612,13 @@ class Probedict(dict):
         for ui, p in self.iteritems():
             p.dump(filename+"_"+ui)
 
-#ind = ii*i*j + jj*j + kk
+# Create a class for a skewed channel mesh 
+class ChannelGrid(StructuredGrid):
+    def modify_mesh(self, dx, dy, dz):
+        """Create grid skewed towards the walls"""
+        dy[1][:] = cos(pi*(dy[1][:]+self.origin[1] - 1.) / 2.) - self.origin[1]
+        return dx, dy, dz
 
-#kk = ind / (i*j)
-#jj = (ind % (i*j)) / i
-#ii = (ind % (i*j)) % i
 # Test the probe functions:
 if __name__=='__main__':
     import time
@@ -601,9 +650,9 @@ if __name__=='__main__':
     # Test StructuredGrid
     # 3D box
     origin = [0.1, 0.1, 0.1]               # origin of box
-    tangents = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]    # directional tangent directions (scaled in StructuredGrid)
+    tangents = [[1, 1, 0], [0, 1, 1], [1, 0, 1]]    # directional tangent directions (scaled in StructuredGrid)
     dL = [0.2, 0.4, 0.6]                      # extent of slice in both directions
-    N  = [20, 25, 3]                           # number of points in each direction
+    N  = [40, 30, 50]                           # number of points in each direction
     
     # 2D slice
     #origin = [0.1, 0.1, 0.5]               # origin of slice
@@ -636,8 +685,7 @@ if __name__=='__main__':
     sl3.surf(0)     # Check 
     sl3.tovtk(0, filename="dump_mean_vector.vtk")
     sl3.tovtk(1, filename="dump_latest_snapshot_vector.vtk")
-    #sl3.toh5(1, 0)
-    sl3.toh5_lowmem(0, 1, 'reslowmem.h5')
+    sl3.toh5(0, 1, 'reslowmem.h5')    
     
     # Restart probes from sl3
     sl4 = StructuredGrid(V, restart='dump_mean_vector.vtk')
@@ -645,25 +693,11 @@ if __name__=='__main__':
         sl4(x0, y0, z0)     # probe a few more times    
     sl4.tovtk(0, filename="dump_mean_vector_restart_vtk.vtk")
     sl4.surf(0)    
-    
-    #f = h5py.File('test.h5')
-    #z = zeros((10, 10), float32)
-    #try:
-        #f.create_group('FEniCS')
-    #except ValueError:
-        #pass
-    #try:
-        #f.create_dataset('/FEniCS/1', shape=(2, 2), dtype='f')
-    #except RuntimeError:
-        #pass
-    #f['FEniCS/1'][MPI.process_number(), 0] = MPI.process_number() + 1    
-    #f.close()
-    
-    ## Check that result is the same
-    #if MPI.num_processes() == 0:
-        #assert(all(abs(sl4.probes.array() - sl3.probes.array()) < 1e-12))
-     
-    #print sl3.probes.array()
+
+    # Restart probes from sl3
+    sl5 = StructuredGrid(V, restart='reslowmem.h5')
+    sl5.tovtk(0, filename="fromh5.vtk")
+        
     ### Test Probedict
     #q_ = {'u0':v0, 'u1':x0}
     #VV = {'u0':Vv, 'u1':V}

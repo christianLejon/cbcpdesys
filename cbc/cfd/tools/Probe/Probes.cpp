@@ -45,6 +45,7 @@ void Probes::add_positions(const Array<double>& x, const FunctionSpace& V)
   const std::size_t N = x.size() / gdim;
   Array<double> _x(gdim);
   const std::size_t old_N = total_number_probes;
+  const std::size_t old_local_size = local_size();  
   total_number_probes += N;
 
   for (std::size_t i=0; i<N; i++)
@@ -61,7 +62,7 @@ void Probes::add_positions(const Array<double>& x, const FunctionSpace& V)
     { // do-nothing
     }
   }
-  cout << _allprobes.size() << " of " << N  << " probes found on processor " << MPI::process_number() << endl;
+  cout << local_size() - old_local_size << " of " << N  << " probes found on processor " << MPI::process_number() << endl;
 }
 //
 void Probes::eval(const Function& u)
@@ -136,4 +137,15 @@ std::size_t Probes::get_probe_id(std::size_t i)
     dolfin_error("Probes.cpp", "get probe_id", "Wrong index!");
   }
   return _allprobes[i].first;
+}
+
+std::vector<std::size_t> Probes::get_probe_ids()
+{
+  std::vector<std::size_t> ids;  
+  for (std::size_t i = 0; i < local_size(); i++)
+  {
+    std::size_t probe_id = _allprobes[i].first;
+    ids.push_back(probe_id);
+  }
+  return ids;
 }
