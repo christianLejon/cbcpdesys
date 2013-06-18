@@ -55,6 +55,9 @@ namespace dolfin
     // Reset probe by deleting all previous evaluations
     virtual void clear();
     
+    // Set probe from Array
+    void set_probes_from_ids(const Array<double>& u);
+    
   protected:
       
     std::vector<std::pair<std::size_t, Probe*> > _allprobes;

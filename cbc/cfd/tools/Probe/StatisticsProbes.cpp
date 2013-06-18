@@ -132,6 +132,7 @@ void StatisticsProbes::restart_probes(const Array<double>& u, std::size_t num_ev
 
   _num_evals = num_evals;
 }
+//
 void StatisticsProbes::set_probes_from_ids(const Array<double>& u, std::size_t num_evals)
 {
   Array<double> _u(value_size());  

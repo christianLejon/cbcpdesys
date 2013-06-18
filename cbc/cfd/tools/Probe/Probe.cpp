@@ -153,3 +153,11 @@ void Probe::dump(std::string filename, std::size_t id)
   cout << ss.str() << endl;
   fp << ss.str();
 }
+//
+void Probe::restart_probe(const Array<double>& u)
+{
+  // Make room for one more evaluation
+  for (std::size_t j = 0; j < _value_size_loc; j++)
+    _probes[j].push_back(u[j]);
+}
+

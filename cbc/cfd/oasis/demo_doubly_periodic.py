@@ -103,9 +103,9 @@ parameters['mesh_partitioner'] = "ParMETIS"
 Lx = 2.*pi
 Ly = 2.
 Lz = pi
-Nx = 257
-Ny = 193
-Nz = 193
+Nx = 25
+Ny = 19
+Nz = 19
 
 mesh = BoxMesh(0., -Ly/2., -Lz/2., Lx, Ly/2., Lz/2., Nx, Ny, Nz)
 # Create stretched mesh in y-direction
@@ -152,7 +152,7 @@ T = 1000.                      # End time
 max_iter = 1                   # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2    # Pressure velocity iterations on first timestep
 max_error = 1e-6
-check = 1000                     # print out info and save solution every check timestep 
+check = 1                     # print out info and save solution every check timestep 
 save_restart_file = 5000        # Saves two previous timesteps needed for a clean restart
     
 # Specify body force
@@ -176,19 +176,19 @@ else:
     folder = path.join(folder, str(max(map(eval, previous)) + 1))
 
 MPI.barrier()
-vtkfolder = path.join(folder, "VTK")
+h5folder = path.join(folder, "HDF5")
 statsfolder = path.join(folder, "Stats")
 if MPI.process_number() == 0:
     try:
-        makedirs(vtkfolder)
+        makedirs(h5folder)
     except:
         pass
     try:
         makedirs(statsfolder)
     except:
         pass
-u_stats_file = File(path.join(statsfolder, "umean.xml.gz"))
-k_stats_file = File(path.join(statsfolder, "kmean.xml.gz"))
+#u_stats_file = File(path.join(statsfolder, "umean.xml.gz"))
+#k_stats_file = File(path.join(statsfolder, "kmean.xml.gz"))
 
 #### Set a folder that contains xml.gz files of the solution. 
 restart_folder = None        
@@ -253,8 +253,10 @@ if restart_folder == None:
     u0x = project(u0[0], V)
     u1x = project(u0[1], V)
     u2x = project(u0[2], V)
-    y = interpolate(Expression("0.1335*((1+x[1])*(1-x[1]))"), V)
-    q_['u0'].vector()[:] = y.vector()[:] 
+    y = interpolate(Expression("x[1] > 0 ? 1-x[1] : 1+x[1]"), V)
+    #y.vector()[y.vector().array() == 0] = 1e-12
+    uu = project(1.25*(utau/0.41*ln(conditional(y<1e-12, 1.e-12, y)*utau/nu)+5.*utau), V)
+    q_['u0'].vector()[:] = uu.vector()[:] 
     q_['u0'].vector().axpy(1.0, u0x.vector())
     q_['u1'].vector()[:] = u1x.vector()[:]
     q_['u2'].vector()[:] = u2x.vector()[:]
@@ -490,7 +492,7 @@ while t < T + DOLFIN_EPS:
         if MPI.process_number()==0:
             info_green('Time = {0:2.4e}, timestep = {1:6d}, End time = {2:2.4e}'.format(t, tstep, T)) 
         newfolder = path.join(folder, 'timestep='+str(tstep))        
-        #plot(u_[0], rescale=True)
+        plot(u_[0], rescale=True)
         u1 = assemble(dot(u_, normal)*ds(1), exterior_facet_domains=facets)
         
         if MPI.process_number() == 0:
@@ -506,17 +508,17 @@ while t < T + DOLFIN_EPS:
             for ui in u_components:
                 newfile_1 = File(path.join(newfolder, ui + '_1.xml.gz'))
                 newfile_1 << q_1[ui]
-	
+
         stats.tovtk(0, filename=statsfolder+"/dump_mean_{}.vtk".format(tstep))
-	voluviz(q_['u0'])
-        voluviz.toh5_lowmem(0, tstep, filename=vtkfolder+"/snapshot_u0_{}.h5".format(tstep))
-	voluviz.probes.clear()
-	voluviz(q_['u1'])
-        voluviz.toh5_lowmem(0, tstep, filename=vtkfolder+"/snapshot_u1_{}.h5".format(tstep))
-	voluviz.probes.clear()
-	voluviz(q_['u2'])
-        voluviz.toh5_lowmem(0, tstep, filename=vtkfolder+"/snapshot_u2_{}.h5".format(tstep))
-	voluviz.probes.clear()
+        voluviz(q_['u0'])
+        voluviz.toh5(0, tstep, filename=h5folder+"/snapshot_u0_{}.h5".format(tstep))
+        voluviz.probes.clear()
+        voluviz(q_['u1'])
+        voluviz.toh5(0, tstep, filename=h5folder+"/snapshot_u1_{}.h5".format(tstep))
+        voluviz.probes.clear()
+        voluviz(q_['u2'])
+        voluviz.toh5(0, tstep, filename=h5folder+"/snapshot_u2_{}.h5".format(tstep))
+        voluviz.probes.clear()
         t1 = time.time()
         if MPI.process_number()==0:
             ff = open(newfolder+"/timeprstep_{}.txt".format(tottime/check), "w")

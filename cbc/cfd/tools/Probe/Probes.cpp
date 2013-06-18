@@ -149,3 +149,18 @@ std::vector<std::size_t> Probes::get_probe_ids()
   }
   return ids;
 }
+
+void Probes::set_probes_from_ids(const Array<double>& u)
+{
+  assert(u.size() == local_size() * value_size());
+  
+  Array<double> _u(value_size());
+  for (std::size_t i = 0; i < local_size(); i++)
+  {
+    Probe* probe = (Probe*) _allprobes[i].second;
+    for (std::size_t j=0; j<value_size(); j++)
+      _u[j] = u[i*value_size() + j];
+    probe->restart_probe(_u);
+  }
+}
+

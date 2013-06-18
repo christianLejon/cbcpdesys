@@ -52,6 +52,8 @@ namespace dolfin
     virtual void restart_probe(const Array<double>& u, std::size_t num_evals) 
       {dolfin_error("Probe.h","restart probe", "Restart only for StatisticsProbe");};
     
+    void restart_probe(const Array<double>& u);
+    
   protected:
       
     std::vector<std::vector<double> > basis_matrix;
