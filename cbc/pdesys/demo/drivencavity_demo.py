@@ -97,7 +97,7 @@ if __name__=='__main__':
         'space': {'u': VectorFunctionSpace},
         'time_integration': 'Transient'
     })
-    mesh = UnitSquare(10, 10)
+    mesh = UnitSquareMesh(30, 30)
     solver = drivencavity_Solver(mesh, parameters)
     solver.solve(max_iter=1, redefine=False)
     interactive()

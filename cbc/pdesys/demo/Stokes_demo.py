@@ -72,7 +72,7 @@ if __name__ == '__main__':
         'precond': {'up': 'amg'},
         'monitor_convergence':{'up': True},        
     })
-    mesh = UnitCube(16, 16, 16)
+    mesh = UnitCubeMesh(16, 16, 16)
     solver = Stokes_Solver(mesh, solver_parameters)
     solver.pdesubsystems['up'].linear_solver.parameters['relative_tolerance'] = 1.e-9
     solver.solve(max_iter=1, redefine=False)

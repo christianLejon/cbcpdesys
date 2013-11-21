@@ -55,10 +55,11 @@ and then using the following to create the lhs A:
 
 """
 from cbc.cfd.oasis import *
+from numpy import cos
 
 #parameters["linear_algebra_backend"] = "Epetra"
 parameters["linear_algebra_backend"] = "PETSc"
-parameters["form_compiler"]["optimize"]     = False
+parameters["form_compiler"]["optimize"]     = True
 parameters["form_compiler"]["cpp_optimize"] = True
 set_log_active(True)
 
@@ -69,17 +70,23 @@ info_red('Memory use of plain dolfin = ' + dolfin_memory_use)
 ################### Problem dependent parameters ####################
 
 mesh = UnitSquareMesh(91, 91)
+x = mesh.coordinates()
+x[:, :] = (x[:, :] - 0.5)*2
+x[:, :] = 0.5*(cos(pi*(x[:, :]-1.) / 2.) + 1.)
+del x
+
 nu = Constant(0.001)          # Viscosity
 t = 0                         # time
 tstep = 0                     # Timestep
-T = 0.1                       # End time
+T = 0.5                       # End time
 #T = 2*dt(0)
 max_iter = 1                  # Pressure velocity iterations on given timestep
 iters_on_first_timestep = 2   # Pressure velocity iterations on first timestep
 max_error = 1e-6
 #dt = Constant(0.012254901960784314)
-dt = Constant(0.25*T/ceil(T/0.2/mesh.hmin())) # timestep
-check = 1                     # print out info every check timestep 
+#dt = Constant(0.25*T/ceil(T/0.2/mesh.hmin())) # timestep
+dt = Constant(0.01)
+check = 10                     # print out info every check timestep 
 
 # Specify body force
 dim = mesh.geometry().dim()
@@ -130,14 +137,14 @@ bc01 = DirichletBC(V, 0., lid)
 bcs['u0'] = [bc00, bc0]
 bcs['u1'] = [bc01, bc0]
 
-coor = mesh.coordinates()[2000, :]
-def lefttop(x, on_boundary):
-    return (abs(x[0] - coor[0]) < 1e-12 and abs(x[1] - coor[1]) < 1e-12)
+#coor = mesh.coordinates()[2000, :]
+#def lefttop(x, on_boundary):
+    #return (abs(x[0] - coor[0]) < 1e-12 and abs(x[1] - coor[1]) < 1e-12)
     
-bcs['p'] = [DirichletBC(Q, 100., lefttop, "pointwise")]
+#bcs['p'] = [DirichletBC(Q, 100., lefttop, "pointwise")]
 
 # Normalize pressure or not?
-normalize = False
+#normalize = False
 
 #####################################################################
 
@@ -188,11 +195,13 @@ b0 = dict((ui, assemble(v*f[i]*dx)) for i, ui in enumerate(u_components))
 #p_sol = LUSolver()
 #p_sol.parameters['reuse_factorization'] = True
 
-u_sol = KrylovSolver('gmres', 'jacobi')
+u_sol = KrylovSolver('bicgstab', 'jacobi')
 u_sol.parameters['error_on_nonconvergence'] = False
 u_sol.parameters['nonzero_initial_guess'] = True
 u_sol.parameters['monitor_convergence'] = True
 u_sol.parameters['maximum_iterations'] = 50
+u_sol.parameters['relative_tolerance'] = 1e-8
+u_sol.parameters['absolute_tolerance'] = 1e-8
 reset_sparsity = True
 
 p_sol = KrylovSolver('gmres', 'hypre_amg')
@@ -201,6 +210,8 @@ p_sol.parameters['nonzero_initial_guess'] = True
 p_sol.parameters['preconditioner']['reuse'] = True
 p_sol.parameters['monitor_convergence'] = True
 p_sol.parameters['maximum_iterations'] = 50
+p_sol.parameters['relative_tolerance'] = 1e-8
+p_sol.parameters['absolute_tolerance'] = 1e-8
 
 if V.ufl_element().degree() > 1:
     du_sol = KrylovSolver('gmres', 'hypre_amg')
@@ -216,6 +227,7 @@ b   = dict((ui, Vector(x_[ui])) for ui in sys_comp)       # rhs vectors
 bold= dict((ui, Vector(x_[ui])) for ui in sys_comp)       # rhs temp storage vectors
 work = Vector(x_['u0'])
 
+vv = Function(Vv)
 t0 = time.time()
 dt_ = dt(0)
 total_iters = 0
@@ -291,7 +303,9 @@ while t < (T - tstep*DOLFIN_EPS):
             [bc.apply(b[ui]) for bc in bcs[ui]]        
             du_sol.solve(M, x_[ui], b[ui])
         
-    plot(p_, rescale=True)
+    if tstep % 1000 == 0:
+        vv.assign(project(u_, Vv))
+        plot(vv)
     # Update to a new timestep
     for ui in u_components:
         x_2[ui][:] = x_1[ui][:]

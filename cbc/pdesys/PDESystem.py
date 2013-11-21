@@ -82,8 +82,8 @@ class PDESystem:
         self.names = []                                      # All components
         self.prm = parameters
 
-        if isinstance(problem, dolfin.cpp.mesh.Mesh):
-        #if isinstance(problem, Mesh):    
+        #if isinstance(problem, dolfin.cpp.mesh.Mesh):
+        if isinstance(problem, Mesh):    
             self.problem = None
             self.mesh = problem
         else:
@@ -116,11 +116,12 @@ class PDESystem:
         # {'symmetry': symmetry[name]} for the TensorFunctionSpace
         cons = self.prm['constriction']
         constrained_domain = None
-        for bc in self.problem.boundaries:
-            if bc.bc_type == 'Periodic':
-                self.prm['constrained_domain'] = bc
-                for name in self.names + ['dq']:
-                    cons[name]['constrained_domain'] = bc
+        if self.problem:
+            for bc in self.problem.boundaries:
+                if bc.bc_type == 'Periodic':
+                    self.prm['constrained_domain'] = bc
+                    for name in self.names + ['dq']:
+                        cons[name]['constrained_domain'] = bc
 
         self.define_function_spaces(self.mesh, self.prm['degree'], 
                               self.prm['space'], self.prm['family'], cons)

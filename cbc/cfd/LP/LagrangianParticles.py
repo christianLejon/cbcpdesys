@@ -17,7 +17,7 @@ from mpi4py import MPI as nMPI
 comm = nMPI.COMM_WORLD
 parameters["form_compiler"]["optimize"]     = True
 parameters["form_compiler"]["cpp_optimize"] = True
-parameters["form_compiler"].add('no-evaluate_basis_derivatives', False)
+#parameters["form_compiler"].add('no-evaluate_basis_derivatives', False)
 
 class celldict(dict):
     

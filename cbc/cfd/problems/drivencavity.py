@@ -110,11 +110,12 @@ if __name__ == '__main__':
     try:
         N = eval(sys.argv[-1])
     except:
-        N = 2
+        N = 5
     problem_parameters['Nx'] = mesh_sizes[N]
     problem_parameters['Ny'] = mesh_sizes[N]
     problem_parameters['Re'] = 1000.
-    problem_parameters['T'] = 0.1
+    problem_parameters['T'] = 2.5
+    problem_parameters['dt'] = 0.001
     #problem_parameters['T'] = 0.02
     problem_parameters['plot_velocity'] = False
     #problem_parameters['plot_pressure'] = True
@@ -123,13 +124,18 @@ if __name__ == '__main__':
     solver_parameters = recursive_update(solver_parameters, 
     dict(degree=dict(u=1, u0=1, u1=1),
         pdesubsystem=dict(u=101, p=101, pc=101, velocity_update=101, up=1), 
-        linear_solver=dict(u='bicgstab', pc='gmres', velocity_update='gmres'), 
-        precond=dict(u='jacobi', pc='hypre_amg', velocity_update='hypre_amg'),
+        linear_solver=dict(u='bicgstab', p='gmres', velocity_update='bicgstab'), 
+        precond=dict(u='jacobi', p='hypre_amg', velocity_update='hypre_euclid'),
         iteration_type='Picard',
         max_iter=1 # Number of pressure/velocity iterations on given timestep
         ))
     problem = drivencavity(problem_parameters)
-    solver = icns.NSFullySegregated(problem, solver_parameters)
+    #solver = icns.NSFullySegregated(problem, solver_parameters)
+    solver = icns.NSSegregated(problem, solver_parameters)
+    #solver.pdesubsystems['u0'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['u1'].prm['monitor_convergence'] = True
+    #solver.pdesubsystems['p'].prm['monitor_convergence'] = True
+
     #solver = icns.NSCoupled(problem, solver_parameters)
     #x = line(x0=0.5, y0=0.5, dx=0.25, dy=0., N=10)
     #lp = LagrangianParticles(solver.V['u'])

@@ -275,13 +275,20 @@ class PDESubSystemBase:
         if not assemble_A:
             # If A is not assembled, then neither is the preconditioner
             if type(sol) is KrylovSolver:
-                prm_sol['preconditioner']['reuse'] = True
+                if "structure" in prm_sol['preconditioner']:
+                    prm_sol['preconditioner']['structure'] = 'same'
+                else:
+                    prm_sol['preconditioner']['reuse'] = True
+                
             elif type(sol) is LUSolver:
                 prm_sol['reuse_factorization'] = True
                 
         else: 
             if type(sol) is KrylovSolver:
-                prm_sol['preconditioner']['reuse'] = False
+                if "structure" in prm_sol['preconditioner']:
+                    prm_sol['preconditioner']['structure'] = 'same_nonzero_pattern'
+                else:
+                    prm_sol['preconditioner']['reuse'] = False
                 
                 # Check for user defined preconditioner
                 sol.B = self.get_precond(**self.solver_namespace)
