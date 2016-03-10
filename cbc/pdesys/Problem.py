@@ -313,7 +313,7 @@ def dump_result(problem, solver, cputime, error, filename = "results/results.log
             os.makedirs(full_dir)
         file = open(full_path, 'w')      # Create file
 
-    if MPI.process_number() == 0:    
+    if MPI.rank(mpi_comm_world()) == 0:    
         
         file.write("%s, %s, %s, %d, %.15g, %.15g,  %d\n" %
                 (time.asctime(), problem.__class__.__name__, solver.__class__.__name__, num_dofs, cputime, error, MPI.num_processes()))

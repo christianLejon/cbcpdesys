@@ -17,7 +17,7 @@ dolfin_parameters["form_compiler"]["representation"] = "quadrature"
 # Class representing the intial conditions
 class InitialConditions(Expression):
     def __init__(self):
-        random.seed(2 + MPI.process_number())
+        random.seed(2 + MPI.rank(mpi_comm_world()))
     def eval(self, values, x):
         values[0] = 0.63 + 0.02*(0.5 - random.random())
         values[1] = 0.0
@@ -28,7 +28,7 @@ class CH_Problem(Problem):
     
     def __init__(self, parameters):
         Problem.__init__(self, parameters=parameters)
-        self.mesh = UnitSquare(self.prm['N'], self.prm['N'])
+        self.mesh = UnitSquareMesh(self.prm['N'], self.prm['N'])
         
     def update(self):
         plot(self.pdesystems['default'].c_, rescale=True)

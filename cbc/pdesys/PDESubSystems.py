@@ -13,7 +13,6 @@ import operator
 
 import os
 
-#parameters["linear_algebra_backend"] = "Epetra"
 parameters["linear_algebra_backend"] = "PETSc"
 parameters['form_compiler']['representation'] = 'quadrature'
 parameters["form_compiler"]["optimize"]     = True
@@ -69,7 +68,6 @@ class PDESubSystemBase:
             assemble_system=False,
             max_inner_iter=1,
             max_inner_err=1e-5,
-            reset_sparsity=True,
             wall_value=1e-12,
             cache_arrays=False
             )
@@ -140,10 +138,7 @@ class PDESubSystemBase:
         self.prepare()
         if self.prm['assemble_system']:
             self.A, self.b = assemble_system(self.a, self.L, bcs=self.bcs,
-                     A_tensor=self.A, b_tensor=self.b, 
-                     exterior_facet_domains=self.exterior_facet_domains,
-                     reset_sparsity=self.prm['reset_sparsity'])
-            self.prm['reset_sparsity'] = False
+                     A_tensor=self.A, b_tensor=self.b)
         else:
             if assemble_A: self.assemble(self.A)
             if assemble_b: self.assemble(self.b)
@@ -219,26 +214,19 @@ class PDESubSystemBase:
                 if self.a in _arrays:
                     self.A = _arrays[self.a]
                 else:            
-                    M = assemble(self.a, tensor=M,
-                            exterior_facet_domains=self.exterior_facet_domains,
-                            reset_sparsity=self.prm['reset_sparsity'])
+                    M = assemble(self.a, tensor=M)
                     # It is possible to preassemble parts of the matrix in A1. In that case just add the preassembled part
                     if not self.A1 is None:
                         M.axpy(1., self.A1, True)
-                    self.prm['reset_sparsity'] = False
                     _arrays[self.a] = M
             else:
-                M = assemble(self.a, tensor=M,
-                        exterior_facet_domains=self.exterior_facet_domains,
-                        reset_sparsity=self.prm['reset_sparsity'])
+                M = assemble(self.a, tensor=M)
                 # It is possible to preassemble parts of the matrix in A1. In that case just add the preassembled part
                 if not self.A1 is None:
                     M.axpy(1., self.A1, True)
-                self.prm['reset_sparsity'] = False
                 
         elif isinstance(M, Vector):
-            M = assemble(self.L, tensor=M,
-                     exterior_facet_domains=self.exterior_facet_domains)       
+            M = assemble(self.L, tensor=M)       
             # It is possible to preassemble parts of the vector in b1. If so add it here
             if not self.b1 is None:
                 M.axpy(1., self.b1)
@@ -275,20 +263,14 @@ class PDESubSystemBase:
         if not assemble_A:
             # If A is not assembled, then neither is the preconditioner
             if type(sol) is KrylovSolver:
-                if "structure" in prm_sol['preconditioner']:
-                    prm_sol['preconditioner']['structure'] = 'same'
-                else:
-                    prm_sol['preconditioner']['reuse'] = True
+                prm_sol['preconditioner']['structure'] = 'same'
                 
             elif type(sol) is LUSolver:
                 prm_sol['reuse_factorization'] = True
                 
         else: 
             if type(sol) is KrylovSolver:
-                if "structure" in prm_sol['preconditioner']:
-                    prm_sol['preconditioner']['structure'] = 'same_nonzero_pattern'
-                else:
-                    prm_sol['preconditioner']['reuse'] = False
+                prm_sol['preconditioner']['structure'] = 'same_nonzero_pattern'
                 
                 # Check for user defined preconditioner
                 sol.B = self.get_precond(**self.solver_namespace)
@@ -662,7 +644,7 @@ class extended_normalize:
         if isinstance(part, int):
             self.u = Function(V)
             v = TestFunction(V)
-            self.c = assemble(Constant(1., cell=V.cell())*dx, mesh=V.mesh())        
+            self.c = assemble(Constant(1.)*dx(domain=V.mesh()))        
             self.pp = ['0']*self.u.value_size()
             self.pp[part] = '1'
             self.u0 = interpolate(Expression(self.pp, element=V.ufl_element()), V)
@@ -935,13 +917,13 @@ BLUE  = "\033[1;37;34m%s\033[0m"
 GREEN = "\033[1;37;32m%s\033[0m"
 
 def info_blue(s):
-    if MPI.process_number()==0:
+    if MPI.rank(mpi_comm_world())==0:
         print BLUE % s
 
 def info_green(s):
-    if MPI.process_number()==0:
+    if MPI.rank(mpi_comm_world())==0:
         print GREEN % s
     
 def info_red(s):
-    if MPI.process_number()==0:
+    if MPI.rank(mpi_comm_world())==0:
         print RED % s

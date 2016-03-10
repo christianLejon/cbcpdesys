@@ -60,7 +60,7 @@ class CSF(NSProblem):
         u0max = MPI.max(q_['u0'].vector().max())
         u1max = MPI.max(q_['u1'].vector().max())
         u2max = MPI.max(q_['u2'].vector().max())
-        if MPI.process_number()==0:
+        if MPI.rank(mpi_comm_world())==0:
             print 'Maximum velocity = ', u0max, u1max, u2max    
 
 if __name__ == '__main__':

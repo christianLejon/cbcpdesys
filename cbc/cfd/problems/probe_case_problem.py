@@ -45,7 +45,7 @@ for ui in sys_comp:
         # Store value in a file
         array([x[i]]).dump(ui + '_' + str(i) + '.dat')
 
-if MPI.process_number() == 0:
+if MPI.rank(mpi_comm_world()) == 0:
     for ui in sys_comp:
         for i in range(cl.shape[0]):
             f = load(ui + '_' + str(i) + '.dat')

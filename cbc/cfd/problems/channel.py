@@ -152,7 +152,7 @@ class channel(NSProblem):
         NSProblem.update(self)
         fun, err = self.functional(self.NS_solver.u_), self.reference()
         if not abs(fun) <= 1e-12:
-            print MPI.process_number(), "Error: ", fun - err 
+            print MPI.rank(mpi_comm_world()), "Error: ", fun - err 
         #info_green(self.error())
         
     def __info__(self):

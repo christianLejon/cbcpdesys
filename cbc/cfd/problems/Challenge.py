@@ -99,7 +99,7 @@ class Challenge(NSProblem):
         #self.prm['dt'] = self.prm['T']/ceil(self.prm['T']/0.2/MPI.min(self.mesh.hmin()))
         self.folder = path.join(getcwd(), self.mesh_filename, 'testcase_'+ str(self.prm['test_case'])+'_dt=' + str(self.prm['dt']) + '_' + time.ctime().replace(' ', '_') )
         
-        if MPI.process_number()==0:
+        if MPI.rank(mpi_comm_world())==0:
             if not path.exists(self.folder):
                 makedirs(self.folder)
         
@@ -183,7 +183,7 @@ class Challenge(NSProblem):
             info_red('Memory usage = ' + self.getMyMemoryUsage())
 
             newfolder = path.join(self.folder, 'timestep='+str(self.tstep))
-            if MPI.process_number()==0:
+            if MPI.rank(mpi_comm_world())==0:
                 try:
                     makedirs(newfolder)
                 except OSError:
