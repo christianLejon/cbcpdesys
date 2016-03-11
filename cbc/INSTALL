@@ -13,5 +13,6 @@ These packages can be installed on Ubuntu through
 
   sudo apt-get install python-numpy python-scipy python-matplotlib
 
-To use CBC.PDESys, the top level directory (the directory this file lives
-in) needs to be added to the PYTHONPATH.
+To install CBC.PDESys use regular distutils
+
+  python setup.py install
