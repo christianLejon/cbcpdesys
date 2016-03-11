@@ -2,11 +2,13 @@ from cbc.pdesys import *
 set_log_active(False)
 
 # Set up problem by loading mesh from file
-mesh = Mesh('dolfin_fine.xml')
+mesh = Mesh('dolfin_fine.xml.gz')
 
 # problem_parameters are defined in Problem.py
 problem_parameters['time_integration'] = "Transient"    # default='Steady'
 problem = Problem(mesh, problem_parameters)
+
+print solver_parameters
 
 # Set up first PDESystem
 solver_parameters['space']['u'] = VectorFunctionSpace   # default=FunctionSpace
@@ -36,11 +38,10 @@ class NavierStokes(PDESubSystem):
                inner(p, div(v_u))*dx + inner(div(U), v_p)*dx - 
                inner(f, v_u)*dx)
 
-NStokes.pdesubsystems['up'] = NavierStokes(vars(NStokes), ['u', 'p'], bcs=bc,
-                                           reassemble_lhs=False)
+NStokes.add_pdesubsystem(NavierStokes, ['u', 'p'], bcs=bc, reassemble_lhs=False)
 
-# Integrate the solution from t=0 to t=0.5
-problem.prm['T'] = 0.5
+# Integrate the solution from t=0 to t=0.25
+problem.prm['T'] = 0.25
 problem.solve()
 
 # Define a new nonlinear PDESystem for a scalar c
@@ -58,20 +59,19 @@ bcc = [DirichletBC(scalar.V['c'], Constant(1.0), dolfin)]
 
 scalar.U_ = 0.5*(NStokes.u_ + NStokes.u_1) # The Scalar form uses the velocity
 scalar.nu = NStokes.nu
-csub1 = Scalar(vars(scalar), ['c'], bcs=bcc, max_inner_iter=5) # Iterate on c_
-scalar.pdesubsystems['c'] = csub1
+scalar.add_pdesubsystem(Scalar, ['c'], bcs=bcc, max_inner_iter=5)
 
 # Integrate both PDESystems from t=0.5 to t=1.0 using Picard
 # iterations on each time step
-problem.prm['T'] = 1.0
+problem.prm['T'] = 0.5
 problem.solve()
 
 # Switch to using the Newton method for the nonlinear variational form
 # With these calls we replace c by c_ in the Scalar form and compute the Jacobian wrt c_
-csub1.prm['iteration_type'] = 'Newton'
-csub1.define()
+scalar.pdesubsystems['c'].prm['iteration_type'] = 'Newton'
+scalar.pdesubsystems['c'].define()
 
 # Integrate both PDESystems from T=1.0 to T=1.5 using Newton
 # iterations on each time step for the scalar
-problem.prm['T'] = 1.5
+problem.prm['T'] = 0.75
 problem.solve()
