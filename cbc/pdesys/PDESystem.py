@@ -1,6 +1,6 @@
 __author__ = "Mikael Mortensen <mikaem@math.uio.no>"
 __date__ = "2011-01-21"
-__copyright__ = "Copyright (C) 2010 " + __author__
+__copyright__ = "Copyright (C) 2010-2016 " + __author__
 __license__  = "GNU Lesser GPL version 3 or any later version"
 """Super class for solving systems of PDEs."""
 
