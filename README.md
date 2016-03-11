@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/mikaem/cbcpdesys.svg?branch=master)](https://travis-ci.org/mikaem/cbcpdesys)
+
 CBC.PDESys
 ---------
 
