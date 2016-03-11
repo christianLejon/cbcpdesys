@@ -8,8 +8,6 @@ mesh = Mesh('dolfin_fine.xml.gz')
 problem_parameters['time_integration'] = "Transient"    # default='Steady'
 problem = Problem(mesh, problem_parameters)
 
-print solver_parameters
-
 # Set up first PDESystem
 solver_parameters['space']['u'] = VectorFunctionSpace   # default=FunctionSpace
 solver_parameters['degree']['u'] = 2                    # default=1

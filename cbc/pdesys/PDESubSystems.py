@@ -239,7 +239,7 @@ class PDESubSystemBase:
         """Return linear solver. 
         """
         if self.prm['linear_solver'] == 'lu':
-            return LUSolver("mumps")
+            return LUSolver()
         else:
             sol = KrylovSolver(self.prm['linear_solver'], self.prm['precond'])
             sol.preconditioned_solve = False
