@@ -5,6 +5,9 @@ from dolfin import *
 from cbc.pdesys import PDESubSystem, PDESystem, Problem, default_problem_parameters, \
     default_solver_parameters, copy
 
+from mpi4py.MPI import COMM_WORLD as comm
+import h5py
+
 mesh = UnitSquareMesh(10, 10)
     
 def test_Problem():
@@ -43,3 +46,6 @@ def test_demo3():
 def test_demo4():
     f = open('../demo/Stokes_demo.py', 'r').read()
     exec f in locals()
+    
+def test_h5py():
+    f = h5py.File('tmp.h5', 'w', driver='mpio', comm=comm)
