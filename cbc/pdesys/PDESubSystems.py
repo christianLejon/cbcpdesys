@@ -10,11 +10,12 @@ from numpy import maximum, minimum, array, zeros, isnan
 from collections import defaultdict
 from time import time
 import operator
-
+import pdb
 import os
 
 parameters["linear_algebra_backend"] = "PETSc"
-parameters['form_compiler']['representation'] = 'quadrature'
+#parameters['form_compiler']['representation'] = 'quadrature'
+parameters['form_compiler']['representation'] = 'uflacs'
 parameters["form_compiler"]["optimize"]     = True
 parameters["form_compiler"]["cpp_optimize"] = True
 # Cache for work arrays
@@ -22,13 +23,13 @@ _work = {}
 _arrays = {}
 
 # Wrap Krylov solver because of the two different calls depending on whether the preconditioner has been set.
-KrylovSolver.solve1 = KrylovSolver.solve
-def cbcsolve(self, A, x, b):
-    if self.preconditioned_solve:
-        self.solve1(x, b)
-    else:
-        self.solve1(A, x, b)
-KrylovSolver.solve = cbcsolve
+#KrylovSolver.solve1 = KrylovSolver.solve
+#def cbcsolve(self, A, x, b):
+#    if self.preconditioned_solve:
+#        self.solve1(x, b)
+#    else:
+#        self.solve1(A, x, b)
+#KrylovSolver.solve = cbcsolve
 
 class PDESubSystemBase:
     """Subclasses in the PDESubSystem hierarchy 1) define one variational 
@@ -111,7 +112,7 @@ class PDESubSystemBase:
         """
         if not self.A.initialized or self.prm['iteration_type'] == 'Newton':
             assemble_A = True
-            assemble_b = True
+            C = True
             self.A.initialized = True
         else:
             assemble_A = assemble_A if assemble_A!=None else self.prm['reassemble_lhs']
@@ -149,6 +150,7 @@ class PDESubSystemBase:
             elif assemble_b:
                 [bc.apply(self.b) for bc in self.bcs]
         x_star = self.work  # more informative name
+        #pdb.set_trace()  #Hur kan dom vara olika stora??? seslf.x och self.work
         x_star[:] = self.x[:]    # start vector for iterative solvers
         self.setup_solver(assemble_A, assemble_b)
         self.xstar=x_star
@@ -242,7 +244,7 @@ class PDESubSystemBase:
             return LUSolver()
         else:
             sol = KrylovSolver(self.prm['linear_solver'], self.prm['precond'])
-            sol.preconditioned_solve = False
+            #sol.preconditioned_solve = False
             return sol
             
     def setup_solver(self, assemble_A, assemble_b):
@@ -261,23 +263,23 @@ class PDESubSystemBase:
                 info_red('   Monitoring convergence for ' + self.name)
             
         if not assemble_A:
-            # If A is not assembled, then neither is the preconditioner
-            if type(sol) is KrylovSolver:
-                prm_sol['preconditioner']['structure'] = 'same'
+                pass #prm_sol['preconditioner']['structure'] = 'same'
                 
-            elif type(sol) is LUSolver:
-                prm_sol['reuse_factorization'] = True
+        elif type(sol) is LUSolver:
+                pass # It seems like "reuse_factorization" for LU_solver is the default since 2018. See FEniCS slack-channel /CL
+                #prm_sol['reuse_factorization'] = True
                 
         else: 
             if type(sol) is KrylovSolver:
-                prm_sol['preconditioner']['structure'] = 'same_nonzero_pattern'
+                
+                #prm_sol['preconditioner']['structure'] = 'same_nonzero_pattern'
                 
                 # Check for user defined preconditioner
-                sol.B = self.get_precond(**self.solver_namespace)
-                if sol.B: 
-                    sol.set_operators(self.A, sol.B)
-                    sol.preconditioned_solve = True
-                    
+                #sol.B = self.get_precond(**self.solver_namespace)
+                #if sol.B: 
+                #    sol.set_operators(self.A, sol.B)
+                #    #sol.preconditioned_solve = True
+                pass    
             elif type(sol) is LUSolver:
                 prm_sol['reuse_factorization'] = False
 
@@ -311,13 +313,19 @@ class PDESubSystemBase:
 
     def get_work_vector(self):
         """Return a work vector. Check first in cached _work."""
+        #pdb.set_trace()
         name = self.V.ufl_element()
-        if name in _work:
+        """if name in _work: # "FiniteElement" existerar redan när programmet kommer hit tredje gången....
             return _work[name]
         else:
             info_green('Creating new work vector for {0:s}'.format(self.name))
-            _work[name] = Vector(self.x)
-            return _work[name]
+            _work[name] = Vector(self.x) # ... och self.x.size() är 1010 istf. 1111
+            return _work[name]"""
+        #Replaced here //CL
+        info_green('Creating new work vector for {0:s}'.format(self.name))
+        _work[name] = Vector(self.x) # ... och self.x.size() är 1010 istf. 1111
+        return _work[name]
+
 
     def get_form(self, form_args):
         """Set the variational form F.
@@ -486,11 +494,12 @@ class DerivedQuantity(PDESubSystemBase):
             self.solver_namespace[self.name + '_'] = self._form
 
     def make_function(self):
-        self.dq = Function(self.V)
-        setattr(self, self.name, self.dq)  # attr w/real name
+        self.dq = Function(self.V) #Här redan sätts self.x
+        setattr(self, self.name, self.dq)  # attr w/real name. This does nothing /CL
+        #self.name = self.dq # attr w/real name  #An alternative to setattr /CL
         self.solver_namespace[self.name + '_'] = self.dq
-        self.x = self.dq.vector()
-        if MPI.num_processes() > 1:
+        self.x = self.dq.vector() #Här får self.x en märklig (?) size
+        if MPI.comm_world.Get_size() > 1:
             info_red('make_function does not work in parallell!')
         self.b = Vector(self.x)
         self.work = self.get_work_vector()
@@ -529,7 +538,7 @@ class DerivedQuantity(PDESubSystemBase):
                 if hasattr(var, 'get_array_slice'):
                     self.namespace_arrays[name] = var.get_array_slice(var)
                 else:  # standard Function (not a subFunction without vector)
-                    self.namespace_arrays[name] = var.vector().array()
+                    self.namespace_arrays[name] = var.vector().get_local()
 
             elif type(self.solver_namespace[name]) is Constant:
                 self.namespace_arrays[name] = self.solver_namespace[name](0)
@@ -562,23 +571,33 @@ class DerivedQuantity(PDESubSystemBase):
         prm['wall_value']. VelocityInlets, ConstantPressure, Outlet and
         Symmetry are do-nothing.
         """
+
         bcu = []
         val = self.prm['wall_value']
         for bc in bcs:
             if bc.type() == 'Wall':
-                if isinstance(self.V, FunctionSpace):
+                '''if isinstance(self.V, FunctionSpace):
                     func = Constant(val)
                 elif isinstance(self.V, VectorFunctionSpace):
                     func = Constant((val, )*self.V.num_sub_spaces())
                 elif isinstance(self.V, TensorFunctionSpace):
                     dim = self.V.mesh().topology().dim()
+                    func = Expression(((str(val), )*dim, )*dim)'''
+                if isinstance(self.V.ufl_element(), FiniteElement):
+                    func = Constant(val)
+                elif isinstance(self.V.ufl_element(), (MixedElement, VectorElement)):
+                    func = Constant((val, )*self.V.num_sub_spaces())
+                elif isinstance(self.V.ufl_element(), TensorElement):
+                    dim = self.V.ufl_cell().topological_dimension()
                     func = Expression(((str(val), )*dim, )*dim)
                 else:
                     raise NotImplementedError
                 add_BC(bcu, self.V, bc, func)
             else:
-                info("No assigned boundary condition for %s -- skipping..." %
-                     (bc.__class__.__name__))
+                #info("No assigned boundary condition for %s -- skipping..." %
+                #     (bc.__class__.__name__))
+                info("No assigned boundary condition to subdomain #%s# with #%s# type boundary condition -- skipping..."
+                     % (bc.__class__.__name__, bc.type()))
         return bcu
         
     def update(self):
@@ -644,8 +663,8 @@ class extended_normalize:
         if isinstance(part, int):
             self.u = Function(V)
             v = TestFunction(V)
-            self.c = assemble(Constant(1.)*dx(domain=V.mesh()))        
-            self.pp = ['0']*self.u.value_size()
+            self.c = assemble(Constant(1.)*dx(domain=V.mesh()))
+            self.pp = ['0']*self.u.cpp_object().value_size()
             self.pp[part] = '1'
             self.u0 = interpolate(Expression(self.pp, element=V.ufl_element()), V)
             self.x0 = self.u0.vector()
@@ -656,7 +675,8 @@ class extended_normalize:
         
     def __call__(self, v):
         if isinstance(self.part, int):
-            # assemble into c1 the part of the vector that we want to normalize
+            # assemble into c1 the part of the vector that we want to normalize    bid = self.bid = mf.get_local().max().item()+1
+
             c1 = self.C1.inner(v)
             if abs(c1) > 1.e-8:
                 # Perform normalization
@@ -684,7 +704,7 @@ class FlowSubDomain(AutoSubDomain):
                 func = values for Dirichlet bcs. 
                         Dictionary using system_names as keys
                         
-                mf = FacetFunction identifying boundaries
+                mf = MeshFunction of dim=2 identifying boundaries
                 
             bc_type = type of boundary. Currently recognized:
                         VelocityInlet 
@@ -704,19 +724,21 @@ class FlowSubDomain(AutoSubDomain):
     
     def __init__(self, inside_function, bc_type='Wall', func=None, 
                  mf=None, mark=True, periodic_map=None):
+
         AutoSubDomain.__init__(self, inside_function)
         self.bc_type = bc_type
         self.type = lambda: self.bc_type
         
         if func: self.func = func
-            
+
         if mf: 
             self.mf = mf
-            if hasattr(mf, 'boundary_indicator'):
-                mf.boundary_indicator += 1
-            else:
-                mf.boundary_indicator = 1
-            bid = self.bid = mf.boundary_indicator
+            #if hasattr(mf, 'boundary_indicator'):
+            #    mf.boundary_indicator += 1
+            #else:
+            #    mf.boundary_indicator = 1
+            #bid = self.bid = mf.boundary_indicator
+            bid = self.bid = mf.array().max().item()+1
 
         if mark and mf:
             self.mark(self.mf, bid)
@@ -790,7 +812,6 @@ def solve_nonlinear(pdesubsystems, max_iter=1, max_err=1e-7, logging=True):
         err = 1.
         j = 0
         err_s = " %4.4e %4.4e |"
-        
         # Assemble on the first iteration?
         for pdesubsystem in pdesubsystems:
             pdesubsystem.assemble_A = pdesubsystem.prm['reassemble_lhs']
@@ -803,9 +824,8 @@ def solve_nonlinear(pdesubsystems, max_iter=1, max_err=1e-7, logging=True):
             total_err = ""
             err = 0.            
             for pdesubsystem in pdesubsystems:
-                
                 res, dx = pdesubsystem.solve(assemble_A=pdesubsystem.assemble_A,
-                                             assemble_b=pdesubsystem.assemble_b) 
+                                             assemble_b=pdesubsystem.assemble_b)
                 ndx = norm(dx)
                 total_err += err_s %(res, ndx)                
                 err = max(err, max(res, ndx))
@@ -845,7 +865,7 @@ def sigma(u, p, nu):
     return 2*nu*epsilon(u) - p*Identity(u.cell().d)
     
 def bound(x, maxf=1e10, minf=1e-10):
-    x.set_local(minimum(maximum(minf, x.array()), maxf))        
+    x.set_local(minimum(maximum(minf, x.get_local()), maxf))        
 
 def matrix_division(A, A_):
     F = []
@@ -900,7 +920,6 @@ class Subdict(dict):
         
 class Initdict(dict):
     """Dictionary that looks for key 'u0' in 'u'[0]."""
-    
     def __missing__(self, key):
         try:
             index = eval(key[-1])
@@ -917,13 +936,13 @@ BLUE  = "\033[1;37;34m%s\033[0m"
 GREEN = "\033[1;37;32m%s\033[0m"
 
 def info_blue(s):
-    if MPI.rank(mpi_comm_world())==0:
-        print BLUE % s
+    if MPI.rank(MPI.comm_world)==0:
+        print(BLUE % s)
 
 def info_green(s):
-    if MPI.rank(mpi_comm_world())==0:
-        print GREEN % s
+    if MPI.rank(MPI.comm_world)==0:
+        print(GREEN % s)
     
 def info_red(s):
-    if MPI.rank(mpi_comm_world())==0:
-        print RED % s
+    if MPI.rank(MPI.comm_world)==0:
+        print(RED % s)

@@ -4,9 +4,11 @@ __copyright__ = "Copyright (C) 2010-2016 " + __author__
 __license__  = "GNU Lesser GPL version 3 or any later version"
 """Super class for solving systems of PDEs."""
 
+# from cbc.pdesys.PDESubSystems import *
+# import PDESubSystems
 from cbc.pdesys.PDESubSystems import *
 from os import getpid
-from commands import getoutput
+from subprocess import getoutput
 
 default_problem_parameters = dict(time_integration='Transient',
                                   max_iter=1,
@@ -198,7 +200,7 @@ class Problem:
                                 
         for sub_system in pdesystem.system_composition:
             name = ''.join(sub_system) # e.g., 'u' and 'p' for segregated solver or 'up' for coupled
-
+            
             if isinstance(q0, str):
                 f = File(q0.format(name))
                 f >> pdesystem.q_[name]
@@ -211,11 +213,11 @@ class Problem:
                 try:
                     q = q0[name]
                     if isinstance(q, (Expression, Constant)):
-                        qi = interpolate(q, pdesystem.V[name])
+                        qi = interpolate(q, pdesystem.V[name], degree = self.NS_solver.prm['degree']['u'] + 2)
                     elif isinstance(q, (float, int)):
-                        qi = interpolate(Constant(q), pdesystem.V[name])
+                        qi = interpolate(Constant(q), pdesystem.V[name], degree = self.NS_solver.prm['degree']['u'] + 2)
                     else:
-                        qi = interpolate(Expression(q), pdesystem.V[name])
+                        qi = interpolate(Expression(q, degree = self.NS_solver.prm['degree']['u'] + 2), pdesystem.V[name], degree = self.NS_solver.prm['degree']['u'] + 2)
 
                 except KeyError:
                     if all(i in q0 for i in sub_system):# Add together individual parts to mixed system, e.g., use u and p for sub_system up
@@ -233,7 +235,8 @@ class Problem:
                                 qi += [str(i) for i in v]
                             else:
                                 qi += list(q)
-                        qi = interpolate(Expression(qi), pdesystem.V[name])
+#                        qi = interpolate(Expression(qi), pdesystem.V[name])
+                        qi = interpolate(Expression(qi,degree = self.NS_solver.prm['degree']['u'] + 2), pdesystem.V[name])
                     else:
                         info_red('Initial values not provided for all components of sub_system ')
                         return False

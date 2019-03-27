@@ -4,20 +4,28 @@ __copyright__ = "Copyright (C) 2010-2016 " + __author__
 __license__  = "GNU Lesser GPL version 3 or any later version"
 """Super class for solving systems of PDEs."""
 
+#from cbc.pdesys.PDESubSystems import *
+#import PDESubSystems
 from cbc.pdesys.PDESubSystems import *
+import collections as c
+import pdb
+from dolfin import *
+from functools import reduce
+
 
 default_solver_parameters = {
-    'degree': defaultdict(lambda: 1),
-    'family': defaultdict(lambda: 'CG'),
-    'space' : defaultdict(lambda: FunctionSpace),
+    'degree': c.defaultdict(lambda: 1),
+    'family': c.defaultdict(lambda: 'CG'),
+    'space' : c.defaultdict(lambda: FunctionSpace),
+    'element' : c.defaultdict(lambda: FiniteElement),
     'constrained_domain': None,
-    'constriction': defaultdict(lambda: dict(constrained_domain=None)),
-    'pdesubsystem': defaultdict(lambda: 1),
+    'constriction': c.defaultdict(lambda: dict(constrained_domain=None)),
+    'pdesubsystem': c.defaultdict(lambda: 1),
     'iteration_type': 'Picard',   # or 'Newton'
-    'linear_solver': defaultdict(lambda: 'lu'),
-    'precond': defaultdict(lambda: 'default'),
-    'omega': defaultdict(lambda: 1.0), # Underrelaxation
-    'monitor_convergence': defaultdict(lambda: False), # Monitor Krylov solver
+    'linear_solver': c.defaultdict(lambda: 'lu'),
+    'precond': c.defaultdict(lambda: 'default'),
+    'omega': c.defaultdict(lambda: 1.0), # Underrelaxation
+    'monitor_convergence': c.defaultdict(lambda: False), # Monitor Krylov solver
     'time_integration': 'Steady', # or 'Transient'
     'max_iter': 1,
     'max_err': 1e-7,
@@ -45,12 +53,14 @@ def split_Function(f):
         end_index = start_index + sub_f.function_space().dim()
         sub_f.parent_vector = parent_f.vector()
         sub_f.parent_vector_slice = slice(start_index, end_index)
+        #sub_f.parent_vector_slice = slice(start_index, end_index - 1) # CL - ett försök att få rätt på "var" matris problemet. Men det tycks ju inte vara split kommandot det är fel på. Båda formerna (split() och .split) av split förekommer i original koden.
         setattr(sub_f, 'get_array_slice', 
                 lambda self: \
                 self.parent_vector.array()[self.parent_vector_slice])
         return end_index
 
-    sub_fs = f.split()
+    sub_fs = f.split() # Detta är originalet! Ej ufl.split, och det tycks fungera till att börja med iallafall
+    #sub_fs = split(f)
     start_index = 0
     for sub_f in sub_fs:
         start_index = add_info(sub_f, f, start_index)
@@ -81,7 +91,6 @@ class PDESystem:
         self.system_names = []                               # Compounds solved for
         self.names = []                                      # All components
         self.prm = parameters
-
         #if isinstance(problem, dolfin.cpp.mesh.Mesh):
         if isinstance(problem, Mesh):    
             self.problem = None
@@ -124,8 +133,9 @@ class PDESystem:
                         cons[name]['constrained_domain'] = bc
 
         self.define_function_spaces(self.mesh, self.prm['degree'], 
-                              self.prm['space'], self.prm['family'], cons)
+                              self.prm['space'], self.prm['element'], self.prm['family'], cons)
         self.setup_subsystems()
+
         if self.prm['time_integration'] == 'Steady':
             self.add_function_on_timestep()
         else:
@@ -136,17 +146,26 @@ class PDESystem:
         if hasattr(self.problem, 'add_pdesystem'):
             self.problem.add_pdesystem(self, self.prm['familyname'])
 
-    def define_function_spaces(self, mesh, degree, space, family, cons):
+    def define_function_spaces(self, mesh, degree, space, element, family, cons):
         """Define functionspaces for names and system_names"""
-        V = self.V = dict((name, space[name](mesh, family[name], degree[name], 
+        # 1. Skapa testfunktion som inte är noll på randen och se om den 2. Kolla hur många punkter som ligger på randen 3. Varför är Sij full längd och var skapas den ?
+        V = self.V = dict((name, space[name](mesh, family[name], degree[name],
                            **cons[name])) for name in self.names + ['dq'])
-
+        #V = self.V = dict((name, space[name](mesh, family[name], degree[name])) for name in self.names + ['dq']) # Test wo/ **cons to get correct size
         # Add function space for compound functions for the sub systems
-        V.update(dict(
-            (sys_name, MixedFunctionSpace([V[name] for name in sub_sys]))
-            for sub_sys, sys_name in zip(self.system_composition,
-                                         self.system_names) 
-                                         if len(sub_sys) > 1))
+        # First create individual Finite/VectorElements
+        FE = self.FE = dict((name, element[name](family[name], mesh.ufl_cell(), degree[name])) for name in self.names)
+        # Then make the mixed element if several sub-systems (of all individual Finite/VectorElements)
+        FE.update(dict({self.system_names[0]: reduce(lambda x,y:x*y, FE.values())}))
+        # And Finally add the corresponding Mixed functionspace in V that holds functionspaces for the compound system.
+        V.update(dict({self.system_names[0]: FunctionSpace(mesh, FE[self.system_names[0]])}))
+        # The above lines were tested for 'u' 'p' 'up'. If several MixedFunctionSpaces are needed the codework must be modified.
+
+        #Original code (that adds functionspaces directly, deprecated in later FEniCS versions)
+        #V.update(dict((sys_name, MixedFunctionSpace([V[name] for name in sub_sys]))
+        #    for sub_sys, sys_name in zip(self.system_composition,
+        #                                 self.system_names) 
+        #                                 if len(sub_sys) > 1)) #sub_sys is ['u', 'p'] and sys_name = 'up'.  in Lejon_demo.py. 
 
     def add_function_on_timestep(self, timesteps=['']):
         """
@@ -196,10 +215,10 @@ class PDESystem:
             if len(sub_sys) > 1:
                 q.update(dict((name, subTrialFunction)
                               for name, subTrialFunction in 
-                              zip(sub_sys, ufl.split(q[sys_name]))))
+                              zip(sub_sys, split(q[sys_name]))))
                 v.update(dict((name, subTestFunction)
                               for name, subTestFunction in
-                              zip(sub_sys, ufl.split(v[sys_name]))))
+                              zip(sub_sys, split(v[sys_name]))))
 
         self.qt, self.vt = q, v
         # Short forms
@@ -242,17 +261,18 @@ class PDESystem:
                             add_BC(bcu[name], V, bc, bc.func)
                     else:
                         if bc.type() == 'Wall': # Default is zero on walls
-                            if isinstance(V, FunctionSpace):
+                            if isinstance(V.ufl_element(), FiniteElement):
                                 func = Constant(1e-12)
-                            elif isinstance(V, (MixedFunctionSpace, 
-                                                VectorFunctionSpace)):
+                            elif isinstance(V.ufl_element(), (MixedElement,
+                                                VectorElement)):
                                 if not all([V.sub(0).dim() == V.sub(i).dim() 
                                        for i in range(1, V.num_sub_spaces())]):
                                     error("You need to subclass create_BCs for MixedFunctionSpaces consisting of not equal FunctionSpaces")
                                 func = Constant((1e-12, )*V.num_sub_spaces())
-                            elif isinstance(V, TensorFunctionSpace):                                
-                                func = Expression((('1.e-12', )*V.cell().d, )*
-                                                  V.cell().d)
+                            elif isinstance(V.ufl_element(), TensorElement):
+                                func = Expression((('1.e-12', )*V.ufl_cell().topological_dimension(), )*V.ufl_cell().topological_dimension())
+                                # I assume that the topolocical dimension is correct... see ufl documentation for V.cell().d. The old expression: func = Expression((('1.e-12', )*V.cell().d, )*
+                                #                  V.cell().d)
                             else:
                                 raise NotImplementedError
                             add_BC(bcu[name], V, bc, func)
@@ -262,9 +282,10 @@ class PDESystem:
                     # This bc could be weakly enforced
                     bcu[name].append(bc)
                 else:
-                    info("No assigned boundary condition for %s -- skipping..."
-                         %(bc.__class__.__name__))
-                         
+                    #info("No assigned boundary condition for %s -- skipping..."
+                    #     %(bc.__class__.__name__))
+                    info("No assigned boundary condition to subdomain #%s# with #%s# type boundary condition -- skipping..."
+                         % (bc.__class__.__name__, bc.type()))
         return bcu
         
     def solve(self, func = 'advance', redefine = True, **kwargs):
@@ -362,5 +383,5 @@ class PDESystem:
             info_red('Wrong sub_system!')
         
     def info(self):
-        print "Base class for solving a system of PDEs"
+        print("Base class for solving a system of PDEs")
         
