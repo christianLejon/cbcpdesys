@@ -2,10 +2,10 @@
 for solving the Navier-Stokes equations together with two passive
 scalars """
 
-__author__ = "Mikael Mortensen <mikaem@math.uio.no>"
+__author__ = "Mikael Mortensen <mikael.mortensen@gmail.com>"
 __date__ = "2011-11-18"
 __copyright__ = "Copyright (C) 2011 " + __author__
-__license__  = "GNU Lesser GPL version 3 or any later version"
+__license__  = "GNU GPL version 3 or any later version"
 
 import sys
 from cbc.pdesys import *
@@ -56,13 +56,13 @@ class NavierStokesScalar(PDESubSystem):
         return Fu + Fc
 
 # Set up driven cavity problem
-recursive_update(problem_parameters, {
-    'viscosity': 0.1,
+problem_parameters = recursive_update(problem_parameters, {
+    'viscosity': 0.01,
     'dt': 0.005,
     'T': 0.5,
     'time_integration': 'Transient'
 })
-mesh = UnitSquareMesh(30, 30)
+mesh = UnitSquare(20, 20)
 problem = Problem(mesh, problem_parameters)
 
 fully_coupled = eval(sys.argv[-1])
@@ -81,8 +81,8 @@ if fully_coupled:
     NS.f = Constant((0, 0))
     NS.Pr = Constant(1.)
     normalization = extended_normalize(NS.V['upc'], 2)
-    bcs = [DirichletBC(NS.V['upc'].sub(0), (0., 0.), "on_boundary"),
-           DirichletBC(NS.V['upc'].sub(0), (1., 0.), "on_boundary && x[1] > 1. - DOLFIN_EPS"),
+    bcs = [DirichletBC(NS.V['u'], (0., 0.), "on_boundary"),
+           DirichletBC(NS.V['u'], (1., 0.), "on_boundary && x[1] > 1. - DOLFIN_EPS"),
            DirichletBC(NS.V['upc'].sub(2), (1.), "on_boundary && x[1] > 1. - DOLFIN_EPS")]
 
     for bc in bcs:
@@ -91,13 +91,11 @@ if fully_coupled:
     
     NS.add_pdesubsystem(NavierStokesScalar, ['u', 'p', 'c'], 
                          bcs=bcs, normalize=normalization)
-    
-    ff = File("test.pvd")
+                                        
     def update(self):
         sol = self.pdesystems['Navier-Stokes-Scalar']
         plot(sol.u_, rescale=True)
         plot(sol.c_, rescale=True)
-        ff << sol.c_, self.t
         info_red('        Scalar1: Total amount of c = {}'.format(assemble(sol.c_*dx)))
     Problem.update = update
     
@@ -110,8 +108,8 @@ else:
     NS.nu = Constant(problem.prm['viscosity'])
     NS.f = Constant((0, 0))
     normalization = extended_normalize(NS.V['up'], 2)
-    bcs = [DirichletBC(NS.V['up'].sub(0), (0., 0.), "on_boundary"),
-        DirichletBC(NS.V['up'].sub(0), (1., 0.), "on_boundary && x[1] > 1. - DOLFIN_EPS")]
+    bcs = [DirichletBC(NS.V['u'], (0., 0.), "on_boundary"),
+        DirichletBC(NS.V['u'], (1., 0.), "on_boundary && x[1] > 1. - DOLFIN_EPS")]
     
     NS.add_pdesubsystem(NavierStokes, ['u', 'p'], bcs=bcs, normalize=normalization)
 

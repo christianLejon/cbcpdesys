@@ -1,7 +1,7 @@
-__author__ = "Mikael Mortensen <mikaem@math.uio.no>"
+__author__ = "Mikael Mortensen <Mikael.Mortensen@ffi.no>"
 __date__ = "2011-06-28"
 __copyright__ = "Copyright (C) 2011 " + __author__
-__license__  = "GNU Lesser GPL version 3 or any later version"
+__license__  = "GNU GPL version 3 or any later version"
 
 from cbc.pdesys import *
 
@@ -97,7 +97,7 @@ if __name__=='__main__':
         'space': {'u': VectorFunctionSpace},
         'time_integration': 'Transient'
     })
-    mesh = UnitSquareMesh(30, 30)
+    mesh = UnitSquare(10, 10)
     solver = drivencavity_Solver(mesh, parameters)
     solver.solve(max_iter=1, redefine=False)
     interactive()

@@ -1,0 +1,120 @@
+Within the PDEsys package: 
+PDESystem.py, PDESubSystem.py, Problem.py:
+(these files were originally from github and not the version on launchpad and then later copied into the pdesys version at launchpad. Both at locally stored on my computer)
+
+-----------------------------------------------------------------------------------------
+
+insert parenthesis () along with "print" command
+commands replaced by subprocess
+set_log_active(True) removed (but dont know why it does not work).
+from dolfin import * in PDESystem
+
+PDESystem.py 
+	Adding "element" as a dictionary just like "space" in order to create mixedfunctionspace. MixedFuncitonSpace was deprecated in dolfin.
+	Added elemtent everywhere except in PDESubSystemBase where "space" appears and in similar manner. "space" appears in derived quantity 		and I dont know at the moment what it exactly does, but I dont think any derived quatity is in need of a mixedfunctionspace(?). 	creating mixed functionspaces from the mixed elements appropriate for dolfin 2018
+    removed **cons[name] in creation of FunctionSpaces to get conforming sizes of vectors. This might not be correct ??
+
+	changed ufl.split -> split at rows 216 and 219 (removed ufl)
+    added -1 in add_info to maybe aid the matrix var assigment problem
+
+	row 296: added "PDESubSystems." to recursive_update self.prm = PDESubSystems.recursive_update(self.prm, kwargs)
+    Replaced Mixed/VectorFunctionSpace with VectorElement/MixedElement logic since the former are deprecated.
+
+    added degree in synthax to Experssion
+
+
+PDESubSystems.py
+
+	mpi_comm_world replaced by MPI.comm_world
+	Removed "Wrap Krylov solver" I think current dolfin KrylovSolver is already wrapped ?!?
+	in get_solver removed #sol.preconditioned_solve = False
+
+	removed: #prm_sol['preconditioner']['structure'] = 'same_nonzero_pattern'. The call synthax to KrylovSolver has obviously changed in dolfin/fenics and I think this call is no longer needed as reusing structures is default in more recent versions. See FEniCS qa 6817.
+	removed:  Check for user defined preconditioner. set_operators? FEnicS qa 407 ?
+
+	change: boundary_indicators are no longer supported in dolfin. Now use other attributes:
+             #if hasattr(mf, 'boundary_indicator'):
+            #    mf.boundary_indicator += 1
+            #else:
+            #    mf.boundary_indicator = 1
+            #bid = self.bid = mf.boundary_indicator
+            bid = self.bid = mf.array().max().item()+1
+
+     cpp_object().value_size() -> value_size()
+     .array() replaced by .get_local()
+     parameters['form_compiler']['representation'] to 'uflacs'
+     Replaced MPI.num_processes with MPI.comm_world.Get_size()
+
+     Replaced Mixed/VectorFunctionSpace with VectorElement/MixedElement logic since the former are deprecated.
+     prm_sol['reuse_factorization'] = True
+
+     In  def get_work_vector(self):
+         The original code gave wrong size of the work vector because it faulty reused a work vector from another system that used also points on the boundary, whereas in case of periodicity the boundary conditions are implicitly implimentated in the functionspace directly ??
+
+Within the Stokes_demo.py renamed to Lejon_demo.py
+    Importing PDESys package not through the dist-utils but by directly from the modules in the nearby folder
+    Therefore import statement has changed. 
+	import sys
+	sys.path.append('/home/christian/cbcpdesys/cbc/pdesys
+
+    referencing functions in other modules/py-files with full referencing, eg. PDESystem.PDESystem
+	- only if statment import PDESystem etc. if from PDESystem import * not necessary to access bu dot-index
+    added degree to expression for: inflow = Expression(("-sin(x[1]*pi)", "0.0", "0.0"), degree = parameters['degree']['u'])
+
+	Removed: from Problem import default_problem_parameters, \ default_solver_parameters, copy
+	Inserted: solver_parameters = default_solver_parameters
+    added element in the solver_parameters list. latest version of dolfin requires "element" in synthax for creating functionspaces etc.
+
+
+--------------------------------------------------------
+Now I want this packade to work with a RANS solver/model. For this purpose I start modifying "turbulent_channel.py" in file "lejon_turbulent_channel.py"
+
+In lejon_turbulent_channel.py:
+	print commands with ()
+	plotting with MatPlotlib
+	set_log_active removed. Probably not available since the pybind upgrade??
+	import Pickle instead of import cPickle for python3
+In cbc/cfd/icns:
+	__init__ changed to __all__["","","","",""]
+	generally changing imports within this package to absolute imports by adding "cbc.cfd.icns."
+
+In channel.py:
+	print commande with ()
+	Full searchpath for import; from cbc.cfd.icns.NSProblem import *
+	Ractangle -> RectangleMesh        m = RectangleMesh(0., -1., self.L, 1., self.prm['Nx'], self.prm['Ny'])
+	FacetFunction replaced by MeshFunction
+	added class MeshFunction_CL: from cbc.cfd.tools.dolfin_utility import MeshFunction_CL. To add "boundary_indicators" functionality to 		MeshFunction
+
+
+In NSSolver:
+	Line 85:         except TypeError, KeyError:
+            error('Viscosity not set in problem parameters')  split up in two statments.
+
+In __init__ of pdesys:
+	changed imports to absolute imports
+	removed: #prm = solver_parameters  there is no solver_parameters and I dont know what it might be used for really.
+
+
+In __init__ of icns:
+	changed imports to absolute imports
+
+In NSCoupled:
+	changed imports to absolute imports
+	changed synthax to: raise TypeError('expected func for VelocityInlet')
+        value_size() -> cpp_object().value_size()         
+
+In Wall.py
+	Removed from set import set.  set is s now included in Python3  https://stackoverflow.com/questions/12028204/python-cant-import-set-from-sets-no-module-named-sets 
+    Replaced .tabulate_dofs with .cell_dofs three places.
+    In "map_boundary_node_to_inner_node" change x = dofmap.tabulate_coordinates(c) for x = mesh.coordinates()[a]
+https://chrisyeh96.github.io/2017/08/08/definitive-guide-python-imports.html
+    .array() - > .get.local() > /home/christian/cbc.pdesys-1.0.0_dev/cbc/cfd/tools/Wall.py(149)get_vertices_on_boundary()
+
+     Replaced bnd_to_in.itervalues()  with: iter(bnd_to_in.values()) in get_vertices_nearest
+
+
+---------------------------------
+
+
+creating chr_test.py for testing purposes
+

@@ -1,15 +1,15 @@
 """This demo illustrates how to use of DOLFIN and CBC.PDESys
 to solve the Stokes problem using a preconditioned iterative method.
 """
-__author__ = "Mikael Mortensen <mikaem@math.uio.no>"
+__author__ = "Mikael Mortensen <Mikael.Mortensen@ffi.no>"
 __date__ = "2011-08-16"
 __copyright__ = "Copyright (C) 2011 " + __author__
-__license__  = "GNU Lesser GPL version 3 or any later version"
+__license__  = "GNU GPL version 3 or any later version"
 
 from cbc.pdesys import *
 
 set_log_active(True)
-#set_log_level(5)
+set_log_level(5)
 
 # Test for PETSc or Epetra
 if not has_linear_algebra_backend("PETSc") and not has_linear_algebra_backend("Epetra"):
@@ -72,7 +72,7 @@ if __name__ == '__main__':
         'precond': {'up': 'amg'},
         'monitor_convergence':{'up': True},        
     })
-    mesh = UnitCubeMesh(16, 16, 16)
+    mesh = UnitCube(16, 16, 16)
     solver = Stokes_Solver(mesh, solver_parameters)
     solver.pdesubsystems['up'].linear_solver.parameters['relative_tolerance'] = 1.e-9
     solver.solve(max_iter=1, redefine=False)

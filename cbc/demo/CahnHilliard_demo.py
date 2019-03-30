@@ -2,10 +2,10 @@
 to solve the Cahn-Hilliard equation, which is a time-dependent 
 nonlinear PDE """
 
-__author__ = "Mikael Mortensen <mikaem@math.uio.no>"
+__author__ = "Mikael Mortensen <Mikael.Mortensen@ffi.no>"
 __date__ = "2011-06-30"
 __copyright__ = "Copyright (C) 2011 " + __author__
-__license__  = "GNU Lesser GPL version 3 or any later version"
+__license__  = "GNU GPL version 3 or any later version"
 
 import random
 from cbc.pdesys import *
@@ -17,7 +17,7 @@ dolfin_parameters["form_compiler"]["representation"] = "quadrature"
 # Class representing the intial conditions
 class InitialConditions(Expression):
     def __init__(self):
-        random.seed(2 + MPI.rank(mpi_comm_world()))
+        random.seed(2 + MPI.process_number())
     def eval(self, values, x):
         values[0] = 0.63 + 0.02*(0.5 - random.random())
         values[1] = 0.0
@@ -28,7 +28,7 @@ class CH_Problem(Problem):
     
     def __init__(self, parameters):
         Problem.__init__(self, parameters=parameters)
-        self.mesh = UnitSquareMesh(self.prm['N'], self.prm['N'])
+        self.mesh = UnitSquare(self.prm['N'], self.prm['N'])
         
     def update(self):
         plot(self.pdesystems['default'].c_, rescale=True)
