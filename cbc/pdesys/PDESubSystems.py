@@ -79,10 +79,10 @@ class PDESubSystemBase:
         self.F = kwargs.get('F', None)
         self.a = None
         # Define matrix and vector for lhs and rhs respectively
-        self.A = Matrix() # Matrix() can be used for > 0.9.8
+        self.A = PETScMatrix() # HG changed from Matrix() # Matrix() can be used for > 0.9.8
         self.A.initialized = False
-        self.b = Vector()
-        self.B = Matrix() # Possible user defined preconditioner 
+        self.b = PETScVector() # HG changed from Vector()
+        self.B = PETScMatrix() # HG changed from Matrix() # Possible user defined preconditioner
         # Define matrix and vector for unchanging parts of tensor
         self.A1 = None
         self.b1 = None        
@@ -211,7 +211,7 @@ class PDESubSystemBase:
         
     def assemble(self, M):
         """Assemble tensor."""
-        if isinstance(M, Matrix):
+        if isinstance(M, (Matrix, PETScMatrix)): # hg changed from Matrix):
             if self.prm['cache_arrays']:
                 if self.a in _arrays:
                     self.A = _arrays[self.a]
@@ -227,7 +227,7 @@ class PDESubSystemBase:
                 if not self.A1 is None:
                     M.axpy(1., self.A1, True)
                 
-        elif isinstance(M, Vector):
+        elif isinstance(M, (Vector, PETScVector)): # hg changed from Vector):
             M = assemble(self.L, tensor=M)       
             # It is possible to preassemble parts of the vector in b1. If so add it here
             if not self.b1 is None:

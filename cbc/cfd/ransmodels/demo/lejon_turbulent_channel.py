@@ -22,7 +22,7 @@ from dolfin import *
 import matplotlib.pyplot as plt
 import pdb
 import sys
-sys.path.append('/home/christian/cbc.pdesys-1.0.0_dev') # Can also be added to the PYTHONPATH. ? In terminal python3: export PYTHONPATH="$PWD/cbc.pdesys-1.0.0_dev" Maybe in script?
+sys.path.append('/home/hakgra/workspaec/fenics/cbc.pdesys-1.0.0_dev') # Can also be added to the PYTHONPATH. ? In terminal python3: export PYTHONPATH="$PWD/cbc.pdesys-1.0.0_dev" Maybe in script?
 from cbc.pdesys import *
 
 
@@ -108,7 +108,7 @@ if __name__=='__main__':
     problem_parameters['max_iter'] = 100
     problem.solve()
     print('time = ', time()-t0)
-    print(list_timings())
+    # print(list_timings())
     plt.figure(1) 
     plot(NS_solver.u_, title="u_")
     plt.show()

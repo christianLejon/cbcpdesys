@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 # from cbc.pdesys import *
 import pdb
 import sys
-sys.path.append('/home/christian/cbc.pdesys-1.0.0_dev/cbc/pdesys')
+sys.path.append('/home/hakgra/workspace/fenics/cbcpdesys_update_RANS/cbc/pdesys')
 from Problem import *
 from PDESubSystems import *
 from PDESystem import *

@@ -121,7 +121,7 @@ class VelocityBase(PDESubSystem):
     
     def assemble(self, M):
         # For u1, u2 use the assembled matrix of u0
-        if isinstance(M, Matrix) and self.index > 0:
+        if isinstance(M, (PETScMatrix, Matrix)) and self.index > 0:
             self.A = self.solver_namespace['pdesubsystems']['u0'].A
         else:
             PDESubSystem.assemble(self, M)
@@ -148,7 +148,7 @@ class VelocityUpdateBase(PDESubSystem):
             return PDESubSystem.get_solver(self)
 
     def assemble(self, M):
-        if isinstance(M, Matrix) and self.index > 0:
+        if isinstance(M, (PETScMatrix, Matrix)) and self.index > 0:
             # Use the assembled matrix of u0 for u1 and u2
             self.A = self.solver_namespace['pdesubsystems']['u0_update'].A
         else:
@@ -403,8 +403,8 @@ class Transient_Velocity_102(VelocityBase):
         self.dim = dim
         self.ac1 = self.conv(v, u, u_1, convection_form)*dx
         self.ac2 = self.conv(v, u, u_2, convection_form)*dx
-        self.Ac1 = Matrix()
-        self.Ac2 = Matrix()
+        self.Ac1 = PETScMatrix() # HG from Matrix()
+        self.Ac2 = PETScMatrix() # HG from Matrix()
         self.x_1 = self.solver_namespace['x_1']
         self.x_2 = self.solver_namespace['x_2']
         self.pdes = self.solver_namespace['pdesubsystems']
