@@ -248,9 +248,12 @@ class KEWall(Wallfunction):
         aro = array(list(self.vertices_on_boundary),'I')
         ari = array(list(self.vertices_inside_boundary),'I')
         for var in args:
-            if isinstance(var, Matrix):
+            if isinstance(var, (Matrix, PETScMatrix)):
                 var.ident(aro + self.N)
                 var.ident(ari + self.N)
+                PETSc_MAT_NEW_NONZERO_ALLOCATION_ERR = 19  # HG
+                PETSc_FALSE = 0  # HG
+                var.mat().setOption(PETSc_MAT_NEW_NONZERO_ALLOCATION_ERR, PETSc_FALSE)  # HG
                 for j in self.vertices_on_boundary:
                     i = self.bnd_to_in[j]
                     col = array([i], 'I')
@@ -266,7 +269,7 @@ class KEWall(Wallfunction):
                     var.apply('insert')
                     #var[i + self.N, i] = -2.*self.nu/self.y[i]**2
 
-            if isinstance(var, (Vector, GenericVector)):
+            if isinstance(var, (Vector, GenericVector, PETScVector)):
                 var[aro + self.N] = 0.
                 var[ari + self.N] = 0.
 
@@ -287,7 +290,7 @@ class FWall(Wallfunction):
         aro = array(list(self.vertices_on_boundary),'I')
         ari = array(list(self.vertices_inside_boundary),'I')
         for var in args:
-            if isinstance(var, Matrix):
+            if isinstance(var, (Matrix, PETScMatrix)):
                 var.ident(aro + self.N)
                 var.ident(ari + self.N)
                 for i in self.vertices_inside_boundary:
@@ -306,7 +309,7 @@ class FWall(Wallfunction):
                     var.setrow(j + self.N, col, val)
                     var.apply('insert')
                     
-            if isinstance(var, (Vector, GenericVector)):
+            if isinstance(var, (Vector, GenericVector,PETScVector)):
                 var[aro + self.N] = 0.
                 var[ari + self.N] = 0.
 
@@ -329,7 +332,7 @@ class V2FWall(Wallfunction):
         N, nu = self.N, self.nu
         e = self.v2f[N:2*N]
         for var in args:
-            if isinstance(var, Matrix):
+            if isinstance(var, (Matrix, PETScMatrix)):
                 var.ident(aro + N)
                 var.ident(ari + N)
                 var.ident(aro + 3*N)
@@ -356,7 +359,7 @@ class V2FWall(Wallfunction):
                     #var[j + N, i] = -2.*nu/self.y[i]**2
                     #var[j + 3*N, i + 2*N] = 20.*nu**2/self.y[i]**4/e[i]
                     
-            if isinstance(var, (Vector, GenericVector)):
+            if isinstance(var, (Vector, GenericVector, PETScVector)):
                 var[aro + N] = 0.
                 var[ari + N] = 0.
                 var[aro + 3*N] = 0.
@@ -377,10 +380,10 @@ class Ce1Wall(Wallfunction):
         aro = array(list(self.vertices_on_boundary), 'I')
         ari = array(list(self.vertices_inside_boundary), 'I')
         for var in args:
-            if isinstance(var, Matrix):
+            if isinstance(var, (Matrix, PETScMatrix)):
                 var.ident(aro)
                 var.ident(ari)
-            if isinstance(var, (Vector, GenericVector)):
+            if isinstance(var, (Vector, GenericVector, PETScVector)):
                 for i in self.vertices_inside_boundary:
                     v2ok = max(min(self.v2[i]/self.k[i], 2./3.), 0.001)
                     var[i] = 1.4*(1 + self.Ced*nsqrt(1./v2ok))
@@ -402,10 +405,10 @@ class KWWall(Wallfunction):
         aro = array(list(self.vertices_on_boundary),'I')
         ari = array(list(self.vertices_inside_boundary),'I')
         for var in args:
-            if isinstance(var, Matrix):
+            if isinstance(var, (Matrix, PETScMatrix)):
                 var.ident(aro + self.N)
                 var.ident(ari + self.N)
-            if isinstance(var, (Vector, GenericVector)):
+            if isinstance(var, (Vector, GenericVector, PETScVector)):
                 for j in self.vertices_on_boundary:
                     i = self.bnd_to_in[j]
                     var[j + self.N] = -60.*self.nu/self.beta1/self.y[i]**2
@@ -430,7 +433,7 @@ class FIJWall_1(Wallfunction):
         aro = array(list(self.vertices_on_boundary),'I')
         ari = array(list(self.vertices_inside_boundary),'I')
         for var in args:
-            if(isinstance(var, Matrix)):
+            if(isinstance(var, (Matrix, PETScMatrix))):
                 var.ident(aro)
                 var.ident(ari)
                 var.ident(aro + self.N)
@@ -452,7 +455,7 @@ class FIJWall_1(Wallfunction):
                     var.apply('insert')
                     #var[j, i + 2*self.N] = 0.5
                     
-            if isinstance(var, (Vector, GenericVector)):
+            if isinstance(var, (Vector, GenericVector, PETScVector)):
                 var[aro] = 0.
                 var[ari] = 0.
                 #Set Fij = - (8 or 10)*nu**2/y**4*Rij
@@ -482,7 +485,7 @@ class FIJWall_2_UNSYMMETRIC(Wallfunction):
         aro = array(list(self.vertices_on_boundary),'I')
         ari = array(list(self.vertices_inside_boundary),'I')
         for var in args:
-            if(isinstance(var, Matrix)):
+            if(isinstance(var, (Matrix, PETScMatrix))):
                 var.ident(aro + 4*self.N)
                 var.ident(ari + 4*self.N)
                 var.ident(aro + 5*self.N)
@@ -525,7 +528,7 @@ class FIJWall_2_UNSYMMETRIC(Wallfunction):
                     var.setrow(j + 7*self.N, col, val)
                     var.apply('insert')
                     
-            if(isinstance(var, (Vector, GenericVector))):
+            if(isinstance(var, (Vector, GenericVector, PETScVector))):
                 var[aro + 4*self.N] = 0.
                 var[ari + 4*self.N] = 0.
                 var[aro + 5*self.N] = 0.
@@ -555,7 +558,7 @@ class FIJWall_2_UNSYMMETRIC2(Wallfunction):
         N = self.N
         nn = self.ni
         for var in args:
-            if(isinstance(var, Matrix)):
+            if(isinstance(var, (Matrix, PETScMatrix))):
                 # Just keep these because they set everything to zero except 
                 # the diagonal that is overloaded anyway
                 var.ident(aro + 4*N)
@@ -630,7 +633,7 @@ class FIJWall_2_UNSYMMETRIC2(Wallfunction):
                     var.setrow(j + 7*N, colF, valn)
                     var.apply('insert')
                     
-            if(isinstance(var, (Vector, GenericVector))):
+            if(isinstance(var, (Vector, GenericVector, PETScVector))):
                 var[aro + 4*N] = 0.
                 var[ari + 4*N] = 0.
                 var[aro + 5*N] = 0.
@@ -657,7 +660,7 @@ class FIJWall_2(Wallfunction):
         aro = array(list(self.vertices_on_boundary),'I')
         ari = array(list(self.vertices_inside_boundary),'I')
         for var in args:
-            if(isinstance(var, Matrix)):
+            if(isinstance(var, (Matrix, PETScMatrix))):
                 var.ident(aro + 3*self.N)
                 var.ident(ari + 3*self.N)
                 var.ident(aro + 4*self.N)
@@ -696,7 +699,7 @@ class FIJWall_2(Wallfunction):
                 #var[j + 4*N , i + 1*self.N] = 8.*(self.nu**2/self.y[i]**4)*(1./self.ke[i +self.N])
                 #var[j + 5*N , i + 2*self.N] = 20.*(self.nu**2/self.y[i]**4)*(1./self.ke[i +self.N])
                     
-            if(isinstance(var, (Vector, GenericVector))):
+            if(isinstance(var, (Vector, GenericVector, PETScVector))):
                 var[aro + 3*self.N] = 0.
                 var[ari + 3*self.N] = 0.
                 var[aro + 4*self.N] = 0.
@@ -721,7 +724,7 @@ class FIJWall_3(Wallfunction):
         aro = array(list(self.vertices_on_boundary),'I')
         ari = array(list(self.vertices_inside_boundary),'I')
         for var in args:
-            if(isinstance(var, Matrix)):
+            if(isinstance(var, (Matrix, PETScMatrix))):
                 var.ident(aro)
                 var.ident(ari)
                 var.ident(aro + self.N)
@@ -745,7 +748,7 @@ class FIJWall_3(Wallfunction):
                     var.apply('insert')
                     #var[j, i + 2*self.N] = 0.5
                     
-            if isinstance(var, (Vector, GenericVector)):
+            if isinstance(var, (Vector, GenericVector, PETScVector)):
                 var[aro] = 0.
                 var[ari] = 0.
                 #Set Fij = - (2 or 5)*e/k**2*Rij
